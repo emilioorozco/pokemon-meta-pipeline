@@ -1,0 +1,25 @@
+# local data lake / warehouse output — never committed
+data/
+
+# environments & secrets
+.env
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# airflow local state
+airflow_home/
+*.db
+
+# os
+.DS_Store
