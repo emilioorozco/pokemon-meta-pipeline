@@ -110,10 +110,10 @@ blob self-describing instead:
   time and the row is flagged (`play_date_source = "s3_last_modified"`). The
   intended cleanup is an upstream re-parse that rewrites every blob as v2; the
   fallback exists so a bronze build never blocks on that.
-- Manual games have no blob. Whether v2 writes a summary-only blob for them (so
-  the pipeline sees every game) or manual games stay out of scope is an open
-  item recorded in [stages.md](stages.md). Until decided, manual games are not
-  ingested and marts state that they cover uploaded games only.
+- Manual games had no blob under v1. Since contract v2 the application writes
+  a summary-only blob for them (`segments: []`, `statsByPlayer: {}`, the row as
+  `summary`) on create and on every edit, so the pipeline ingests every game.
+  Marts must still treat them as result-only records: no turns, no cards seen.
 
 ## Counts
 
@@ -146,7 +146,8 @@ Each of these has a consequence in [schema.md](schema.md).
 6. Handles change. The same account can appear under different in-game
    handles across games (`tcglHandles` on the profile is a list). Player
    identity for analytics is the account (`userId`), not the handle.
-7. Manual games have no segments, no blob, `parserVersion: 0` and may be ties.
+7. Manual games have no segments, a summary-only blob, `parserVersion: 0` and
+   may be ties.
 8. `playedAt` defaults to `uploadedAt` when the uploader sends no timestamp,
    so `play_date` is an upload date for part of the corpus. The debug client
    and the phone shortcut send one; browser uploads may not.
