@@ -58,8 +58,8 @@ flowchart LR
   SRV --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ,SLV,GLD,MDL,SRV,AIR done
-  class SQS,AGT,PUB,DASH planned
+  class UP,API,S3,DDB,BF,SQS,BRZ,SLV,GLD,MDL,SRV,AIR done
+  class AGT,PUB,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
