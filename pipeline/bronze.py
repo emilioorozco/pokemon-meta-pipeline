@@ -35,8 +35,8 @@ awkwardly in DuckDB, so both become lists of structs: `stats_by_player` as
 `summary.elo.modeElos` stays a map because its values are plain integers.
 
 v1 blobs are not accepted here: `play_date_for` needs `summary.playedAt`. The
-backfill upgrades a v1 blob to v2 or quarantines it before reaching this
-module.
+backfill quarantines a v1 blob (with a hint to re-parse it upstream) before it
+reaches this module.
 """
 
 import json
@@ -105,8 +105,8 @@ def play_date_for(blob: ParsedBlobV2) -> str:
     """The partition date of a game: the date part of `summary.playedAt`.
 
     Only v2 blobs have a `playedAt`, which is why this takes `ParsedBlobV2`
-    alone. A v1 blob is upgraded or quarantined by the backfill before it gets
-    here; there is no S3-last-modified fallback in this module.
+    alone. A v1 blob is quarantined by the backfill before it gets here; there
+    is no S3-last-modified fallback in this module.
     """
     played_at = blob.summary.played_at
     date = played_at[:DATE_LENGTH]

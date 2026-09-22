@@ -178,8 +178,9 @@ Bronze keeps the blob's shape rather than flattening it: `summary` is a struct,
 `segments` a list of structs, the decklists structs. The seat and event grains
 (section 8 names columns at those grains) are projections of these columns and
 are produced in silver, where the joins that need them already live. Only v2
-blobs are written; a v1 blob is upgraded to v2 or quarantined before it reaches
-the writer, so there is no S3-last-modified fallback in the table.
+blobs are written; a v1 blob has no play date, so it is quarantined for an
+upstream re-parse rather than landed, and there is no S3-last-modified fallback
+in the table.
 
 The Parquet schema is pinned from the contract models, not inferred from the
 batch being written. Inference would type `summary.elo` as a struct in a batch
@@ -230,19 +231,33 @@ A smoke query reads the output back after every run:
 
 ### Quarantine record
 
-One JSON line per rejected object under
-`data/lake/quarantine/bronze/run_date=YYYY-MM-DD/`. Nothing from a quarantined
-blob is written to the three tables.
+Two files per rejected object under `data/lake/quarantine/<reason>/`: the body
+exactly as it was read, and a sidecar beside it. The source key becomes the
+filename with its slashes as `__`, so one reason directory lists every object
+that failed that way and a re-run overwrites its own records instead of piling
+up copies. Nothing from a quarantined blob is written to bronze.
+
+```
+quarantine/contract_violation/parsed__user-1__game-5.json        body as received
+quarantine/contract_violation/parsed__user-1__game-5.meta.json   sidecar
+```
+
+Sidecar fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `source_key`, `source_version_id` | string | Which object failed. |
-| `user_id`, `game_id` | string | Parsed from the key, so a record exists even when the body is unreadable. |
-| `schema_version_seen` | int or null | `schemaVersion` if the body parsed. |
-| `reason_code` | string | One of `json_parse_error`, `schema_invalid`, `players_lt_2`, `played_at_missing`, `handle_leak_check_failed`, `unsupported_schema_version`. |
-| `reason_detail` | string | Validator message or the failing path. |
-| `body_sha256` | string | For deduplicating repeat failures across runs. |
-| `observed_at` | timestamp | Run time. |
+| `source_key` | string | Which object failed. |
+| `reason` | string | One of `invalid_json`, `contract_violation`, `v1_blob`, `handle_leak_check_failed`, `write_failed`. |
+| `detail` | string | Validator paths and messages, or the masked leak paths. |
+| `contract_version_seen` | int or null | `schemaVersion` if the body parsed. |
+| `quarantined_at` | timestamp | Run time. |
+
+The split is a privacy boundary, not a layout preference. The body is kept
+unanonymized, because a blob that failed validation cannot be trusted to
+anonymize correctly, so it stays in the gitignored `data/` directory and is
+never published. The sidecar is the part that gets grepped, pasted into an
+issue and read across runs, so it carries no handle: `detail` holds paths and
+validator messages only, and a leaking dict key is reported as `<key>`.
 
 ## 8. Quirks and the column that carries each
 
