@@ -38,7 +38,7 @@ tools and the marts and costs nothing. The second is what the tests run and
 what anyone can run on a clean checkout; it is not evidence about the model,
 and the transcript file says so at the top.
 
-**The broken-prompt check.** The claim that the five rules in
+**The broken-prompt check.** The claim that the seven rules in
 `pipeline.prompts` do the work is only worth something if removing them is
 visible. `--prompt-override evals/broken_prompt.txt` (which is nothing more
 than setting `PRA_AGENT_SYSTEM_PROMPT_FILE`) swaps in a prompt with the schema

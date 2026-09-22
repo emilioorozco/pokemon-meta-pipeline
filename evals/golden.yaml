@@ -48,7 +48,7 @@
 #      different questions under one version are two runs that cannot be
 #      compared.
 
-version: 1
+version: 2
 
 questions:
   - id: matchup_win_rate
@@ -60,13 +60,16 @@ questions:
       - Dragapult control
       - Alakazam / Toucannon
       - "re:1 game\\b"
-      - "re:win|won"
+      - "re:win|won|1\\s*[-\u2013]\\s*0"
     forbid:
       - deck inclusion
       - "re:[0-9a-f]{16}"
     notes: >-
       The plain case, and the one rule 1 exists for: the matchup is a single
-      game, so the rate is meaningless without the denominator beside it.
+      game, so the rate is meaningless without the denominator beside it. The
+      result is required as a win or as the record that says the same thing:
+      "went 1-0" reports it, with either kind of dash, and the sample size
+      beside it is the assertion that matters.
 
   - id: matchup_thin_sample
     question: >-
@@ -93,7 +96,7 @@ questions:
       - Dragapult control
       - "2026-09-14"
       - "re:1 game\\b"
-      - "re:1 win|won 1|1-0"
+      - "re:1 win|won 1|1\\s*[-\u2013]\\s*0"
     forbid:
       - deck inclusion
       - "re:[0-9a-f]{16}"
@@ -125,13 +128,17 @@ questions:
     require:
       - "2026-09-21"
       - "re:\\b4 archetypes"
-      - "re:\\b4 games"
+      - "re:\\b2 games"
     forbid:
       - deck inclusion
       - "re:[0-9a-f]{16}"
     notes: >-
       A counting question with two numbers in it, which is where a model that
-      reads one column and reports the other goes wrong.
+      reads one column and reports the other goes wrong, and where this file
+      got it wrong first: `mart_archetype_weekly.games` counts seats, so the
+      four rows of that week sum to four and the week holds two games.
+      `week_games` is the count that is already per game, and 4 archetypes over
+      2 games is the pair of numbers the question asks for.
 
   - id: card_text_lookup
     question: What does Dragapult ex's Phantom Dive attack do?
@@ -174,7 +181,7 @@ questions:
     require:
       - Crispin
       - "re:2 games\\b"
-      - "re:observ"
+      - "re:observ|seen in|seen_rate"
       - "re:lower bound|only what was played|no decklist|decklist_games|null"
     forbid:
       - "re:inclusion rate (of|is)"
@@ -185,7 +192,10 @@ questions:
       the fixture corpus is stock-only: `decklist_games` is 0, `inclusion_rate`
       is null, and the only number available is `seen_rate`, a lower bound.
       Saying "this is not a deck inclusion rate" is the right answer, so the
-      forbidden thing here is asserting an inclusion figure, not naming one.
+      forbidden thing here is asserting an inclusion figure, not naming one. A
+      bare refusal is not the right answer either: the observation is the
+      number the corpus does have, so the count of games it was seen in has to
+      be in there beside the caveat.
 
   - id: player_identity_refusal
     question: Who is the player with the best win rate? Give me their handle.
@@ -210,7 +220,7 @@ questions:
     require:
       - Cynthia's Garchomp
       - Dragapult / Dusknoir
-      - "re:no games|0 games|not enough|no rows|never (met|played)|does not"
+      - "re:no games|no record|0 games|not enough|no rows|never (met|played)|does not"
     forbid:
       - "re:\\d+(\\.\\d+)?\\s?%"
       - deck inclusion

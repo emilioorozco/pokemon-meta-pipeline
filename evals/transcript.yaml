@@ -34,8 +34,8 @@ runs:
           sql: >-
             select archetype_name, opponent_archetype_name, games, wins,
             losses, win_rate, min_games_met from mart_matchups where
-            archetype_name = 'Dragapult control' and opponent_archetype_name =
-            'Alakazam / Toucannon'
+            archetype_name ilike 'Dragapult control' and
+            opponent_archetype_name ilike 'Alakazam / Toucannon'
     answer: >-
       Dragapult control has won the only game it has played against Alakazam /
       Toucannon: 1 win and 0 losses over 1 game, so the rate is 100% of a
@@ -49,8 +49,8 @@ runs:
           sql: >-
             select archetype_name, opponent_archetype_name, games, wins,
             losses, win_rate, min_games_met from mart_matchups where
-            archetype_name = 'Dragapult / Dusknoir' and
-            opponent_archetype_name = 'Applin / Celebi'
+            archetype_name ilike 'Dragapult / Dusknoir' and
+            opponent_archetype_name ilike 'Applin / Celebi'
     answer: >-
       No. Dragapult / Dusknoir against Applin / Celebi is 1 game in this
       corpus, won 1 and lost 0, and the mart marks it as below the project's
@@ -63,8 +63,8 @@ runs:
         args:
           sql: >-
             select archetype_name, week_start, games, wins, losses, win_rate,
-            min_games_met from mart_archetype_weekly where archetype_name =
-            'Dragapult control' and week_start = date '2026-09-14'
+            min_games_met from mart_archetype_weekly where archetype_name
+            ilike 'Dragapult control' and week_start = date '2026-09-14'
     answer: >-
       In the week starting 2026-09-14, Dragapult control played 1 game and won
       it: 1 win, 0 losses, over 1 game. The week is flagged as thin
@@ -89,11 +89,14 @@ runs:
       - tool: query_marts
         args:
           sql: >-
-            select count(*) as archetypes, sum(games) as games from
+            select count(*) as archetypes, max(week_games) as games from
             mart_archetype_weekly where week_start = date '2026-09-21'
     answer: >-
-      The week starting 2026-09-21 holds 4 archetypes and 4 games, one game
-      each. At 4 games nothing in that week supports a rate.
+      The week starting 2026-09-21 holds 4 archetypes across 2 games. The
+      per-archetype `games` column counts seats, one for each side of a game,
+      so those four rows add to four seats rather than to four games;
+      `week_games` is the column that is already counted per game. At 2 games
+      nothing in that week supports a rate.
 
   card_text_lookup:
     turns:
@@ -117,8 +120,8 @@ runs:
         args:
           sql: >-
             select archetype_name, card_name, games, games_with_card,
-            seen_rate from mart_cards_seen where archetype_name = 'Dragapult
-            control' and card_name = 'Area Zero Underdepths'
+            seen_rate from mart_cards_seen where archetype_name ilike
+            'Dragapult control' and card_name ilike 'Area Zero Underdepths'
     answer: >-
       Area Zero Underdepths is a Stadium card: it stays in play until another
       Stadium replaces it, and each player with a Tera Pokemon in play may have
@@ -134,8 +137,8 @@ runs:
           sql: >-
             select archetype_name, card_name, games, games_with_card,
             seen_rate, decklist_games, inclusion_rate from mart_cards_seen
-            where archetype_name = 'Dragapult / Dusknoir' and card_name =
-            'Crispin'
+            where archetype_name ilike 'Dragapult / Dusknoir' and card_name
+            ilike 'Crispin'
     answer: >-
       I cannot tell you that from these tables. Crispin was observed in both of
       the 2 games Dragapult / Dusknoir has here, a seen_rate of 1.0, and that is an
@@ -165,8 +168,9 @@ runs:
         args:
           sql: >-
             select archetype_name, opponent_archetype_name, games, wins,
-            win_rate from mart_matchups where archetype_name = 'Cynthia''s
-            Garchomp' and opponent_archetype_name = 'Dragapult / Dusknoir'
+            win_rate from mart_matchups where archetype_name ilike
+            'Cynthia''s Garchomp' and opponent_archetype_name ilike
+            'Dragapult / Dusknoir'
     answer: >-
       The warehouse has no games between Cynthia's Garchomp and Dragapult /
       Dusknoir, so there is no win rate to report. Both archetypes are in the

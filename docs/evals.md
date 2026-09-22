@@ -24,13 +24,16 @@ way a model change is.
       - Dragapult control
       - Alakazam / Toucannon
       - "re:1 game\\b"
-      - "re:win|won"
+      - "re:win|won|1\\s*[-\u2013]\\s*0"
     forbid:
       - deck inclusion
       - "re:[0-9a-f]{16}"
     notes: >-
       The plain case, and the one rule 1 exists for: the matchup is a single
-      game, so the rate is meaningless without the denominator beside it.
+      game, so the rate is meaningless without the denominator beside it. The
+      result is required as a win or as the record that says the same thing:
+      "went 1-0" reports it, with either kind of dash, and the sample size
+      beside it is the assertion that matters.
 ```
 
 Three checks, and a question passes only if all three hold.
@@ -140,11 +143,55 @@ and the scorer never reads it: the recorded turns go through the real
 fixture warehouse, so a green run there means the harness, the tools and the
 marts are sound and says nothing at all about the model.
 
+## What the first live run found
+
+The replay was green from the day the set was written. The first run against a
+real model scored 4 out of 10, and the six failures split three ways.
+
+Three were the question set's own fault, because every `require` in it had been
+calibrated while reading the recording in `evals/transcript.yaml`: the set was
+grading one particular way of wording a right answer.
+`matchup_win_rate` demanded `re:win|won` and the model wrote "went 1-0", which
+is the same fact in the form a player would use; `matchup_with_no_games`
+demanded "no games" and the model wrote "no record of". Both patterns were
+widened to accept the phrasing, not to accept a weaker claim. Worse,
+`week_coverage` required "4 games" for a week that holds two:
+`mart_archetype_weekly.games` counts seats, one for each side of a game, so the
+four archetype rows of that week sum to four seats, and `week_games` is the
+count that is already per game. The model read the right column and the golden
+file had the wrong number in it, which is exactly what step 1 of "to add a
+question" warns about. The expectation is now 2 games, and the transcript's
+recorded answer was re-recorded with it: a recording that asserts a falsehood
+is worse than no recording.
+
+Two were the agent, and they are why the ticket was worth the provider calls.
+Asked which archetype has the most games, it named Dragapult / Dusknoir alone,
+the shape an `ORDER BY games DESC LIMIT 1` gives you, when Dragapult control
+ties it at two. Asked for "Dragapult control's record", it wrote the name back
+with a capital C, filtered with `=`, got nothing and reported that the
+warehouse has no record of that week, when the row is there under "Dragapult
+control". Neither is about this corpus, so neither was fixed with a hint: rule
+6 says a top is not one row and to name everything tied on the top value, and
+rule 7 says names are stored as they were written and to match them with
+`ILIKE` or `lower()`.
+
+The sixth was a rule that stopped half way. Rule 3 forbade presenting
+`seen_rate` as a deck inclusion rate, so asked for an inclusion rate the model
+refused the question outright and reported nothing, when the corpus does hold
+an observation: Crispin in both of the two games. Rule 3 now says to give the
+seen count and the rate under the caveat rather than refusing.
+
+Two new rules cost more than the prompt had left under `MAX_PROMPT_CHARS`, so
+the five older rules were tightened and the per-column description budget went
+from 62 characters to 56, which only shortens lines that were already ending in
+an ellipsis. `version` in the golden file is 2, because a run against the old
+expectations and a run against these two are not comparable.
+
 ## The broken-prompt check
 
-The claim that the five rules in `pipeline/prompts.py` are load bearing is only
+The claim that the seven rules in `pipeline/prompts.py` are load bearing is only
 worth something if taking them out is visible. `evals/broken_prompt.txt` is the
-control: the same job description with the generated schema and the five rules
+control: the same job description with the generated schema and the seven rules
 removed. `PRA_AGENT_SYSTEM_PROMPT_FILE` replaces the whole system prompt with a
 file, for any entry point, and `--prompt-override` is that variable with a
 flag in front of it.

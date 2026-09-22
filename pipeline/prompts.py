@@ -19,13 +19,21 @@ first sentence is the definition; the rest is the reasoning, which belongs in
 the file and not in a context window.
 
 The rules section is hand written, and it is the part that matters. Three of
-the five rules exist because the corpus is small and honest reporting about a
+the seven rules exist because the corpus is small and honest reporting about a
 small corpus is the whole point of the project: cite the sample size, say when
 the mart itself flags the cell as thin, and never turn an observation rate into
 an inclusion rate. A fourth forbids inventing a number when a query comes back
 empty. The fifth is a boundary rather than a style note: nothing the agent can
 reach carries a name or a handle, so it cannot answer a question about a
 person even if it is asked nicely.
+
+The last two are about the SQL rather than the sentence, and both were written
+against a failure the golden evaluation caught on its first run with a real
+model (docs/evals.md). A question with "the most" in it invites `LIMIT 1`, and
+`LIMIT 1` over a tie reports one of two right answers as the answer; and a name
+the questioner capitalised their own way, matched with `=`, comes back empty
+and reads exactly like an archetype with no games. Both are general: a user
+asking either question deserves the tie and the row, not a tidy wrong answer.
 
 The whole prompt can be replaced from outside, by pointing
 `PRA_AGENT_SYSTEM_PROMPT_FILE` at a file. That hook exists for one purpose: the
@@ -88,7 +96,11 @@ ALLOWED_TABLES: Final[tuple[str, ...]] = (
 TABLE_SENTENCES: Final = 1
 COLUMN_SENTENCES: Final = 1
 MAX_TABLE_CHARS: Final = 120
-MAX_COLUMN_CHARS: Final = 62
+# 56 rather than 62 because the hand written rules grew and the whole prompt
+# has to stay inside `MAX_PROMPT_CHARS`. Every line the six characters shortens
+# was already ending in an ellipsis, so what they buy a rule costs a column
+# description nothing a reader of `schema.yml` cannot get back in full.
+MAX_COLUMN_CHARS: Final = 56
 # A ceiling the prompt test asserts against. Four characters per token is the
 # usual rough conversion, so this is the ~2,000 token budget the ticket set.
 MAX_PROMPT_CHARS: Final = 8_000
@@ -167,40 +179,43 @@ def render_schema(
 RULES: Final = """\
 Rules you follow on every answer.
 
-1. Cite the sample size. Every number you report comes with the `games` count
-   it was computed over, in the same sentence. A win rate without a denominator
-   is not an answer on this corpus, which holds a few hundred games in total.
-2. Say when the mart flags a thin cell. `min_games_met` false means the row has
-   fewer games than the project's threshold; when you report such a row, say so
-   in words rather than only reporting the rate.
-3. `seen_rate` is the share of games in which a card was observed being played
-   or revealed. It is not a deck inclusion rate: a stock export reveals only
-   what was played. Whenever you report a `seen_rate`, say that it is an
-   observation rate and a lower bound. `inclusion_rate` is the tighter number
-   and exists only for the seats that shared a full decklist in game.
+1. Cite the sample size. Every number comes with the `games` count it was
+   computed over, in the same sentence: a rate without its denominator is not
+   an answer on a corpus this small.
+2. Say when the mart flags a thin cell. `min_games_met` false means the row is
+   under the project's threshold: say so in words, not only the rate.
+3. `seen_rate` is the share of games in which a card was observed. It is
+   not a deck inclusion rate: a stock export reveals only what was played, so
+   report it as an observation and a lower bound. `inclusion_rate` covers only
+   the seats that shared a full decklist; when it is null, give the seen count
+   and rate under that caveat rather than refusing the question.
 4. Never guess a number. If a query returns no rows, or the tool refuses it,
-   say what you asked for and that the warehouse does not answer it. Do not
-   estimate, interpolate or recall a number from outside these tables.
+   say what you asked for and that the warehouse does not answer it; never
+   estimate or recall a number from outside these tables.
 5. Player identity is not available to you. No table holds a name or a handle:
    `mart_player_summary` is keyed by an irreversible token and `dim_player` is
-   not readable. Report how records are distributed if asked, but never present
-   a token as a person. Asked about a named player, say the pipeline replaces
-   handles with one-way tokens before anything is written, so the question has
-   no answer here.
+   not readable. Describe the distribution if asked, never a token as a person:
+   handles become one-way tokens before anything is written, so there is no
+   answer to give.
+6. A top is not one row. Asked for the most or the best, name every row tied on
+   the top value; `LIMIT 1` turns a tie into an ordering the data does not
+   support.
+7. Names are stored as they were written, not as a question capitalises them,
+   so match them with `ILIKE` or `lower()` rather than `=`. An empty result is
+   a spelling to widen before it is an absence to report.
 
-How to work. Write one SELECT at a time against the tables below, read the rows
-that come back, and answer from them. The tool appends a LIMIT when you leave
-one out. Prefer `archetype_name` over `archetype_key` when you write the answer,
-and keep the answer to a few sentences."""
+How to work. One SELECT at a time against the tables below: read the rows that
+come back and answer from them. The tool appends a LIMIT when you leave one
+out. Prefer `archetype_name` over `archetype_key` in the answer, and keep it to
+a few sentences."""
 
 # Added only when the retriever's index has been built and the tool is really
 # registered. A prompt that advertises a tool the agent does not have is how a
 # model ends up describing a lookup it never made.
 CARD_TOOL_NOTE: Final = """\
 `lookup_cards(query, k)` searches printed card text: abilities, attacks, rules.
-It is a card reference, not game data, so nothing it returns is evidence about
-how often a card is played. Use it to say what a card does; use `query_marts`
-for every number."""
+It is a reference, not game data, so nothing it returns says how often a card
+is played. Use it for what a card does and `query_marts` for every number."""
 
 
 def override_path() -> Path | None:
