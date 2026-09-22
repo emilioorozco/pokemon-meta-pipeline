@@ -23,6 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -41,5 +47,12 @@ jobs:
       - name: Type check
         run: uv run mypy pipeline tests scripts
 
+      # Two runs, one coverage number. The fast suite runs first and the gate
+      # is switched off for it (the 70% floor lives in pyproject, so it has to
+      # be overridden here); the Spark suite appends to the same data file and
+      # the combined total is what the build is judged on.
       - name: Test
-        run: uv run pytest --cov=pipeline --cov-report=term-missing --cov-fail-under=70
+        run: uv run pytest --cov=pipeline --cov-report=term-missing --cov-fail-under=0
+
+      - name: Test (Spark)
+        run: uv run pytest -m spark --cov=pipeline --cov-append --cov-fail-under=70

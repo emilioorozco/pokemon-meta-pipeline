@@ -1,0 +1,12 @@
+{
+  "buddy-buddy poffin": {"name": "Fixture Card 1", "set": "FIX", "number": "1", "type": "trainer", "hp": null, "reg": "H"},
+  "lillie's determination": {"name": "Fixture Card 2", "set": "FIX", "number": "2", "type": "trainer", "hp": null, "reg": "H"},
+  "poké pad": {"name": "Fixture Card 3", "set": "FIX", "number": "3", "type": "trainer", "hp": null, "reg": "I"},
+  "ultra ball": {"name": "Fixture Card 4", "set": "FIX", "number": "4", "type": "trainer", "hp": null, "reg": "H"},
+  "boss's orders": {"name": "Fixture Card 5", "set": "FIX", "number": "5", "type": "trainer", "hp": null, "reg": "H"},
+  "basic psychic energy": {"name": "Fixture Card 6", "set": "FIX", "number": "6", "type": "energy", "hp": null, "reg": null},
+  "drakloak": {"name": "Fixture Card 7", "set": "FIX", "number": "7", "type": "pokemon", "hp": 90, "reg": "H"},
+  "night stretcher": {"name": "Fixture Card 8", "set": "FIX", "number": "8", "type": "trainer", "hp": null, "reg": "H"},
+  "budew": {"name": "Fixture Card 9", "set": "FIX", "number": "9", "type": "pokemon", "hp": "60", "reg": "G"},
+  "dragapult ex": {"name": "Fixture Card 10", "set": "FIX", "number": "10", "type": "pokemon", "hp": 320, "reg": "H"}
+}
