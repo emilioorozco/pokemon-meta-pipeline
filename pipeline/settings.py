@@ -56,11 +56,19 @@ class Settings:
     region: str = DEFAULT_REGION
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        """Read the source settings, naming every missing variable at once."""
+    def from_env(cls, *, require_bucket: bool = True) -> "Settings":
+        """Read the source settings, naming every missing variable at once.
+
+        `require_bucket` is false only when the run reads a local directory
+        instead of S3 (`--source-dir`): there is no bucket to name, and demanding
+        one would make a run that never touches AWS depend on AWS configuration.
+        The anonymization key is required either way, because a local run writes
+        the same bronze rows as any other and they are anonymized the same way.
+        """
         bucket = os.environ.get(BUCKET_VAR, "").strip()
         key = os.environ.get(KEY_VAR, "")
-        missing = [name for name, value in ((BUCKET_VAR, bucket), (KEY_VAR, key)) if not value]
+        required = [(BUCKET_VAR, bucket), (KEY_VAR, key)] if require_bucket else [(KEY_VAR, key)]
+        missing = [name for name, value in required if not value]
         if missing:
             raise SettingsError(missing)
         return cls(

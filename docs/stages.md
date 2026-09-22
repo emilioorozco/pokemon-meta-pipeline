@@ -41,6 +41,8 @@ itself reports; a run can be limited to the first N objects.
 
 Command: `python -m pipeline.backfill` (`--limit N`, `--dry-run`).
 
+The same command also reads a local directory of blobs with `--source-dir PATH` (with `--bronze-dir` and `--quarantine-dir` to send the output elsewhere), which needs no bucket and no credentials and is how the committed fixtures are ingested for demos ([demo.md](demo.md)); everything after the read is identical.
+
 Steps per object:
 
 1. Parse JSON. Failure: quarantine `invalid_json`.
