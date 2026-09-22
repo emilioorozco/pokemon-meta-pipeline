@@ -315,16 +315,20 @@ The grain and the tests do not change.
 Input: `features_turn`, read out of the same DuckDB warehouse gold wrote.
 Commands: `python -m pipeline.train` (`--experiment`, `--tracking-uri`,
 `--params key=value ...`, `--warehouse`), `python -m pipeline.promote`
-(`--candidate`, `--metric`, `--tracking-uri`) and `python -m pipeline.serve`
-(`--host`, `--port`, `--tracking-uri`, `--alias`). Output: two MLflow runs and
-one new registered model version per training run, an alias move per accepted
-promotion, and an HTTP service. Nothing is written back to the warehouse.
+(`--candidate`, `--metric`, `--tracking-uri`), `python -m pipeline.serve`
+(`--host`, `--port`, `--tracking-uri`, `--alias`) and `python -m pipeline.drift`
+(`--reference`, `--window-days`, `--as-of`, `--psi-threshold`,
+`--tracking-uri`, `--warehouse`, `--out-dir`). Output: two MLflow runs and one
+new registered model version per training run, an alias move per accepted
+promotion, an HTTP service, and a drift report with its own MLflow run.
+Nothing is written back to the warehouse.
 
-The three are deliberately three commands and not one. Training is allowed to
+The four are deliberately four commands and not one. Training is allowed to
 produce a worse model, promotion is the only thing that decides what is served,
-and serving holds no opinion at all: it loads whatever the alias points at. A
-single `train-and-deploy` command would make every scheduled retrain a
-deployment.
+serving holds no opinion at all (it loads whatever the alias points at), and
+the drift report decides nothing whatsoever: it prints a verdict and leaves the
+next move to a person. A single `train-and-deploy` command would make every
+scheduled retrain a deployment.
 
 ### The features
 
@@ -405,7 +409,10 @@ uv run python -m pipeline.train
 
 Every training run registers its model as a new version of the `win-probability`
 registered model, tagged with `holdout_logloss`, `holdout_auc`,
-`beats_baseline`, `train_to` and `holdout_to`. The baseline run is not
+`beats_baseline`, `train_from`, `train_to` and `holdout_to`. Both ends of the
+training window and not only the last day, because the drift report selects
+rows by them and a window with one end is a filter that quietly reaches back to
+the first game ever played. The baseline run is not
 registered: it is a yardstick, and a registry entry nothing can serve is a
 loaded gun. Registering unconditionally is the point, because "which models
 have we trained" and "which model are we serving" are different questions and
@@ -495,6 +502,72 @@ curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
 8000, `MLFLOW_TRACKING_URI` pointed at the `mlflow` service) for running it
 next to the tracking server. The image carries no model, on purpose.
 
+### Drift
+
+A model is a claim about a distribution, and the claim expires quietly: the
+service keeps answering, the holdout score in MLflow keeps saying what it said
+the day it was trained, and nothing in either notices that the metagame moved.
+`python -m pipeline.drift` is the noticing. It compares a reference window
+against the most recent window of `features_turn` and writes `drift_report.md`
+and `drift_summary.json`, logged as artifacts of a run in the
+`win-probability-drift` experiment with the windows as parameters and
+`max_psi`, `archetype_mix_psi`, `drifted`, and both label rates as metrics.
+
+What is compared:
+
+- **The reference window** is `split = 'train'` by default, which is what the
+  last training run learned from. `--reference 4` takes a registered version's
+  `train_from` and `train_to` tags instead, so a model still serving from three
+  retrains ago can be compared against today without anyone writing the dates
+  down.
+- **The current window** is the last `--window-days` days (30 by default) up to
+  `--as-of`, which defaults to the latest play date in the table.
+- **Every numeric feature** gets a population stability index over ten quantile
+  bins fitted on the reference, with each bin share floored at 1e-6 so an empty
+  bin cannot make the logarithm infinite. Quantile bins rather than uniform
+  ones because most of these features are small integer counters, and a uniform
+  split of `prizes_taken_self` would be eight empty bins reporting on the
+  binning.
+- **The two archetype columns** are pooled into one metagame mix, because a
+  deck appearing on either side of the table is the same event. The mix gets a
+  chi-square test of independence (`scipy.stats.chi2_contingency`, which
+  arrives with scikit-learn), a PSI over the shares with each archetype as a
+  bin, and the per-archetype share change. Archetypes under two per cent of
+  *both* windows fold into `other`; one under two per cent in the reference and
+  over it now is exactly the arrival worth seeing, so it keeps its row.
+- **The label rate** in both windows, labelled a hint rather than a metric. A
+  moving win rate points at concept drift, the relationship between features
+  and label changing rather than the features moving, which no PSI can see.
+
+The usual reading of a PSI is printed in the report: below 0.1 stable, 0.1 to
+0.2 moderate, 0.2 or more significant. `drifted` is true when any numeric PSI
+or the mix PSI reaches `--psi-threshold` (0.2 by default), and the command
+exits 0 either way; exit 3 is a current window under twenty rows, where the
+honest answer is that there was nothing to look at.
+
+The archetype mix is the trigger to expect in practice. Counters such as
+`prize_diff` and `cards_drawn_self` are properties of how the game is played
+and move slowly; the deck distribution moves on the day a set releases, and it
+moves the feature the model leans on hardest. That is also why serving encodes
+an unseen archetype as the missing category rather than refusing it: the report
+is how anyone finds out it happened.
+
+When the flag fires, investigate before retraining. On this corpus the numbers
+are noisy, a window of a few dozen games can cross the threshold on nothing but
+which decks were queued that week, and the overlap line at the top of the
+report says how many current rows are also reference rows (a thirty-day window
+over a ten-day corpus contains the training window whole, and every PSI is then
+near zero by construction). If the shift is real, `python -m pipeline.train`
+produces a candidate on the newer data and `python -m pipeline.promote` decides
+whether it is actually better. The drift command never does either: an
+automatic retrain on a threshold crossing is how a noisy week becomes a
+deployment.
+
+```
+drift flagged: max feature PSI 0.2841 (cards_drawn_self), archetype mix PSI
+0.5512, threshold 0.20, 212 current rows against 448 reference rows
+```
+
 ### Tests
 
 `tests/test_train.py` and `tests/test_promote.py` (marker `ml`, skipped by the
@@ -512,6 +585,17 @@ the version and `production` unmoved, that the third moves the alias, and that
 a candidate that does not exist exits 2. The rule itself is also tested
 directly on hand-built versions, for the ties and the undefined metrics three
 training runs cannot be made to produce on demand.
+
+`tests/test_drift.py` (marker `ml`, and it trains nothing) builds two corpora
+from the same synthetic table: one whose recent window is a copy of the
+training rows, and one where that copy has the prize race three prizes further
+along and two archetypes replaced by a deck that did not exist before. The
+first has to report a PSI of zero and no drift, which is an assertion rather
+than a hope because a distribution compared with a copy of itself has exactly
+that; the second has to fire the flag with `prize_diff` at the top of the table
+and the new deck at the top of the mix. The rest covers the markdown carrying
+its tables and its verdict line, the run carrying its artifacts and metrics,
+and a window of under twenty rows exiting 3 with the reason.
 
 `tests/test_serve.py` is in the **fast** suite, not the `ml` one. The loader is
 injected, so the endpoints are driven with a stub model through Starlette's

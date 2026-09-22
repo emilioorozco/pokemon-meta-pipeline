@@ -232,6 +232,18 @@ detail.
   field. What it proves: the service loads by alias rather than by version, so
   the deployment is the promotion; and an archetype the fixtures never trained
   on comes back named in `unknown_archetypes` rather than as an error.
+- **Drift report**: runs today, after the gold step, and it needs no model at
+  all: the default reference is the training split of the feature table.
+  `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.drift --window-days 3`
+  compares the last three days of `features_turn` against the training window,
+  prints the verdict line, and writes `/tmp/demo/drift/drift_report.md` beside
+  a JSON summary, both logged as artifacts of a run in the
+  `win-probability-drift` experiment. Three days rather than the default
+  thirty because the corpus spans ten, and a thirty-day window would contain
+  the training window whole and compare it with itself. What it proves: the
+  expiry of a model is measured rather than assumed, the archetype mix is
+  where a set release shows up first, and the command flags and exits 0
+  instead of retraining anything.
 - **Agent question**: not yet. Placeholder for asking the agent a matchup
   question and watching it write the mart query.
 - **Airflow DAG**: not yet. Placeholder for the scheduled

@@ -462,6 +462,10 @@ def register_version(
         "holdout_logloss": f"{holdout.logloss:.6f}",
         "holdout_auc": f"{holdout.auc:.6f}",
         "beats_baseline": "1" if beats else "0",
+        # Both ends of the training window, not only the last day: the drift
+        # report selects rows by them, and a window with one end is a filter
+        # that quietly reaches back to the first game ever played.
+        "train_from": str(data_params["train_from"]),
         "train_to": str(data_params["train_to"]),
         "holdout_to": str(data_params["holdout_to"]),
     }

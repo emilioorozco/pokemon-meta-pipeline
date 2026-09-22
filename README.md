@@ -116,6 +116,17 @@ it. `python -m pipeline.serve` is a FastAPI service that loads
 `models:/win-probability@production` and answers `POST /predict`, so promoting a
 model is a pointer move rather than a deploy.
 
+A model is a claim about a distribution, and the claim expires quietly, so
+`python -m pipeline.drift` compares the training window against the most recent
+window of `features_turn`: a population stability index per numeric feature
+over ten quantile bins fitted on the reference, the two archetype columns
+pooled into one metagame mix with a chi-square test and a PSI of its own, and
+the win rate of both windows as a concept-drift hint. It writes
+`drift_report.md` and `drift_summary.json`, logs both as artifacts of a run in
+the `win-probability-drift` experiment, prints one verdict line and exits 0
+whether or not it flagged. It never retrains: on a corpus this small the flag
+is a prompt to look, and `train` then `promote` is what acts on it.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
@@ -124,10 +135,11 @@ uv run python -m pipeline.gold                                 # silver -> gold,
 uv run python -m pipeline.train                                # gold -> model, tracked in MLflow
 uv run python -m pipeline.promote                              # judge the newest version
 uv run python -m pipeline.serve                                # serve the promoted one, port 8000
+uv run python -m pipeline.drift                                # feature drift against the train window
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
 uv run pytest -m dbt                                           # gold tests, silver then dbt
-uv run pytest -m ml                                            # model and promotion tests, no JVM
+uv run pytest -m ml                                            # model, promotion and drift, no JVM
 ```
 
 `promote` prints one line and exits 0 whether or not it promoted, because a
@@ -223,7 +235,8 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
 - [x] Model registry with a promotion step: aliases, not stages, and a rule
       that refuses a worse candidate and says why
 - [x] FastAPI serving of whichever version holds the `production` alias
-- [ ] Drift report
+- [x] Drift report: population stability index per feature and an archetype-mix
+      comparison, written to a report and logged as an MLflow run
 - [ ] LangChain agent: structured query language (SQL) over the marts and
       card-text retrieval, scored against a golden question set
 - [ ] Airflow directed acyclic graph (DAG) with structured logs and metrics

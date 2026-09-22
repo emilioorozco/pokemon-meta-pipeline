@@ -121,10 +121,12 @@ markers = [
 # they are excluded for their seconds rather than for their dependencies.
 addopts = "-m 'not spark and not dbt and not ml'"
 
-# LightGBM, MLflow, scikit-learn and matplotlib publish no type information mypy
-# can use, so their imports are untyped rather than wrong.
+# LightGBM, MLflow, scikit-learn, matplotlib and SciPy publish no type
+# information mypy can use, so their imports are untyped rather than wrong.
+# SciPy is not a dependency line of its own: it arrives with scikit-learn, and
+# `pipeline.drift` uses its chi-square test rather than hand-rolling one.
 [[tool.mypy.overrides]]
-module = ["lightgbm.*", "mlflow.*", "sklearn.*", "matplotlib.*"]
+module = ["lightgbm.*", "mlflow.*", "sklearn.*", "matplotlib.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
