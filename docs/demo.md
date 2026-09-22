@@ -190,7 +190,7 @@ detail.
   it needs the Spark run above to have produced silver first. After the Spark
   run: `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.gold`, which
   builds the star schema and the marts into `/tmp/demo/warehouse/meta.duckdb`
-  and then runs the 67 dbt tests, followed by
+  and then runs the 105 dbt tests, followed by
   `uv run dbt docs generate --project-dir dbt --profiles-dir dbt` and
   `uv run dbt docs serve --project-dir dbt --profiles-dir dbt` for the lineage
   graph and the column descriptions. Query the result with the DuckDB snippet

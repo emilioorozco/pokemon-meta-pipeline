@@ -282,7 +282,7 @@ Six dimensions:
 
 ### Tests
 
-67 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+105 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
 `unique` and `not_null` on every primary key, the fact's `game_side_key`, each
 dimension's key and each mart's grain key; `relationships` from every foreign
 key on the fact to its dimension, with the `player_key` one scoped to the
@@ -297,24 +297,126 @@ pair, agree on games, and mirror wins against losses.
 `tests/test_gold.py` (marker `dbt`, skipped by the default `pytest` run) builds
 silver from the committed fixtures, runs the whole thing through `run_gold`,
 and asserts the numbers dbt cannot: two fact rows per fixture game, the matchup
-symmetry as an independent query, `seen_rate` inside its bounds, and
-`dim_player` exactly as large as the set of uploader tokens silver wrote.
+symmetry as an independent query, `seen_rate` inside its bounds, `dim_player`
+exactly as large as the set of uploader tokens silver wrote, and the model's
+feature table built to its grain with no game straddling the train and holdout
+boundary.
+
+The models under `dbt/models/ml/` are built by the same `dbt run`, because they
+are dbt models like any other; stage 4 describes them.
 
 At 1000x: the models are ordinary SQL, so the change is the adapter. DuckDB
 over Parquet becomes a warehouse the same models compile against, the marts
 become incremental on `play_date`, and the fact stops being rebuilt in full.
 The grain and the tests do not change.
 
-## 4. Win-probability model (planned, MLflow)
+## 4. Model (in progress, LightGBM under MLflow)
 
-Input: `fct_game_side` plus the silver per-seat features. Target:
-`is_win`. Baseline: logistic regression on archetype pair, went first and
-season; then gradient boosting with the turn-indexed features. Every run is
-tracked in MLflow (parameters, metrics, the exact gold snapshot date), and the
-promoted model is registered with the training data's `play_date` range.
-Honest framing: with a hundred-plus games the model is a pipeline exercise;
-its reported metric is cross-validated and the sample size is printed next to
-it.
+Input: `features_turn`, read out of the same DuckDB warehouse gold wrote.
+Command: `python -m pipeline.train` (`--experiment`, `--tracking-uri`,
+`--params key=value ...`, `--warehouse`). Output: two MLflow runs. Nothing is
+written back to the warehouse.
+
+### The features
+
+Three dbt models under `dbt/models/ml/`, tagged `ml` and built by the ordinary
+`dbt run`, so the training data is versioned SQL with tests on it rather than a
+notebook cell:
+
+- `ml_labeled_side` (ephemeral): the seats the model may learn from. It drops
+  seats with no archetype on either side, results that are not a win or a loss,
+  hand-logged games with no turns, games the uploader excluded from statistics,
+  and games whose first player could not be resolved.
+- `ml_split_cutoff`: one row, one date, the boundary between training and
+  holdout. Computed as a percentile over the distinct play dates weighted by
+  games, so that roughly the last quarter of games falls on or after it; the
+  `holdout_start` variable pins it instead when a run has to be reproduced.
+- `features_turn`: one row per (game, seat, turn number), holding the state of
+  the game **at the start of that turn** and the label of how it ended. Both
+  seats get a row at every turn number, not only at their own turns, and every
+  counter is summed over turns strictly before this one, which is what keeps
+  the label out of the features. Two singular dbt tests enforce exactly those
+  two properties.
+
+Bench size, hand size and energy in play are not in the table and are not
+approximated: the log counters count actions, and nothing counts a Pokemon
+leaving play, so a cumulative `n_play_pokemon` is "Pokemon played so far" and
+not a bench. [features.md](features.md) is the column-by-column document, with
+the source and the reason for each one.
+
+### The training run
+
+`python -m pipeline.train` trains a LightGBM binary classifier on
+`split = 'train'`, evaluates it on `split = 'holdout'`, and logs into one
+MLflow run: every hyperparameter, log loss and area under the curve on both
+halves, a calibration plot, a feature-importance plot and comma separated file,
+`features.json` with the ordered feature list and dtypes, the archetype code
+map a serving layer will need, the row counts and date ranges of both halves as
+parameters, the git commit as a tag, and the model itself through
+`mlflow.lightgbm.log_model` with a signature and an input example.
+
+The feature list is narrower than the table. `seat` is an array index,
+`prizes_remaining_*` are exactly six minus columns already present, and
+`is_uploader` is a fact about who kept the log rather than about the game: on
+this corpus the uploader won every eligible holdout game, so a model trained
+with it scores near one and has learned nothing. The list of withheld columns
+is logged as a parameter of the run.
+
+### The baseline
+
+A second run, in the same experiment, tagged `baseline=true`, scored on the
+same holdout: predict the archetype pair's historical win rate from the
+training split, falling back to that archetype's overall rate and then to the
+global rate. It is the matchup mart used as a model, which is what the pipeline
+can already serve with no model at all, and it is the number the gradient
+boosted model has to beat to be worth its dependency. `beats_baseline` is
+logged as a 0 or 1 metric on both runs, the command prints the comparison in
+words, and it exits 0 either way: a model that loses to a group-by is a
+result, not a crash.
+
+### Tracking
+
+`MLFLOW_TRACKING_URI` when it is set, otherwise a plain directory of runs at
+`data/mlruns`, so a fresh clone trains with no server. MLflow 3 keeps that
+directory store behind `MLFLOW_ALLOW_FILE_STORE`, which the command sets for
+itself; reading the same runs with `mlflow ui --backend-store-uri data/mlruns`
+means exporting it by hand. `compose.yaml` has an
+`mlflow` service (SQLite backend, artifacts on a mounted volume, port 5000) for
+when the user interface is wanted:
+
+```bash
+docker compose up -d mlflow
+export MLFLOW_TRACKING_URI=http://localhost:5000
+uv run python -m pipeline.train
+```
+
+### Tests
+
+`tests/test_train.py` (marker `ml`, skipped by the default run, and the only
+slow suite that needs no Java) builds a synthetic `features_turn` straight into
+a temporary DuckDB file, with a signal planted in `prize_diff`, and runs the
+whole command against it into a temporary tracking directory. It asserts the
+run exists with the required parameters, metrics and artifacts, that the logged
+model loads and returns probabilities in [0, 1], that the baseline run exists
+and loses to the planted signal, and that the last training day is before the
+first holdout day.
+
+### The honest claim
+
+With 128 games landed and 28 of them carrying an archetype on both seats,
+`features_turn` is 596 rows. That is enough to demonstrate the loop end to end,
+feature table to tracked experiment to comparable baseline, and it is not
+enough to claim a good win-probability model. The archetype keys are close to
+player identifiers at this size, so both the model and the baseline score
+higher on the holdout than either deserves. The numbers worth reading are the
+row counts, the date ranges and the gap between the two runs; the absolute area
+under the curve is not.
+
+At 1000x: nothing about the shape changes. The feature table becomes
+incremental on `play_date`, the split cutoff becomes a rolling window rather
+than a percentile of everything, and the tracking store becomes the compose
+service or a hosted one. Cross-validation over time folds becomes worth its
+runtime, which at 28 games it is not.
 
 ## 5. Serving (planned, FastAPI)
 

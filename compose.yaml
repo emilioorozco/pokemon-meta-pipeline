@@ -1,0 +1,33 @@
+# Local services the pipeline can talk to, none of them required to run it.
+#
+# Every stage works with no container at all: the lake is Parquet on disk, the
+# warehouse is a DuckDB file, and the model stage falls back to a plain
+# directory of runs under `data/mlruns`. This file is for the one thing a
+# directory cannot give you, which is the MLflow user interface with a real
+# database behind it, so runs can be compared in a browser and the registry
+# has somewhere to live when the serving stage arrives.
+#
+#   docker compose up -d mlflow
+#   export MLFLOW_TRACKING_URI=http://localhost:5000
+#   uv run python -m pipeline.train
+#
+# Everything it writes is under `data/mlflow/`, which is gitignored along with
+# the rest of `data/`, so bringing the stack down and deleting that directory
+# leaves no state behind.
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow
+    container_name: pra-mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      # SQLite metadata and the artifact store, both on the host so a rebuilt
+      # container keeps the run history.
+      - ./data/mlflow:/mlflow
+    restart: unless-stopped
