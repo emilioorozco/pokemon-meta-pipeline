@@ -1,0 +1,1828 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "choice": "tails"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "7463bcbb05259d8e chose tails for the opening coin flip."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 won the coin toss."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "first": true
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 decided to go first."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [
+                "(me2-5_247) Dreepy, (me2-5_221) Budew, (sv6_150_ph) Handheld Fan, (sv7_174) Area Zero Underdepths, (me1_173) Night Stretcher, (me2-5_221) Budew, (sm3_167) Basic Fire Energy"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 8,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 9,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Budew",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_221) Budew to the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Froakie",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (me4_88) Froakie to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 14,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 drew a card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 15,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "5c1ed5552aad5ec6",
+      "title": "5c1ed5552aad5ec6's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Night Stretcher",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 18,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me1_173) Night Stretcher."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 19,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_247) Dreepy to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 20,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (sm3_167) Basic Fire Energy to (me2-5_247) Dreepy on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Froakie",
+            "targetOwner": "5c1ed5552aad5ec6",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 21,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew used Itchy Pollen on 5c1ed5552aad5ec6\u2019s (me4_88) Froakie for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 24,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 drew a card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "from": "Froakie",
+            "to": "Frogadier"
+          },
+          "kind": "evolve",
+          "line": 25,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 evolved (me4_88) Froakie to (me4_21_ph) Frogadier in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Frogadier"
+          },
+          "kind": "attach",
+          "line": 26,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 attached (mee_11) Basic Water Energy to (me4_21_ph) Frogadier in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 27,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 5
+              },
+              "kind": "shuffle_into",
+              "line": 28,
+              "text": "5c1ed5552aad5ec6 shuffled 5 cards into their deck."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 29,
+              "text": "5c1ed5552aad5ec6 drew 8 cards."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (me1_184) Lillie's Determination."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "move": "Summoning Jutsu",
+            "pokemon": "Frogadier"
+          },
+          "kind": "use",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv9_120) Dunsparce, (me4_20) Froakie, (sv6_106) Greninja ex"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 31,
+              "text": "5c1ed5552aad5ec6 drew 3 cards."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 33,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (me4_21_ph) Frogadier used Summoning Jutsu."
+        }
+      ],
+      "kind": "turn",
+      "player": "5c1ed5552aad5ec6",
+      "title": "5c1ed5552aad5ec6's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 36,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 37,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 38,
+              "text": "7463bcbb05259d8e drew (me2-5_248) Drakloak."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 39,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 40,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_247) Dreepy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 41,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 42,
+              "text": "7463bcbb05259d8e drew (swsh6_232) Basic Psychic Energy."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 43,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (swsh6_232) Basic Psychic Energy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Handheld Fan",
+            "energy": false,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 44,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (sv6_150_ph) Handheld Fan to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Budew",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 45,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_221) Budew to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Frogadier",
+            "targetOwner": "5c1ed5552aad5ec6",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 46,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew used Itchy Pollen on 5c1ed5552aad5ec6\u2019s (me4_21_ph) Frogadier for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 49,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 drew a card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 50,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (sv9_120) Dunsparce to the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Froakie",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 51,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (me4_20) Froakie to the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "from": "Frogadier",
+            "to": "Greninja ex"
+          },
+          "kind": "evolve",
+          "line": 52,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 evolved (me4_21_ph) Frogadier to (sv6_106) Greninja ex in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 53,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv5_129) Dudunsparce, (me2_124) Ignition Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 54,
+              "text": "5c1ed5552aad5ec6 drew 2 cards."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 56,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (rsv10-5_164) Hilda."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Ignition Energy",
+            "energy": true,
+            "target": "Greninja ex"
+          },
+          "kind": "attach",
+          "line": 57,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 attached (me2_124) Ignition Energy to (sv6_106) Greninja ex in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "damage": 170,
+            "move": "Shinobi Blade",
+            "pokemon": "Greninja ex",
+            "target": "Budew",
+            "targetOwner": "7463bcbb05259d8e",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 58,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 59,
+              "text": "5c1ed5552aad5ec6 drew a card."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 60,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (sv6_106) Greninja ex used Shinobi Blade on 7463bcbb05259d8e\u2019s (me2-5_221) Budew for 170 damage."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 61,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew was Knocked Out!"
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 62,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 took a Prize card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "A card",
+            "owner": "5c1ed5552aad5ec6"
+          },
+          "kind": "to_hand",
+          "line": 63,
+          "subs": [],
+          "text": "A card was added to 5c1ed5552aad5ec6's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 64,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew is now in the Active Spot."
+        },
+        {
+          "fields": {
+            "card": "Ignition Energy"
+          },
+          "kind": "activated",
+          "line": 65,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "card": "Ignition Energy",
+                "owner": "5c1ed5552aad5ec6",
+                "pokemon": "Greninja ex"
+              },
+              "kind": "discard_from",
+              "line": 66,
+              "text": "(me2_124) Ignition Energy was discarded from 5c1ed5552aad5ec6's (sv6_106) Greninja ex."
+            }
+          ],
+          "text": "(me2_124) Ignition Energy was activated."
+        }
+      ],
+      "kind": "turn",
+      "player": "5c1ed5552aad5ec6",
+      "title": "5c1ed5552aad5ec6's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dragapult ex",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 69,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (sv8-5_165) Dragapult ex."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 70,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Pok\u00e9 Pad",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 71,
+              "text": "7463bcbb05259d8e drew (me3_113) Pok\u00e9 Pad."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 72,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_248) Drakloak to (sv8-5_165) Dragapult ex on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 73,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Dreepy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 74,
+              "text": "7463bcbb05259d8e drew (me2-5_247) Dreepy."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 75,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 76,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_247) Dreepy to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "retreat",
+          "line": 77,
+          "subs": [],
+          "text": "7463bcbb05259d8e retreated (me2-5_221) Budew to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Dragapult ex"
+          },
+          "kind": "promote",
+          "line": 78,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex is now in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Greninja ex",
+            "targetOwner": "5c1ed5552aad5ec6",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 79,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Froakie"
+              },
+              "kind": "put_counters",
+              "line": 80,
+              "text": "7463bcbb05259d8e put 6 damage counters on 7463bcbb05259d8e's (me4_20) Froakie."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex used Phantom Dive on 5c1ed5552aad5ec6\u2019s (sv6_106) Greninja ex for 200 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 83,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 drew a card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 84,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 evolved (sv9_120) Dunsparce to (sv5_129) Dudunsparce on the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 85,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 86,
+              "text": "5c1ed5552aad5ec6 drew 3 cards."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv5_129) Dudunsparce, (sv9_120) Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 87,
+              "text": "5c1ed5552aad5ec6 shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (sv5_129) Dudunsparce."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 89,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv9_120) Dunsparce, (me4_20) Froakie"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 90,
+              "text": "5c1ed5552aad5ec6 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 92,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (sv6_223) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Froakie",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 93,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (me4_20) Froakie to the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Froakie"
+          },
+          "kind": "attach",
+          "line": 94,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 attached (mee_11) Basic Water Energy to (me4_20) Froakie on the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 95,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 10
+              },
+              "kind": "shuffle_into",
+              "line": 96,
+              "text": "5c1ed5552aad5ec6 shuffled 10 cards into their deck."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 97,
+              "text": "5c1ed5552aad5ec6 drew 6 cards."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (me1_184) Lillie's Determination."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "from": "Froakie",
+            "to": "Frogadier"
+          },
+          "kind": "evolve",
+          "line": 98,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 evolved (me4_20) Froakie to (me4_89) Frogadier on the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "damage": 170,
+            "move": "Shinobi Blade",
+            "pokemon": "Greninja ex",
+            "target": "Dragapult ex",
+            "targetOwner": "7463bcbb05259d8e",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 99,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 100,
+              "text": "5c1ed5552aad5ec6 drew a card."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 101,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (sv6_106) Greninja ex used Shinobi Blade on 7463bcbb05259d8e\u2019s (sv8-5_165) Dragapult ex for 170 damage."
+        },
+        {
+          "fields": {
+            "card": "Handheld Fan"
+          },
+          "kind": "activated",
+          "line": 102,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "card": "Basic Water Energy",
+                "energy": true,
+                "target": "Frogadier"
+              },
+              "kind": "attach",
+              "line": 103,
+              "text": "5c1ed5552aad5ec6 attached (mee_11) Basic Water Energy to (me4_89) Frogadier on the Bench."
+            }
+          ],
+          "text": "(sv6_150_ph) Handheld Fan was activated."
+        }
+      ],
+      "kind": "turn",
+      "player": "5c1ed5552aad5ec6",
+      "title": "5c1ed5552aad5ec6's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 106,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me1_169) Lillie's Determination."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 107,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(sv7_174) Area Zero Underdepths, (me1_173) Night Stretcher, (me1_173) Night Stretcher"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "shuffle_into",
+              "line": 108,
+              "text": "7463bcbb05259d8e shuffled 3 cards into their deck."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(sv8-5_165) Dragapult ex, (me3_113) Pok\u00e9 Pad, (sv6-5_89) Xerosic's Machinations, (sm5_166) Crushing Hammer, (me2-5_248) Drakloak, (sv8-5_165) Dragapult ex, (me2-5_226) Psyduck, (sv8_239) Latias ex"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 110,
+              "text": "7463bcbb05259d8e drew 8 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_169) Lillie's Determination."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer"
+          },
+          "kind": "play_card",
+          "line": 112,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "result": "tails"
+              },
+              "kind": "coin_flip",
+              "line": 113,
+              "text": "7463bcbb05259d8e flipped a coin and it landed on tails."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 114,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_247) Dreepy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 115,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Buddy-Buddy Poffin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 116,
+              "text": "7463bcbb05259d8e drew (me1_167) Buddy-Buddy Poffin."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 117,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me2-5_247) Dreepy, (me2-5_247) Dreepy"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 118,
+              "text": "7463bcbb05259d8e drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 120,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_167) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 121,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 122,
+              "text": "7463bcbb05259d8e drew (me2-5_248) Drakloak."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 123,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Greninja ex",
+            "targetOwner": "5c1ed5552aad5ec6",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 124,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 1,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Froakie"
+              },
+              "kind": "put_counters",
+              "line": 125,
+              "text": "7463bcbb05259d8e put a damage counter on 7463bcbb05259d8e's (me4_20) Froakie."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 1,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Froakie"
+              },
+              "kind": "put_counters",
+              "line": 126,
+              "text": "7463bcbb05259d8e put a damage counter on 7463bcbb05259d8e's (me4_20) Froakie."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 4,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Frogadier"
+              },
+              "kind": "put_counters",
+              "line": 127,
+              "text": "7463bcbb05259d8e put 4 damage counters on 7463bcbb05259d8e's (me4_89) Frogadier."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex used Phantom Dive on 5c1ed5552aad5ec6\u2019s (sv6_106) Greninja ex for 200 damage."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "pokemon": "Greninja ex"
+          },
+          "kind": "knockout",
+          "line": 128,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(me4_21_ph) Frogadier, (me4_88) Froakie"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "5c1ed5552aad5ec6",
+                "pokemon": "Greninja ex"
+              },
+              "kind": "discard_from",
+              "line": 129,
+              "text": "2 cards were discarded from 5c1ed5552aad5ec6's (sv6_106) Greninja ex."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (sv6_106) Greninja ex was Knocked Out!"
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "pokemon": "Frogadier"
+          },
+          "kind": "knockout",
+          "line": 131,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(mee_11) Basic Water Energy, (me4_20) Froakie"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "5c1ed5552aad5ec6",
+                "pokemon": "Frogadier"
+              },
+              "kind": "discard_from",
+              "line": 132,
+              "text": "2 cards were discarded from 5c1ed5552aad5ec6's (me4_89) Frogadier."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (me4_89) Frogadier was Knocked Out!"
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 3
+          },
+          "kind": "prize",
+          "line": 134,
+          "subs": [],
+          "text": "7463bcbb05259d8e took 3 Prize cards."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Team Rocket's Watchtower",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 135,
+          "subs": [],
+          "text": "(me2-5_210_ph) Team Rocket's Watchtower was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dedenne",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 136,
+          "subs": [],
+          "text": "(sv8_87_ph) Dedenne was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 137,
+          "subs": [],
+          "text": "(me2-5_288) Fezandipiti ex was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "promote",
+          "line": 138,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6's (sv9_120) Dunsparce is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 141,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 drew a card."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 142,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 evolved (sv9_120) Dunsparce to (sv5_129) Dudunsparce in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Surfing Beach"
+          },
+          "kind": "play_stadium",
+          "line": 143,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (me1_129) Surfing Beach to the Stadium spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 144,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 145,
+              "text": "5c1ed5552aad5ec6 drew 3 cards."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv5_129) Dudunsparce, (sv9_120) Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 146,
+              "text": "5c1ed5552aad5ec6 shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (sv5_129) Dudunsparce."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "pokemon": "Froakie"
+          },
+          "kind": "promote",
+          "line": 148,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6's (me4_20) Froakie is now in the Active Spot."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 149,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "card": "Dunsparce and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 150,
+              "text": "5c1ed5552aad5ec6 drew (sv9_120) Dunsparce and played it to the Bench."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 151,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (sv6_223) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Froakie"
+          },
+          "kind": "attach",
+          "line": 152,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 attached (me1_166) Air Balloon to (me4_20) Froakie on the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 153,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [
+                "(sv5_39) Totodile, (sv6_223) Buddy-Buddy Poffin"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 154,
+              "text": "5c1ed5552aad5ec6 discarded 2 cards."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "card": "Fezandipiti ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 156,
+              "text": "5c1ed5552aad5ec6 drew (me2-5_288) Fezandipiti ex."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 157,
+              "text": "5c1ed5552aad5ec6 shuffled their deck."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (me2-5_264) Ultra Ball."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 158,
+          "subs": [],
+          "text": "5c1ed5552aad5ec6 played (me2-5_288) Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 159,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 160,
+              "text": "5c1ed5552aad5ec6 shuffled 2 cards into their deck."
+            },
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 161,
+              "text": "5c1ed5552aad5ec6 drew 6 cards."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6 played (me1_184) Lillie's Determination."
+        },
+        {
+          "actor": "5c1ed5552aad5ec6",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 162,
+          "subs": [
+            {
+              "actor": "5c1ed5552aad5ec6",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 163,
+              "text": "5c1ed5552aad5ec6 drew 3 cards."
+            }
+          ],
+          "text": "5c1ed5552aad5ec6's (me2-5_288) Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "who": "opponent",
+            "winner": "7463bcbb05259d8e"
+          },
+          "kind": "concede",
+          "line": 164,
+          "subs": [],
+          "text": "Opponent conceded. 7463bcbb05259d8e wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "5c1ed5552aad5ec6",
+      "title": "5c1ed5552aad5ec6's Turn",
+      "turnNumber": 9
+    }
+  ],
+  "statsByPlayer": {
+    "5c1ed5552aad5ec6": {
+      "attacks": [
+        "Shinobi Blade"
+      ],
+      "cardsDrawn": 52,
+      "cardsPlayed": [
+        "Lillie's Determination",
+        "Hilda",
+        "Dudunsparce",
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Surfing Beach",
+        "Dudunsparce",
+        "Buddy-Buddy Poffin",
+        "Ultra Ball",
+        "Lillie's Determination"
+      ],
+      "damageDealt": 340,
+      "energyAttached": 4,
+      "evolutions": [
+        "Frogadier",
+        "Greninja ex",
+        "Dudunsparce",
+        "Frogadier",
+        "Dudunsparce"
+      ],
+      "knockouts": 1,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Froakie",
+        "Dunsparce",
+        "Froakie",
+        "Froakie",
+        "Fezandipiti ex"
+      ],
+      "prizesTaken": 1,
+      "turnsTaken": 5
+    },
+    "7463bcbb05259d8e": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive"
+      ],
+      "cardsDrawn": 27,
+      "cardsPlayed": [
+        "Pok\u00e9 Pad",
+        "Pok\u00e9 Pad",
+        "Lillie's Determination",
+        "Crushing Hammer",
+        "Buddy-Buddy Poffin",
+        "Pok\u00e9 Pad"
+      ],
+      "damageDealt": 420,
+      "energyAttached": 2,
+      "evolutions": [
+        "Drakloak",
+        "Dragapult ex",
+        "Drakloak"
+      ],
+      "knockouts": 2,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Budew",
+        "Dreepy",
+        "Budew",
+        "Dreepy"
+      ],
+      "prizesTaken": 3,
+      "turnsTaken": 4
+    }
+  },
+  "summary": {
+    "endReason": "opponent_concede",
+    "exportVariant": "stock",
+    "gameId": "023f4ec7a0a10437",
+    "hasFullDecklists": false,
+    "myArchetype": "Dragapult control",
+    "myArchetypeId": "01M32DR4PY92KDYB1A06D9TZFX",
+    "mySide": 0,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 1,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 2,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Crushing Hammer"
+        },
+        {
+          "count": 1,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 2,
+          "name": "Drakloak"
+        },
+        {
+          "count": 2,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Handheld Fan"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 3,
+          "name": "Pok\u00e9 Pad"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 1,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 3,
+          "name": "Basic Water Energy"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 4,
+          "name": "Dudunsparce"
+        },
+        {
+          "count": 1,
+          "name": "Dunsparce"
+        },
+        {
+          "count": 1,
+          "name": "Dunsparce and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Fezandipiti ex"
+        },
+        {
+          "count": 3,
+          "name": "Froakie"
+        },
+        {
+          "count": 2,
+          "name": "Frogadier"
+        },
+        {
+          "count": 1,
+          "name": "Greninja ex"
+        },
+        {
+          "count": 1,
+          "name": "Hilda"
+        },
+        {
+          "count": 2,
+          "name": "Ignition Energy"
+        },
+        {
+          "count": 3,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Surfing Beach"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        }
+      ]
+    },
+    "opponentArchetype": "Dudunsparce / Mega Greninja ex",
+    "opponentArchetypeId": "01M2M5H2W71ZB5NAQQP6Z899GY",
+    "opponentArchetypeSource": "user",
+    "opponentName": "5c1ed5552aad5ec6",
+    "parserVersion": 1,
+    "playedAt": "2026-09-20T00:33:41.385Z",
+    "players": [
+      "7463bcbb05259d8e",
+      "5c1ed5552aad5ec6"
+    ],
+    "result": "win",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive"
+        ],
+        "cardsDrawn": 27,
+        "cardsPlayed": [
+          "Pok\u00e9 Pad",
+          "Pok\u00e9 Pad",
+          "Lillie's Determination",
+          "Crushing Hammer",
+          "Buddy-Buddy Poffin",
+          "Pok\u00e9 Pad"
+        ],
+        "damageDealt": 420,
+        "energyAttached": 2,
+        "evolutions": [
+          "Drakloak",
+          "Dragapult ex",
+          "Drakloak"
+        ],
+        "knockouts": 2,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Budew",
+          "Dreepy",
+          "Budew",
+          "Dreepy"
+        ],
+        "prizesTaken": 3,
+        "turnsTaken": 4
+      },
+      "opponent": {
+        "attacks": [
+          "Shinobi Blade"
+        ],
+        "cardsDrawn": 52,
+        "cardsPlayed": [
+          "Lillie's Determination",
+          "Hilda",
+          "Dudunsparce",
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Surfing Beach",
+          "Dudunsparce",
+          "Buddy-Buddy Poffin",
+          "Ultra Ball",
+          "Lillie's Determination"
+        ],
+        "damageDealt": 340,
+        "energyAttached": 4,
+        "evolutions": [
+          "Frogadier",
+          "Greninja ex",
+          "Dudunsparce",
+          "Frogadier",
+          "Dudunsparce"
+        ],
+        "knockouts": 1,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Froakie",
+          "Dunsparce",
+          "Froakie",
+          "Froakie",
+          "Fezandipiti ex"
+        ],
+        "prizesTaken": 1,
+        "turnsTaken": 5
+      }
+    },
+    "turnCount": 9,
+    "unparsedCount": 0,
+    "uploadSource": "web",
+    "uploadedAt": "2026-09-20T00:33:41.385Z",
+    "userId": "user-3d8f5e32",
+    "wentFirst": false,
+    "winner": "7463bcbb05259d8e",
+    "wonCoinToss": false
+  },
+  "unparsedLines": []
+}

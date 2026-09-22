@@ -1,0 +1,3033 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "choice": "heads"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "33838f43a80b2a73 chose heads for the opening coin flip."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "33838f43a80b2a73 won the coin toss."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "first": false
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "33838f43a80b2a73 decided to go second."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [
+                "Basic Fire Energy, Special Red Card, Dragapult ex, Crispin, Basic Darkness Energy, Night Stretcher, Night Stretcher"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 8,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 9,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "mulligan",
+          "line": 10,
+          "subs": [
+            {
+              "details": [
+                "Basic Fire Energy, Special Red Card, Dragapult ex, Crispin, Basic Darkness Energy, Night Stretcher, Night Stretcher"
+              ],
+              "fields": {
+                "mulligan": 1
+              },
+              "kind": "revealed",
+              "line": 11,
+              "text": "Cards revealed from Mulligan 1"
+            }
+          ],
+          "text": "33838f43a80b2a73 took a mulligan."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "mulligan_draw",
+          "line": 13,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 14,
+              "text": "1f43a3c4ecd682d8 drew a card."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 drew 1 more card because 33838f43a80b2a73 took at least 1 mulligan."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 15,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Dwebble",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 16,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 played Dwebble to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 19,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Growing Grass Energy",
+            "energy": true,
+            "target": "Dwebble"
+          },
+          "kind": "attach",
+          "line": 20,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Growing Grass Energy to Dwebble in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Dwebble",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 21,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 played Dwebble to the Bench."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 22,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Special Red Card",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 25,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Special Red Card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 26,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 27,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 28,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Dreepy in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 29,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 32,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 33,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "card": "Crustle",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 34,
+              "text": "1f43a3c4ecd682d8 drew Crustle."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 35,
+              "text": "1f43a3c4ecd682d8 shuffled their deck."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "from": "Dwebble",
+            "to": "Crustle"
+          },
+          "kind": "evolve",
+          "line": 36,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 evolved Dwebble to Crustle on the Bench."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Brock's Scouting"
+          },
+          "kind": "play_card",
+          "line": 37,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [
+                "Mega Kangaskhan ex, Mega Heracross ex"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 38,
+              "text": "1f43a3c4ecd682d8 drew 2 cards."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 40,
+              "text": "1f43a3c4ecd682d8 shuffled their deck."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Brock's Scouting."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Mega Kangaskhan ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 41,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 played Mega Kangaskhan ex to the Bench."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "move": "Ascension",
+            "pokemon": "Dwebble"
+          },
+          "kind": "use",
+          "line": 42,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "from": "Dwebble",
+                "to": "Crustle"
+              },
+              "kind": "evolve",
+              "line": 43,
+              "text": "1f43a3c4ecd682d8 evolved Dwebble to Crustle in the Active Spot."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 44,
+              "text": "1f43a3c4ecd682d8 shuffled their deck."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8's Dwebble used Ascension."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dusclops",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 47,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Dusclops."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 48,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 49,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Budew",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 50,
+              "text": "33838f43a80b2a73 drew Budew."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Budew",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 51,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Budew to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "retreat",
+          "line": 52,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Drakloak"
+              },
+              "kind": "discard_from",
+              "line": 53,
+              "text": "Basic Fire Energy was discarded from 33838f43a80b2a73's Drakloak."
+            }
+          ],
+          "text": "33838f43a80b2a73 retreated Drakloak to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 54,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Crustle",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 55,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 1f43a3c4ecd682d8\u2019s Crustle for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 58,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Prism Energy",
+            "energy": true,
+            "target": "Crustle"
+          },
+          "kind": "attach",
+          "line": 59,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Prism Energy to Crustle in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Team Rocket's Petrel"
+          },
+          "kind": "play_card",
+          "line": 60,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Factory",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 61,
+              "text": "1f43a3c4ecd682d8 drew Team Rocket's Factory."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 62,
+              "text": "1f43a3c4ecd682d8 shuffled their deck."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Team Rocket's Petrel."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Team Rocket's Factory"
+          },
+          "kind": "play_stadium",
+          "line": 63,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 played Team Rocket's Factory to the Stadium spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Team Rocket's Factory"
+          },
+          "kind": "play_card",
+          "line": 64,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 65,
+              "text": "1f43a3c4ecd682d8 drew 2 cards."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Team Rocket's Factory."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 66,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 69,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 70,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dragapult ex, Unfair Stamp, Special Red Card, Dusclops"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 71,
+              "text": "33838f43a80b2a73 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Lillie's Determination, Boss's Orders, Night Stretcher, Team Rocket's Watchtower, Munkidori, Crispin, Pok\u00e9 Pad, Buddy-Buddy Poffin"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 73,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 75,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Duskull, Dreepy"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 76,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 78,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 79,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 80,
+              "text": "33838f43a80b2a73 drew Drakloak."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 81,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 82,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 83,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Crispin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 84,
+              "text": "33838f43a80b2a73 drew Crispin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 85,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dragapult ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 86,
+              "text": "33838f43a80b2a73 drew Dragapult ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 87,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy"
+              },
+              "kind": "move_to_hand",
+              "line": 88,
+              "text": "33838f43a80b2a73 moved 33838f43a80b2a73's Basic Fire Energy to their hand."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Night Stretcher."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Duskull"
+          },
+          "kind": "attach",
+          "line": 89,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Duskull on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Watchtower"
+          },
+          "kind": "play_stadium",
+          "line": 90,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Factory"
+              },
+              "kind": "discard_named",
+              "line": 91,
+              "text": "1f43a3c4ecd682d8 discarded Team Rocket's Factory."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Watchtower to the Stadium spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Crustle",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 92,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 1f43a3c4ecd682d8\u2019s Crustle for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 95,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Crustle"
+          },
+          "kind": "attach",
+          "line": 96,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Mist Energy to Crustle in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 97,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Duskull",
+                "previous": "Budew"
+              },
+              "kind": "switch",
+              "line": 98,
+              "text": "33838f43a80b2a73's Duskull was switched with 33838f43a80b2a73's Budew to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "promote",
+          "line": 99,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull is now in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "damage": 120,
+            "move": "Superb Scissors",
+            "pokemon": "Crustle",
+            "target": "Duskull",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 100,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle used Superb Scissors on 33838f43a80b2a73\u2019s Duskull for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "knockout",
+          "line": 101,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Duskull"
+          },
+          "kind": "discard_from",
+          "line": 102,
+          "subs": [],
+          "text": "Basic Fire Energy was discarded from 33838f43a80b2a73's Duskull."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 103,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 took a Prize card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "A card",
+            "owner": "1f43a3c4ecd682d8"
+          },
+          "kind": "to_hand",
+          "line": 104,
+          "subs": [],
+          "text": "A card was added to 1f43a3c4ecd682d8's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 105,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Drakloak",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 108,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Drakloak."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 109,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 110,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Boss's Orders, Munkidori, Crispin, Crispin, Dragapult ex"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "shuffle_into",
+              "line": 111,
+              "text": "33838f43a80b2a73 shuffled 5 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dragapult ex, Buddy-Buddy Poffin, Moltres, Crispin, Basic Fire Energy, Ultra Ball, Rare Candy, Unfair Stamp"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 113,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 115,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusclops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 116,
+              "text": "33838f43a80b2a73 drew Dusclops."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 117,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Munkidori",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 118,
+              "text": "33838f43a80b2a73 drew Munkidori."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 119,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Rosa's Encouragement",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 120,
+              "text": "33838f43a80b2a73 drew Rosa's Encouragement."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 121,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Crustle",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 122,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 1f43a3c4ecd682d8\u2019s Crustle for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 125,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Xerosic's Machinations"
+          },
+          "kind": "play_card",
+          "line": 126,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Moltres, Munkidori, Dusclops, Ultra Ball, Buddy-Buddy Poffin, Rare Candy, Crispin"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "discard",
+              "line": 127,
+              "text": "33838f43a80b2a73 discarded 7 cards."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Xerosic's Machinations."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Mega Kangaskhan ex"
+          },
+          "kind": "attach",
+          "line": 129,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Basic Grass Energy to Mega Kangaskhan ex on the Bench."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Hero's Cape",
+            "energy": false,
+            "target": "Crustle"
+          },
+          "kind": "attach",
+          "line": 130,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Hero's Cape to Crustle in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "damage": 120,
+            "move": "Superb Scissors",
+            "pokemon": "Crustle",
+            "target": "Budew",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 131,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle used Superb Scissors on 33838f43a80b2a73\u2019s Budew for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 132,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew was Knocked Out!"
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 133,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 took a Prize card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "A card",
+            "owner": "1f43a3c4ecd682d8"
+          },
+          "kind": "to_hand",
+          "line": 134,
+          "subs": [],
+          "text": "A card was added to 1f43a3c4ecd682d8's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 135,
+          "subs": [],
+          "text": "33838f43a80b2a73's Drakloak is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 9
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 138,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Basic Psychic Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 139,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Jamming Tower",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 140,
+              "text": "33838f43a80b2a73 drew Jamming Tower."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 141,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Drakloak in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 142,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Drakloak to Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Unfair Stamp"
+          },
+          "kind": "play_card",
+          "line": 143,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Rosa's Encouragement, Jamming Tower"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 144,
+              "text": "33838f43a80b2a73 shuffled 2 cards into their deck."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "shuffle_into",
+              "line": 146,
+              "text": "1f43a3c4ecd682d8 shuffled 6 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Pok\u00e9 Pad, Basic Fire Energy, Dragapult ex, Ultra Ball, Crispin"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "draw",
+              "line": 147,
+              "text": "33838f43a80b2a73 drew 5 cards."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 149,
+              "text": "1f43a3c4ecd682d8 drew 2 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Unfair Stamp."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 150,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Pok\u00e9 Pad",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 151,
+              "text": "33838f43a80b2a73 drew Pok\u00e9 Pad."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 152,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 153,
+              "text": "33838f43a80b2a73 drew Drakloak."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 154,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 155,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 156,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Boss's Orders",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 157,
+              "text": "33838f43a80b2a73 drew Boss's Orders."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 158,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "pokemon": "Mega Kangaskhan ex",
+                "previous": "Crustle"
+              },
+              "kind": "switch",
+              "line": 159,
+              "text": "1f43a3c4ecd682d8's Mega Kangaskhan ex was switched with 1f43a3c4ecd682d8's Crustle to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Boss's Orders."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Mega Kangaskhan ex"
+          },
+          "kind": "promote",
+          "line": 160,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Mega Kangaskhan ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 161,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Night Stretcher",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 162,
+              "text": "33838f43a80b2a73 drew Night Stretcher."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 163,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Duskull"
+              },
+              "kind": "move_to_hand",
+              "line": 164,
+              "text": "33838f43a80b2a73 moved 33838f43a80b2a73's Duskull to their hand."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Night Stretcher."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 165,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Duskull to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Mega Kangaskhan ex",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 166,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Crustle"
+              },
+              "kind": "put_counters",
+              "line": 167,
+              "text": "33838f43a80b2a73 put 6 damage counters on 33838f43a80b2a73's Crustle."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 1f43a3c4ecd682d8\u2019s Mega Kangaskhan ex for 200 damage."
+        },
+        {
+          "fields": {
+            "card": "Mist Energy"
+          },
+          "kind": "activated",
+          "line": 168,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 169,
+              "text": "Effects of Phantom Dive did not affect Crustle."
+            }
+          ],
+          "text": "Mist Energy was activated."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 10
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 172,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Team Rocket's Petrel"
+          },
+          "kind": "play_card",
+          "line": 173,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "card": "Switch",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 174,
+              "text": "1f43a3c4ecd682d8 drew Switch."
+            },
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 175,
+              "text": "1f43a3c4ecd682d8 shuffled their deck."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Team Rocket's Petrel."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Switch"
+          },
+          "kind": "play_card",
+          "line": 176,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "pokemon": "Crustle",
+                "previous": "Mega Kangaskhan ex"
+              },
+              "kind": "switch",
+              "line": 177,
+              "text": "1f43a3c4ecd682d8's Crustle was switched with 1f43a3c4ecd682d8's Mega Kangaskhan ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Switch."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Crustle"
+          },
+          "kind": "promote",
+          "line": 178,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle is now in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Mega Kangaskhan ex"
+          },
+          "kind": "attach",
+          "line": 179,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Mist Energy to Mega Kangaskhan ex on the Bench."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "damage": 120,
+            "move": "Superb Scissors",
+            "pokemon": "Crustle",
+            "target": "Dragapult ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 180,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle used Superb Scissors on 33838f43a80b2a73\u2019s Dragapult ex for 120 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 11
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Meowth ex",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 183,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Meowth ex."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 184,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Boss's Orders",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 185,
+              "text": "33838f43a80b2a73 drew Boss's Orders."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 186,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Special Red Card",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 187,
+              "text": "33838f43a80b2a73 drew Special Red Card."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 188,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dragapult ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 189,
+              "text": "33838f43a80b2a73 drew Dragapult ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Duskull"
+          },
+          "kind": "attach",
+          "line": 190,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Duskull on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 191,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [],
+              "fields": {
+                "pokemon": "Mega Kangaskhan ex",
+                "previous": "Crustle"
+              },
+              "kind": "switch",
+              "line": 192,
+              "text": "1f43a3c4ecd682d8's Mega Kangaskhan ex was switched with 1f43a3c4ecd682d8's Crustle to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Boss's Orders."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Mega Kangaskhan ex"
+          },
+          "kind": "promote",
+          "line": 193,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Mega Kangaskhan ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Mega Kangaskhan ex",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 194,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Crustle"
+              },
+              "kind": "put_counters",
+              "line": 195,
+              "text": "33838f43a80b2a73 put 6 damage counters on 33838f43a80b2a73's Crustle."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 1f43a3c4ecd682d8\u2019s Mega Kangaskhan ex for 200 damage."
+        },
+        {
+          "fields": {
+            "card": "Mist Energy"
+          },
+          "kind": "activated",
+          "line": 196,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 197,
+              "text": "Effects of Phantom Dive did not affect Crustle."
+            }
+          ],
+          "text": "Mist Energy was activated."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Mega Kangaskhan ex"
+          },
+          "kind": "knockout",
+          "line": 198,
+          "subs": [
+            {
+              "actor": "1f43a3c4ecd682d8",
+              "details": [
+                "Basic Grass Energy, Mist Energy"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "1f43a3c4ecd682d8",
+                "pokemon": "Mega Kangaskhan ex"
+              },
+              "kind": "discard_from",
+              "line": 199,
+              "text": "2 cards were discarded from 1f43a3c4ecd682d8's Mega Kangaskhan ex."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8's Mega Kangaskhan ex was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 3
+          },
+          "kind": "prize",
+          "line": 201,
+          "subs": [],
+          "text": "33838f43a80b2a73 took 3 Prize cards."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 202,
+          "subs": [],
+          "text": "Fezandipiti ex was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 203,
+          "subs": [],
+          "text": "Basic Psychic Energy was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 204,
+          "subs": [],
+          "text": "Duskull was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Crustle"
+          },
+          "kind": "promote",
+          "line": 205,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 12
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 208,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 209,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Duskull",
+                "previous": "Dragapult ex"
+              },
+              "kind": "switch",
+              "line": 210,
+              "text": "33838f43a80b2a73's Duskull was switched with 33838f43a80b2a73's Dragapult ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "promote",
+          "line": 211,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull is now in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "damage": 120,
+            "move": "Superb Scissors",
+            "pokemon": "Crustle",
+            "target": "Duskull",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 212,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle used Superb Scissors on 33838f43a80b2a73\u2019s Duskull for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "knockout",
+          "line": 213,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Duskull"
+          },
+          "kind": "discard_from",
+          "line": 214,
+          "subs": [],
+          "text": "Basic Fire Energy was discarded from 33838f43a80b2a73's Duskull."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 215,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 took a Prize card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "A card",
+            "owner": "1f43a3c4ecd682d8"
+          },
+          "kind": "to_hand",
+          "line": 216,
+          "subs": [],
+          "text": "A card was added to 1f43a3c4ecd682d8's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dragapult ex"
+          },
+          "kind": "promote",
+          "line": 217,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dragapult ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 13
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 220,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 221,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusknoir",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 222,
+              "text": "33838f43a80b2a73 drew Dusknoir."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 223,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Buddy-Buddy Poffin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 224,
+              "text": "33838f43a80b2a73 drew Buddy-Buddy Poffin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 225,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Ultra Ball",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 226,
+              "text": "33838f43a80b2a73 drew Ultra Ball."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 227,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 228,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 229,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Duskull to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Duskull"
+          },
+          "kind": "attach",
+          "line": 230,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Duskull on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 0,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Crustle",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 231,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 200 damage",
+                "Total damage: 0 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 232,
+              "text": "Damage breakdown:"
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Crustle"
+              },
+              "kind": "put_counters",
+              "line": 236,
+              "text": "33838f43a80b2a73 put 6 damage counters on 33838f43a80b2a73's Crustle."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 1f43a3c4ecd682d8\u2019s Crustle for 0 damage."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "move": "Mysterious Rock Inn",
+            "pokemon": "Crustle"
+          },
+          "kind": "use",
+          "line": 237,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Crustle"
+              },
+              "kind": "prevented",
+              "line": 238,
+              "text": "Damage to Crustle was prevented."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8's Crustle used Mysterious Rock Inn."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "pokemon": "Crustle"
+          },
+          "kind": "knockout",
+          "line": 239,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle was Knocked Out!"
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Dwebble",
+            "owner": "1f43a3c4ecd682d8",
+            "pokemon": "Crustle"
+          },
+          "kind": "discard_from",
+          "line": 240,
+          "subs": [],
+          "text": "Dwebble was discarded from 1f43a3c4ecd682d8's Crustle."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 241,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 242,
+          "subs": [],
+          "text": "Boss's Orders was added to 33838f43a80b2a73's hand."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 14
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 245,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 246,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Duskull",
+                "previous": "Dragapult ex"
+              },
+              "kind": "switch",
+              "line": 247,
+              "text": "33838f43a80b2a73's Duskull was switched with 33838f43a80b2a73's Dragapult ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "promote",
+          "line": 248,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull is now in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Growing Grass Energy",
+            "energy": true,
+            "target": "Crustle"
+          },
+          "kind": "attach",
+          "line": 249,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Growing Grass Energy to Crustle in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "damage": 120,
+            "move": "Superb Scissors",
+            "pokemon": "Crustle",
+            "target": "Duskull",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 250,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8's Crustle used Superb Scissors on 33838f43a80b2a73\u2019s Duskull for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Duskull"
+          },
+          "kind": "knockout",
+          "line": 251,
+          "subs": [],
+          "text": "33838f43a80b2a73's Duskull was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Duskull"
+          },
+          "kind": "discard_from",
+          "line": 252,
+          "subs": [],
+          "text": "Basic Psychic Energy was discarded from 33838f43a80b2a73's Duskull."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 253,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 took a Prize card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "A card",
+            "owner": "1f43a3c4ecd682d8"
+          },
+          "kind": "to_hand",
+          "line": 254,
+          "subs": [],
+          "text": "A card was added to 1f43a3c4ecd682d8's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 255,
+          "subs": [],
+          "text": "33838f43a80b2a73's Drakloak is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 15
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 258,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Basic Fire Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Crispin"
+          },
+          "kind": "play_card",
+          "line": 259,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Darkness Energy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 260,
+              "text": "33838f43a80b2a73 drew Basic Darkness Energy."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "energy": true,
+                "target": "Drakloak"
+              },
+              "kind": "attach",
+              "line": 261,
+              "text": "33838f43a80b2a73 attached Basic Psychic Energy to Drakloak in the Active Spot."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 262,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Crispin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 263,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Drakloak in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 264,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Ultra Ball",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 265,
+              "text": "33838f43a80b2a73 drew Ultra Ball."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 266,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Pok\u00e9 Pad",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 267,
+              "text": "33838f43a80b2a73 drew Pok\u00e9 Pad."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 268,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Jamming Tower",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 269,
+              "text": "33838f43a80b2a73 drew Jamming Tower."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 270,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 271,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 70,
+            "move": "Dragon Headbutt",
+            "pokemon": "Drakloak",
+            "target": "Crustle",
+            "targetOwner": "1f43a3c4ecd682d8",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 272,
+          "subs": [],
+          "text": "33838f43a80b2a73's Drakloak used Dragon Headbutt on 1f43a3c4ecd682d8\u2019s Crustle for 70 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 16
+    },
+    {
+      "entries": [
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 275,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 drew a card."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Jumbo Ice Cream"
+          },
+          "kind": "play_card",
+          "line": 276,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 277,
+              "text": "1f43a3c4ecd682d8's Crustle healed 80 damage."
+            }
+          ],
+          "text": "1f43a3c4ecd682d8 played Jumbo Ice Cream."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Crustle"
+          },
+          "kind": "attach",
+          "line": 278,
+          "subs": [],
+          "text": "1f43a3c4ecd682d8 attached Basic Grass Energy to Crustle in the Active Spot."
+        },
+        {
+          "actor": "1f43a3c4ecd682d8",
+          "fields": {
+            "who": "you",
+            "winner": "1f43a3c4ecd682d8"
+          },
+          "kind": "concede",
+          "line": 279,
+          "subs": [],
+          "text": "You conceded. 1f43a3c4ecd682d8 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "1f43a3c4ecd682d8",
+      "title": "1f43a3c4ecd682d8's Turn",
+      "turnNumber": 17
+    }
+  ],
+  "statsByPlayer": {
+    "1f43a3c4ecd682d8": {
+      "attacks": [
+        "Superb Scissors"
+      ],
+      "cardsDrawn": 27,
+      "cardsPlayed": [
+        "Pok\u00e9 Pad",
+        "Brock's Scouting",
+        "Team Rocket's Petrel",
+        "Team Rocket's Factory",
+        "Team Rocket's Factory",
+        "Boss's Orders",
+        "Xerosic's Machinations",
+        "Team Rocket's Petrel",
+        "Switch",
+        "Boss's Orders",
+        "Boss's Orders",
+        "Jumbo Ice Cream"
+      ],
+      "damageDealt": 600,
+      "energyAttached": 7,
+      "evolutions": [
+        "Crustle",
+        "Crustle"
+      ],
+      "knockouts": 4,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Dwebble",
+        "Dwebble",
+        "Mega Kangaskhan ex"
+      ],
+      "prizesTaken": 4,
+      "turnsTaken": 9
+    },
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive",
+        "Dragon Headbutt"
+      ],
+      "cardsDrawn": 60,
+      "cardsPlayed": [
+        "Lillie's Determination",
+        "Buddy-Buddy Poffin",
+        "Pok\u00e9 Pad",
+        "Night Stretcher",
+        "Team Rocket's Watchtower",
+        "Lillie's Determination",
+        "Unfair Stamp",
+        "Pok\u00e9 Pad",
+        "Boss's Orders",
+        "Night Stretcher",
+        "Boss's Orders",
+        "Buddy-Buddy Poffin",
+        "Crispin",
+        "Pok\u00e9 Pad"
+      ],
+      "damageDealt": 500,
+      "energyAttached": 8,
+      "evolutions": [
+        "Drakloak",
+        "Drakloak",
+        "Drakloak",
+        "Dragapult ex",
+        "Drakloak"
+      ],
+      "knockouts": 2,
+      "mulligans": 1,
+      "pokemonPlayed": [
+        "Dreepy",
+        "Dreepy",
+        "Dreepy",
+        "Budew",
+        "Duskull",
+        "Duskull"
+      ],
+      "prizesTaken": 4,
+      "turnsTaken": 8
+    }
+  },
+  "summary": {
+    "endReason": "concede",
+    "exportVariant": "stock",
+    "gameId": "116a649e841b912b",
+    "hasFullDecklists": false,
+    "mySide": 0,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Basic Darkness Energy"
+        },
+        {
+          "count": 8,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 4,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 2,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Crispin"
+        },
+        {
+          "count": 1,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 4,
+          "name": "Drakloak"
+        },
+        {
+          "count": 3,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Dusclops"
+        },
+        {
+          "count": 1,
+          "name": "Dusknoir"
+        },
+        {
+          "count": 2,
+          "name": "Duskull"
+        },
+        {
+          "count": 1,
+          "name": "Jamming Tower"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Meowth ex"
+        },
+        {
+          "count": 1,
+          "name": "Munkidori"
+        },
+        {
+          "count": 2,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 3,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Rosa's Encouragement"
+        },
+        {
+          "count": 1,
+          "name": "Special Red Card"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Watchtower"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Unfair Stamp"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 2,
+          "name": "Basic Grass Energy"
+        },
+        {
+          "count": 3,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 1,
+          "name": "Brock's Scouting"
+        },
+        {
+          "count": 2,
+          "name": "Crustle"
+        },
+        {
+          "count": 3,
+          "name": "Dwebble"
+        },
+        {
+          "count": 2,
+          "name": "Growing Grass Energy"
+        },
+        {
+          "count": 1,
+          "name": "Hero's Cape"
+        },
+        {
+          "count": 1,
+          "name": "Jumbo Ice Cream"
+        },
+        {
+          "count": 1,
+          "name": "Mega Kangaskhan ex"
+        },
+        {
+          "count": 2,
+          "name": "Mist Energy"
+        },
+        {
+          "count": 1,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Prism Energy"
+        },
+        {
+          "count": 1,
+          "name": "Switch"
+        },
+        {
+          "count": 3,
+          "name": "Team Rocket's Factory"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Petrel"
+        },
+        {
+          "count": 1,
+          "name": "Xerosic's Machinations"
+        }
+      ]
+    },
+    "opponentArchetype": "Crustle / Mega Kangaskhan ex",
+    "opponentArchetypeId": "01M2EV7E0D3ZGAXGBKEF8W365N",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "1f43a3c4ecd682d8",
+    "parserVersion": 1,
+    "playedAt": "2026-09-14T02:16:35.406Z",
+    "players": [
+      "33838f43a80b2a73",
+      "1f43a3c4ecd682d8"
+    ],
+    "result": "loss",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive",
+          "Dragon Headbutt"
+        ],
+        "cardsDrawn": 60,
+        "cardsPlayed": [
+          "Lillie's Determination",
+          "Buddy-Buddy Poffin",
+          "Pok\u00e9 Pad",
+          "Night Stretcher",
+          "Team Rocket's Watchtower",
+          "Lillie's Determination",
+          "Unfair Stamp",
+          "Pok\u00e9 Pad",
+          "Boss's Orders",
+          "Night Stretcher",
+          "Boss's Orders",
+          "Buddy-Buddy Poffin",
+          "Crispin",
+          "Pok\u00e9 Pad"
+        ],
+        "damageDealt": 500,
+        "energyAttached": 8,
+        "evolutions": [
+          "Drakloak",
+          "Drakloak",
+          "Drakloak",
+          "Dragapult ex",
+          "Drakloak"
+        ],
+        "knockouts": 2,
+        "mulligans": 1,
+        "pokemonPlayed": [
+          "Dreepy",
+          "Dreepy",
+          "Dreepy",
+          "Budew",
+          "Duskull",
+          "Duskull"
+        ],
+        "prizesTaken": 4,
+        "turnsTaken": 8
+      },
+      "opponent": {
+        "attacks": [
+          "Superb Scissors"
+        ],
+        "cardsDrawn": 27,
+        "cardsPlayed": [
+          "Pok\u00e9 Pad",
+          "Brock's Scouting",
+          "Team Rocket's Petrel",
+          "Team Rocket's Factory",
+          "Team Rocket's Factory",
+          "Boss's Orders",
+          "Xerosic's Machinations",
+          "Team Rocket's Petrel",
+          "Switch",
+          "Boss's Orders",
+          "Boss's Orders",
+          "Jumbo Ice Cream"
+        ],
+        "damageDealt": 600,
+        "energyAttached": 7,
+        "evolutions": [
+          "Crustle",
+          "Crustle"
+        ],
+        "knockouts": 4,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Dwebble",
+          "Dwebble",
+          "Mega Kangaskhan ex"
+        ],
+        "prizesTaken": 4,
+        "turnsTaken": 9
+      }
+    },
+    "turnCount": 17,
+    "unparsedCount": 3,
+    "uploadSource": "unknown",
+    "uploadedAt": "2026-09-14T02:16:35.406Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": false,
+    "winner": "1f43a3c4ecd682d8",
+    "wonCoinToss": true
+  },
+  "unparsedLines": [
+    "- Effects of Phantom Dive did not affect Crustle.",
+    "- Effects of Phantom Dive did not affect Crustle.",
+    "- 1f43a3c4ecd682d8's Crustle healed 80 damage."
+  ]
+}

@@ -1,0 +1,3101 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "choice": "tails"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "7463bcbb05259d8e chose tails for the opening coin flip."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "f5767515808cf537 won the coin toss."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "first": true
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "f5767515808cf537 decided to go first."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [
+                "(me1_167) Buddy-Buddy Poffin, (me2-5_247) Dreepy, (sm5_166) Crushing Hammer, (sv6_165) Unfair Stamp, (swsh2_189) Boss's Orders, (bw9_122) Ultra Ball, (me3_123) Rosa's Encouragement"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 8,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 9,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "f5767515808cf537 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_247) Dreepy to the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Abra",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "f5767515808cf537 played (me1_54) Abra to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 14,
+          "subs": [],
+          "text": "f5767515808cf537 drew a card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Abra"
+          },
+          "kind": "attach",
+          "line": 15,
+          "subs": [],
+          "text": "f5767515808cf537 attached (me3_88) Telepathic Psychic Energy to (me1_54) Abra in the Active Spot."
+        },
+        {
+          "fields": {
+            "card": "Telepathic Psychic Energy"
+          },
+          "kind": "activated",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me5-5_152) Mew ex, (me1_54) Abra"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "f5767515808cf537 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 19,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "(me3_88) Telepathic Psychic Energy was activated."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 20,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Kadabra",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 21,
+              "text": "f5767515808cf537 drew (me1_55) Kadabra."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 22,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 23,
+          "subs": [],
+          "text": "f5767515808cf537 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "f5767515808cf537",
+      "title": "f5767515808cf537's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Drakloak",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 26,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me2-5_248) Drakloak."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer"
+          },
+          "kind": "play_card",
+          "line": 27,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "result": "tails"
+              },
+              "kind": "coin_flip",
+              "line": 28,
+              "text": "7463bcbb05259d8e flipped a coin and it landed on tails."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 29,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me2-5_247) Dreepy, (me2-5_221) Budew"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 30,
+              "text": "7463bcbb05259d8e drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 32,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_167) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 33,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(swsh2_189) Boss's Orders, (me2-5_248) Drakloak"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 34,
+              "text": "7463bcbb05259d8e discarded 2 cards."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Meowth ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 36,
+              "text": "7463bcbb05259d8e drew (me3_121) Meowth ex."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 37,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (bw9_122) Ultra Ball."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Meowth ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 38,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me3_121) Meowth ex to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Last-Ditch Catch",
+            "pokemon": "Meowth ex"
+          },
+          "kind": "use",
+          "line": 39,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Lillie's Determination",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 40,
+              "text": "7463bcbb05259d8e drew (me1_169) Lillie's Determination."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 41,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me3_121) Meowth ex used Last-Ditch Catch."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 42,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(sv6_165) Unfair Stamp, (me3_123) Rosa's Encouragement"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 43,
+              "text": "7463bcbb05259d8e shuffled 2 cards into their deck."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me2-5_226) Psyduck, (me2-5_288) Fezandipiti ex, (sm3_167) Basic Fire Energy, (swsh2_189) Boss's Orders, (sm5_166) Crushing Hammer, (me1_167) Buddy-Buddy Poffin, (sv6_216) Bloodmoon Ursaluna ex, (me1_169) Lillie's Determination"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 45,
+              "text": "7463bcbb05259d8e drew 8 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_169) Lillie's Determination."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer"
+          },
+          "kind": "play_card",
+          "line": 47,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "result": "tails"
+              },
+              "kind": "coin_flip",
+              "line": 48,
+              "text": "7463bcbb05259d8e flipped a coin and it landed on tails."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 49,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Dreepy and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 50,
+              "text": "7463bcbb05259d8e drew (me2-5_247) Dreepy and played it to the Bench."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 51,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_167) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 52,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (sm3_167) Basic Fire Energy to (me2-5_247) Dreepy in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Dreepy"
+          },
+          "kind": "retreat",
+          "line": 53,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Dreepy"
+              },
+              "kind": "discard_from",
+              "line": 54,
+              "text": "(sm3_167) Basic Fire Energy was discarded from 7463bcbb05259d8e's (me2-5_247) Dreepy."
+            }
+          ],
+          "text": "7463bcbb05259d8e retreated (me2-5_247) Dreepy to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 55,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew is now in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Abra",
+            "targetOwner": "f5767515808cf537",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 56,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew used Itchy Pollen on f5767515808cf537\u2019s (me1_54) Abra for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 59,
+          "subs": [],
+          "text": "f5767515808cf537 drew a card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 60,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_54) Abra to (me1_55) Kadabra in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 61,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 62,
+              "text": "f5767515808cf537 drew 2 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (me1_55) Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 63,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_54) Abra to (me1_55) Kadabra on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 64,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 65,
+              "text": "f5767515808cf537 drew 2 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (me1_55) Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Dawn"
+          },
+          "kind": "play_card",
+          "line": 66,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(sv8-5_79_mph) Dunsparce, (me5_67_ph) Trumbeak, (me5_94) Toucannon"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 67,
+              "text": "f5767515808cf537 drew 3 cards."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 69,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (me2_129) Dawn."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 70,
+          "subs": [],
+          "text": "f5767515808cf537 played (sv8-5_79_mph) Dunsparce to the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Lucky Helmet",
+            "energy": false,
+            "target": "Kadabra"
+          },
+          "kind": "attach",
+          "line": 71,
+          "subs": [],
+          "text": "f5767515808cf537 attached (xy7_77_ph) Lucky Helmet to (me1_55) Kadabra in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "damage": 30,
+            "move": "Super Psy Bolt",
+            "pokemon": "Kadabra",
+            "target": "Budew",
+            "targetOwner": "7463bcbb05259d8e",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 72,
+          "subs": [],
+          "text": "f5767515808cf537's (me1_55) Kadabra used Super Psy Bolt on 7463bcbb05259d8e\u2019s (me2-5_221) Budew for 30 damage."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 73,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew was Knocked Out!"
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 74,
+          "subs": [],
+          "text": "f5767515808cf537 took a Prize card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "A card",
+            "owner": "f5767515808cf537"
+          },
+          "kind": "to_hand",
+          "line": 75,
+          "subs": [],
+          "text": "A card was added to f5767515808cf537's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Dreepy"
+          },
+          "kind": "promote",
+          "line": 76,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_247) Dreepy is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "f5767515808cf537",
+      "title": "f5767515808cf537's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Drakloak",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 79,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me2-5_248) Drakloak."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 80,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_247) Dreepy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 81,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me2-5_226) Psyduck, (me2-5_288) Fezandipiti ex, (swsh2_189) Boss's Orders, (sv6_216) Bloodmoon Ursaluna ex"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 82,
+              "text": "7463bcbb05259d8e shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me3_123) Rosa's Encouragement, (me4_113) Special Red Card, (me3_113) Pok\u00e9 Pad, (me2-5_248) Drakloak, (me2-5_247) Dreepy, (me1_173) Night Stretcher, (swsh6_232) Basic Psychic Energy, (swsh6_232) Basic Psychic Energy"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 84,
+              "text": "7463bcbb05259d8e drew 8 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_169) Lillie's Determination."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 86,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_247) Dreepy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 87,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Unfair Stamp",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 88,
+              "text": "7463bcbb05259d8e drew (sv6_165) Unfair Stamp."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 89,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Ruffian",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 90,
+              "text": "7463bcbb05259d8e drew (sv9_181) Ruffian."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 91,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 92,
+              "text": "7463bcbb05259d8e drew (me2-5_248) Drakloak."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 93,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 94,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_247) Dreepy to (me2-5_248) Drakloak in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 95,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Pok\u00e9 Pad",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 96,
+              "text": "7463bcbb05259d8e drew (me3_113) Pok\u00e9 Pad."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 97,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (swsh6_232) Basic Psychic Energy to (me2-5_248) Drakloak in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 98,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Psyduck",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 99,
+              "text": "7463bcbb05259d8e drew (me2-5_226) Psyduck."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 100,
+              "text": "7463bcbb05259d8e shuffled their deck."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 101,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Budew"
+              },
+              "kind": "move_to_hand",
+              "line": 102,
+              "text": "7463bcbb05259d8e moved 7463bcbb05259d8e's (me2-5_221) Budew to their hand."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me1_173) Night Stretcher."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Budew",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 103,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_221) Budew to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "retreat",
+          "line": 104,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Drakloak"
+              },
+              "kind": "discard_from",
+              "line": 105,
+              "text": "(swsh6_232) Basic Psychic Energy was discarded from 7463bcbb05259d8e's (me2-5_248) Drakloak."
+            }
+          ],
+          "text": "7463bcbb05259d8e retreated (me2-5_248) Drakloak to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 106,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew is now in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Kadabra",
+            "targetOwner": "f5767515808cf537",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 107,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew used Itchy Pollen on f5767515808cf537\u2019s (me1_55) Kadabra for 10 damage."
+        },
+        {
+          "fields": {
+            "card": "Lucky Helmet"
+          },
+          "kind": "activated",
+          "line": 108,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 109,
+              "text": "f5767515808cf537 drew 2 cards."
+            }
+          ],
+          "text": "(xy7_77_ph) Lucky Helmet was activated."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 112,
+          "subs": [],
+          "text": "f5767515808cf537 drew a card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 113,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (sv8-5_79_mph) Dunsparce to (sv8-5_80_mph) Dudunsparce on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Mew ex"
+          },
+          "kind": "attach",
+          "line": 114,
+          "subs": [],
+          "text": "f5767515808cf537 attached (me3_88) Telepathic Psychic Energy to (me5-5_152) Mew ex on the Bench."
+        },
+        {
+          "fields": {
+            "card": "Telepathic Psychic Energy"
+          },
+          "kind": "activated",
+          "line": 115,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me1_54) Abra, (me1_54_ph) Abra"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 116,
+              "text": "f5767515808cf537 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 118,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "(me3_88) Telepathic Psychic Energy was activated."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 119,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_55) Kadabra to (mebsp_9) Alakazam in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 120,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 121,
+              "text": "f5767515808cf537 drew 3 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 122,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me5_94) Toucannon, (sv8_191) Enriching Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 123,
+              "text": "f5767515808cf537 drew 2 cards."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 125,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (rsv10-5_171) Hilda."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Powerful Hand",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 126,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 28,
+                "owner": "f5767515808cf537",
+                "pokemon": "Budew"
+              },
+              "kind": "put_counters",
+              "line": 127,
+              "text": "f5767515808cf537 put 28 damage counters on f5767515808cf537's (me2-5_221) Budew."
+            }
+          ],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam used Powerful Hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 128,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_221) Budew was Knocked Out!"
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 129,
+          "subs": [],
+          "text": "f5767515808cf537 took a Prize card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "A card",
+            "owner": "f5767515808cf537"
+          },
+          "kind": "to_hand",
+          "line": 130,
+          "subs": [],
+          "text": "A card was added to f5767515808cf537's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 131,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "f5767515808cf537",
+      "title": "f5767515808cf537's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Rust Syndicate Grunt",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 134,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (me5_112) Rust Syndicate Grunt."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 135,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Dragapult ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 136,
+              "text": "7463bcbb05259d8e drew (sv8-5_165) Dragapult ex."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 137,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_248) Drakloak to (sv8-5_165) Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Rosa's Encouragement"
+          },
+          "kind": "play_card",
+          "line": 138,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "energy": true,
+                "target": "Dragapult ex"
+              },
+              "kind": "attach",
+              "line": 139,
+              "text": "7463bcbb05259d8e attached (sm3_167) Basic Fire Energy to (sv8-5_165) Dragapult ex in the Active Spot."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "energy": true,
+                "target": "Dragapult ex"
+              },
+              "kind": "attach",
+              "line": 140,
+              "text": "7463bcbb05259d8e attached (swsh6_232) Basic Psychic Energy to (sv8-5_165) Dragapult ex in the Active Spot."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (me3_123) Rosa's Encouragement."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 141,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (swsh6_232) Basic Psychic Energy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Unfair Stamp"
+          },
+          "kind": "play_card",
+          "line": 142,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me4_113) Special Red Card, (me2-5_247) Dreepy, (sv9_181) Ruffian, (me2-5_226) Psyduck, (me5_112) Rust Syndicate Grunt"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "shuffle_into",
+              "line": 143,
+              "text": "7463bcbb05259d8e shuffled 5 cards into their deck."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 15
+              },
+              "kind": "shuffle_into",
+              "line": 145,
+              "text": "f5767515808cf537 shuffled 15 cards into their deck."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(me2-5_226) Psyduck, (me2-5_261) Jamming Tower, (sv6-5_89) Xerosic's Machinations, (me2-5_288) Fezandipiti ex, (me1_169) Lillie's Determination"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "draw",
+              "line": 146,
+              "text": "7463bcbb05259d8e drew 5 cards."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 148,
+              "text": "f5767515808cf537 drew 2 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sv6_165) Unfair Stamp."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 149,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Bloodmoon Ursaluna ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 150,
+              "text": "7463bcbb05259d8e drew (sv6_216) Bloodmoon Ursaluna ex."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 151,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 152,
+              "text": "7463bcbb05259d8e drew (sm3_167) Basic Fire Energy."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 153,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_288) Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 154,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [
+                "(sm5_166) Crushing Hammer, (me1_173) Night Stretcher, (me5_112) Rust Syndicate Grunt"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 155,
+              "text": "7463bcbb05259d8e drew 3 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_288) Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer"
+          },
+          "kind": "play_card",
+          "line": 157,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "result": "heads"
+              },
+              "kind": "coin_flip",
+              "line": 158,
+              "text": "7463bcbb05259d8e flipped a coin and it landed on heads."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Telepathic Psychic Energy",
+                "owner": "f5767515808cf537",
+                "pokemon": "Mew ex"
+              },
+              "kind": "discard_from",
+              "line": 159,
+              "text": "(me3_88) Telepathic Psychic Energy was discarded from f5767515808cf537's (me5-5_152) Mew ex."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Jamming Tower"
+          },
+          "kind": "play_stadium",
+          "line": 160,
+          "subs": [],
+          "text": "7463bcbb05259d8e played (me2-5_261) Jamming Tower to the Stadium spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Alakazam",
+            "targetOwner": "f5767515808cf537",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 161,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 5,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Abra"
+              },
+              "kind": "put_counters",
+              "line": 162,
+              "text": "7463bcbb05259d8e put 5 damage counters on 7463bcbb05259d8e's (me1_54) Abra."
+            },
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 1,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Abra"
+              },
+              "kind": "put_counters",
+              "line": 163,
+              "text": "7463bcbb05259d8e put a damage counter on 7463bcbb05259d8e's (me1_54_ph) Abra."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex used Phantom Dive on f5767515808cf537\u2019s (mebsp_9) Alakazam for 200 damage."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "knockout",
+          "line": 164,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me3_88) Telepathic Psychic Energy, (me1_55) Kadabra, (me1_54) Abra, (xy7_77_ph) Lucky Helmet"
+              ],
+              "fields": {
+                "n": 4,
+                "owner": "f5767515808cf537",
+                "pokemon": "Alakazam"
+              },
+              "kind": "discard_from",
+              "line": 165,
+              "text": "4 cards were discarded from f5767515808cf537's (mebsp_9) Alakazam."
+            }
+          ],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam was Knocked Out!"
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Abra"
+          },
+          "kind": "knockout",
+          "line": 167,
+          "subs": [],
+          "text": "f5767515808cf537's (me1_54) Abra was Knocked Out!"
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 2
+          },
+          "kind": "prize",
+          "line": 168,
+          "subs": [],
+          "text": "7463bcbb05259d8e took 2 Prize cards."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Budew",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 169,
+          "subs": [],
+          "text": "(me2-5_221) Budew was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Maractus",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 170,
+          "subs": [],
+          "text": "(sv9_160) Maractus was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Dudunsparce"
+          },
+          "kind": "promote",
+          "line": 171,
+          "subs": [],
+          "text": "f5767515808cf537's (sv8-5_80_mph) Dudunsparce is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 174,
+          "subs": [],
+          "text": "f5767515808cf537 drew a card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 175,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me5_66_ph) Pikipek, (sv8-5_79_mph) Dunsparce"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 176,
+              "text": "f5767515808cf537 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 178,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (sv6_223) Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 179,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Alakazam",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 180,
+              "text": "f5767515808cf537 drew (mebsp_9) Alakazam."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 181,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (me3_113) Pok\u00e9 Pad."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 182,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_55) Kadabra to (mebsp_9) Alakazam on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 183,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 184,
+              "text": "f5767515808cf537 drew 3 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 185,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 186,
+              "text": "f5767515808cf537 drew 3 cards."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(sv8-5_80_mph) Dudunsparce, (sv8-5_79_mph) Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 187,
+              "text": "f5767515808cf537 shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (sv8-5_80_mph) Dudunsparce."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "promote",
+          "line": 189,
+          "subs": [],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam is now in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Enriching Energy",
+            "energy": true,
+            "target": "Pikipek"
+          },
+          "kind": "attach",
+          "line": 190,
+          "subs": [],
+          "text": "f5767515808cf537 attached (sv8_191) Enriching Energy to (me5_66_ph) Pikipek on the Bench."
+        },
+        {
+          "fields": {
+            "card": "Enriching Energy"
+          },
+          "kind": "activated",
+          "line": 191,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 4
+              },
+              "kind": "draw",
+              "line": 192,
+              "text": "f5767515808cf537 drew 4 cards."
+            }
+          ],
+          "text": "(sv8_191) Enriching Energy was activated."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 193,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_54_ph) Abra to (me1_55_ph) Kadabra on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 194,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 195,
+              "text": "f5767515808cf537 drew 2 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (me1_55_ph) Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "play_stadium",
+          "line": 196,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Jamming Tower"
+              },
+              "kind": "discard_named",
+              "line": 197,
+              "text": "7463bcbb05259d8e discarded (me2-5_261) Jamming Tower."
+            }
+          ],
+          "text": "f5767515808cf537 played (me2_116) Battle Cage to the Stadium spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 198,
+          "subs": [],
+          "text": "f5767515808cf537 played (me2-5_288) Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 199,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 200,
+              "text": "f5767515808cf537 drew 3 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (me2-5_288) Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Alakazam"
+          },
+          "kind": "attach",
+          "line": 201,
+          "subs": [],
+          "text": "f5767515808cf537 attached (swsh1_213) Air Balloon to (mebsp_9) Alakazam in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "retreat",
+          "line": 202,
+          "subs": [],
+          "text": "f5767515808cf537 retreated (mebsp_9) Alakazam to the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "promote",
+          "line": 203,
+          "subs": [],
+          "text": "f5767515808cf537's (sv8-5_79_mph) Dunsparce is now in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Handheld Fan",
+            "energy": false,
+            "target": "Dunsparce"
+          },
+          "kind": "attach",
+          "line": 204,
+          "subs": [],
+          "text": "f5767515808cf537 attached (sv6_150_ph) Handheld Fan to (sv8-5_79_mph) Dunsparce in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 205,
+          "subs": [],
+          "text": "f5767515808cf537 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "f5767515808cf537",
+      "title": "f5767515808cf537's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 208,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Crushing Hammer"
+          },
+          "kind": "play_card",
+          "line": 209,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "result": "heads"
+              },
+              "kind": "coin_flip",
+              "line": 210,
+              "text": "7463bcbb05259d8e flipped a coin and it landed on heads."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Enriching Energy",
+                "owner": "f5767515808cf537",
+                "pokemon": "Pikipek"
+              },
+              "kind": "discard_from",
+              "line": 211,
+              "text": "(sv8_191) Enriching Energy was discarded from f5767515808cf537's (me5_66_ph) Pikipek."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sm5_166) Crushing Hammer."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 212,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Boss's Orders",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 213,
+              "text": "7463bcbb05259d8e drew (swsh2_189) Boss's Orders."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 214,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Night Stretcher",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 215,
+              "text": "7463bcbb05259d8e drew (me1_173) Night Stretcher."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 216,
+          "subs": [],
+          "text": "7463bcbb05259d8e attached (sm3_167) Basic Fire Energy to (me2-5_248) Drakloak on the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Xerosic's Machinations"
+          },
+          "kind": "play_card",
+          "line": 217,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(sv6_223) Buddy-Buddy Poffin, (sv6_223) Buddy-Buddy Poffin, (sm2_165) Rare Candy, (sm2_165) Rare Candy, (sm2_165) Rare Candy, (me3_115) Sacred Ash, (swsh11a_24) Boss's Orders"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "discard",
+              "line": 218,
+              "text": "f5767515808cf537 discarded 7 cards."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sv6-5_89) Xerosic's Machinations."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Dunsparce",
+            "targetOwner": "f5767515808cf537",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 220,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex used Phantom Dive on f5767515808cf537\u2019s (sv8-5_79_mph) Dunsparce for 200 damage."
+        },
+        {
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "activated",
+          "line": 221,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Mew ex"
+              },
+              "kind": "prevented",
+              "line": 222,
+              "text": "Damage to (me5-5_152) Mew ex was prevented."
+            }
+          ],
+          "text": "(me2_116) Battle Cage was activated."
+        },
+        {
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "activated",
+          "line": 223,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Pikipek"
+              },
+              "kind": "prevented",
+              "line": 224,
+              "text": "Damage to (me5_66_ph) Pikipek was prevented."
+            }
+          ],
+          "text": "(me2_116) Battle Cage was activated."
+        },
+        {
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "activated",
+          "line": 225,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Kadabra"
+              },
+              "kind": "prevented",
+              "line": 226,
+              "text": "Damage to (me1_55_ph) Kadabra was prevented."
+            }
+          ],
+          "text": "(me2_116) Battle Cage was activated."
+        },
+        {
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "activated",
+          "line": 227,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Fezandipiti ex"
+              },
+              "kind": "prevented",
+              "line": 228,
+              "text": "Damage to (me2-5_288) Fezandipiti ex was prevented."
+            }
+          ],
+          "text": "(me2_116) Battle Cage was activated."
+        },
+        {
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "activated",
+          "line": 229,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "pokemon": "Alakazam"
+              },
+              "kind": "prevented",
+              "line": 230,
+              "text": "Damage to (mebsp_9) Alakazam was prevented."
+            }
+          ],
+          "text": "(me2_116) Battle Cage was activated."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "knockout",
+          "line": 231,
+          "subs": [],
+          "text": "f5767515808cf537's (sv8-5_79_mph) Dunsparce was Knocked Out!"
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Handheld Fan",
+            "owner": "f5767515808cf537",
+            "pokemon": "Dunsparce"
+          },
+          "kind": "discard_from",
+          "line": 232,
+          "subs": [],
+          "text": "(sv6_150_ph) Handheld Fan was discarded from f5767515808cf537's (sv8-5_79_mph) Dunsparce."
+        },
+        {
+          "fields": {
+            "card": "Handheld Fan"
+          },
+          "kind": "activated",
+          "line": 233,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "energy": true,
+                "target": "Meowth ex"
+              },
+              "kind": "attach",
+              "line": 234,
+              "text": "7463bcbb05259d8e attached (swsh6_232) Basic Psychic Energy to (me3_121) Meowth ex on the Bench."
+            }
+          ],
+          "text": "(sv6_150_ph) Handheld Fan was activated."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 235,
+          "subs": [],
+          "text": "7463bcbb05259d8e took a Prize card."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Latias ex",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 236,
+          "subs": [],
+          "text": "(sv8_239) Latias ex was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Mew ex"
+          },
+          "kind": "promote",
+          "line": 237,
+          "subs": [],
+          "text": "f5767515808cf537's (me5-5_152) Mew ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 240,
+          "subs": [],
+          "text": "f5767515808cf537 drew a card."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 241,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [
+                "(me5_67_ph) Trumbeak, (me3_88) Telepathic Psychic Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 242,
+              "text": "f5767515808cf537 drew 2 cards."
+            },
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 244,
+              "text": "f5767515808cf537 shuffled their deck."
+            }
+          ],
+          "text": "f5767515808cf537 played (rsv10-5_171) Hilda."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 245,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me1_55_ph) Kadabra to (mebsp_9) Alakazam on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 246,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 247,
+              "text": "f5767515808cf537 drew 3 cards."
+            }
+          ],
+          "text": "f5767515808cf537's (mebsp_9) Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 248,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Abra"
+              },
+              "kind": "move_to_hand",
+              "line": 249,
+              "text": "f5767515808cf537 moved f5767515808cf537's (me1_54) Abra to their hand."
+            }
+          ],
+          "text": "f5767515808cf537 played (sv8_251) Night Stretcher."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Abra",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 250,
+          "subs": [],
+          "text": "f5767515808cf537 played (me1_54) Abra to the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Mew ex"
+          },
+          "kind": "attach",
+          "line": 251,
+          "subs": [],
+          "text": "f5767515808cf537 attached (me3_88) Telepathic Psychic Energy to (me5-5_152) Mew ex in the Active Spot."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "from": "Pikipek",
+            "to": "Trumbeak"
+          },
+          "kind": "evolve",
+          "line": 252,
+          "subs": [],
+          "text": "f5767515808cf537 evolved (me5_66_ph) Pikipek to (me5_67_ph) Trumbeak on the Bench."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "damage": 10,
+            "move": "Teleportation Attack",
+            "pokemon": "Mew ex",
+            "target": "Dragapult ex",
+            "targetOwner": "7463bcbb05259d8e",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 253,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "pokemon": "Abra",
+                "previous": "Mew ex"
+              },
+              "kind": "switch",
+              "line": 254,
+              "text": "f5767515808cf537's (me1_54) Abra was switched with f5767515808cf537's (me5-5_152) Mew ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "f5767515808cf537's (me5-5_152) Mew ex used Teleportation Attack on 7463bcbb05259d8e\u2019s (sv8-5_165) Dragapult ex for 10 damage."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Abra"
+          },
+          "kind": "promote",
+          "line": 255,
+          "subs": [],
+          "text": "f5767515808cf537's (me1_54) Abra is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "f5767515808cf537",
+      "title": "f5767515808cf537's Turn",
+      "turnNumber": 9
+    },
+    {
+      "entries": [
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Area Zero Underdepths",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 258,
+          "subs": [],
+          "text": "7463bcbb05259d8e drew (sv7_174) Area Zero Underdepths."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Area Zero Underdepths"
+          },
+          "kind": "play_stadium",
+          "line": 259,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "card": "Battle Cage"
+              },
+              "kind": "discard_named",
+              "line": 260,
+              "text": "f5767515808cf537 discarded (me2_116) Battle Cage."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (sv7_174) Area Zero Underdepths to the Stadium spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 261,
+          "subs": [
+            {
+              "actor": "f5767515808cf537",
+              "details": [],
+              "fields": {
+                "pokemon": "Mew ex",
+                "previous": "Abra"
+              },
+              "kind": "switch",
+              "line": 262,
+              "text": "f5767515808cf537's (me5-5_152) Mew ex was switched with f5767515808cf537's (me1_54) Abra to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "7463bcbb05259d8e played (swsh2_189) Boss's Orders."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Mew ex"
+          },
+          "kind": "promote",
+          "line": 263,
+          "subs": [],
+          "text": "f5767515808cf537's (me5-5_152) Mew ex is now in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 264,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Dragapult ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 265,
+              "text": "7463bcbb05259d8e drew (sv8-5_165) Dragapult ex."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 266,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Ultra Ball",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 267,
+              "text": "7463bcbb05259d8e drew (bw9_122) Ultra Ball."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak used Recon Directive."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Dragapult ex"
+          },
+          "kind": "retreat",
+          "line": 268,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Dragapult ex"
+              },
+              "kind": "discard_from",
+              "line": 269,
+              "text": "(sm3_167) Basic Fire Energy was discarded from 7463bcbb05259d8e's (sv8-5_165) Dragapult ex."
+            }
+          ],
+          "text": "7463bcbb05259d8e retreated (sv8-5_165) Dragapult ex to the Bench."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 270,
+          "subs": [],
+          "text": "7463bcbb05259d8e's (me2-5_248) Drakloak is now in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 271,
+          "subs": [],
+          "text": "7463bcbb05259d8e evolved (me2-5_248) Drakloak to (sv8-5_165) Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Mew ex",
+            "targetOwner": "f5767515808cf537",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 272,
+          "subs": [
+            {
+              "actor": "7463bcbb05259d8e",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "7463bcbb05259d8e",
+                "pokemon": "Abra"
+              },
+              "kind": "put_counters",
+              "line": 273,
+              "text": "7463bcbb05259d8e put 6 damage counters on 7463bcbb05259d8e's (me1_54) Abra."
+            }
+          ],
+          "text": "7463bcbb05259d8e's (sv8-5_165) Dragapult ex used Phantom Dive on f5767515808cf537\u2019s (me5-5_152) Mew ex for 200 damage."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Mew ex"
+          },
+          "kind": "knockout",
+          "line": 274,
+          "subs": [],
+          "text": "f5767515808cf537's (me5-5_152) Mew ex was Knocked Out!"
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "owner": "f5767515808cf537",
+            "pokemon": "Mew ex"
+          },
+          "kind": "discard_from",
+          "line": 275,
+          "subs": [],
+          "text": "(me3_88) Telepathic Psychic Energy was discarded from f5767515808cf537's (me5-5_152) Mew ex."
+        },
+        {
+          "actor": "f5767515808cf537",
+          "fields": {
+            "pokemon": "Abra"
+          },
+          "kind": "knockout",
+          "line": 276,
+          "subs": [],
+          "text": "f5767515808cf537's (me1_54) Abra was Knocked Out!"
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "n": 3
+          },
+          "kind": "prize",
+          "line": 277,
+          "subs": [],
+          "text": "7463bcbb05259d8e took 3 Prize cards."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Pok\u00e9 Pad",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 278,
+          "subs": [],
+          "text": "(me3_113) Pok\u00e9 Pad was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Buddy-Buddy Poffin",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 279,
+          "subs": [],
+          "text": "(me1_167) Buddy-Buddy Poffin was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "card": "Dedenne",
+            "owner": "7463bcbb05259d8e"
+          },
+          "kind": "to_hand",
+          "line": 280,
+          "subs": [],
+          "text": "(sv8_87_ph) Dedenne was added to 7463bcbb05259d8e's hand."
+        },
+        {
+          "actor": "7463bcbb05259d8e",
+          "fields": {
+            "reason": "prizes",
+            "winner": "7463bcbb05259d8e"
+          },
+          "kind": "win",
+          "line": 281,
+          "subs": [],
+          "text": "All Prize cards taken. 7463bcbb05259d8e wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "7463bcbb05259d8e",
+      "title": "7463bcbb05259d8e's Turn",
+      "turnNumber": 10
+    }
+  ],
+  "statsByPlayer": {
+    "7463bcbb05259d8e": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive"
+      ],
+      "cardsDrawn": 53,
+      "cardsPlayed": [
+        "Crushing Hammer",
+        "Buddy-Buddy Poffin",
+        "Ultra Ball",
+        "Lillie's Determination",
+        "Crushing Hammer",
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Pok\u00e9 Pad",
+        "Pok\u00e9 Pad",
+        "Night Stretcher",
+        "Rosa's Encouragement",
+        "Unfair Stamp",
+        "Crushing Hammer",
+        "Jamming Tower",
+        "Crushing Hammer",
+        "Xerosic's Machinations",
+        "Area Zero Underdepths",
+        "Boss's Orders"
+      ],
+      "damageDealt": 620,
+      "energyAttached": 7,
+      "evolutions": [
+        "Drakloak",
+        "Drakloak",
+        "Drakloak",
+        "Dragapult ex",
+        "Dragapult ex"
+      ],
+      "knockouts": 5,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Dreepy",
+        "Meowth ex",
+        "Budew",
+        "Fezandipiti ex"
+      ],
+      "prizesTaken": 6,
+      "turnsTaken": 5
+    },
+    "f5767515808cf537": {
+      "attacks": [
+        "Super Psy Bolt",
+        "Teleportation Attack"
+      ],
+      "cardsDrawn": 56,
+      "cardsPlayed": [
+        "Pok\u00e9 Pad",
+        "Dawn",
+        "Hilda",
+        "Buddy-Buddy Poffin",
+        "Pok\u00e9 Pad",
+        "Dudunsparce",
+        "Battle Cage",
+        "Hilda",
+        "Night Stretcher"
+      ],
+      "damageDealt": 40,
+      "energyAttached": 4,
+      "evolutions": [
+        "Kadabra",
+        "Kadabra",
+        "Dudunsparce",
+        "Alakazam",
+        "Alakazam",
+        "Kadabra",
+        "Alakazam",
+        "Trumbeak"
+      ],
+      "knockouts": 2,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Abra",
+        "Dunsparce",
+        "Fezandipiti ex",
+        "Abra"
+      ],
+      "prizesTaken": 2,
+      "turnsTaken": 5
+    }
+  },
+  "summary": {
+    "endReason": "prizes",
+    "exportVariant": "stock",
+    "gameId": "17d283393d41bc89",
+    "hasFullDecklists": false,
+    "myArchetype": "Dragapult control",
+    "myArchetypeId": "01M32DR4PY92KDYB1A06D9TZFX",
+    "mySide": 0,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Area Zero Underdepths"
+        },
+        {
+          "count": 5,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 5,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Bloodmoon Ursaluna ex"
+        },
+        {
+          "count": 1,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 4,
+          "name": "Crushing Hammer"
+        },
+        {
+          "count": 2,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 3,
+          "name": "Drakloak"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Fezandipiti ex"
+        },
+        {
+          "count": 2,
+          "name": "Jamming Tower"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Meowth ex"
+        },
+        {
+          "count": 1,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 2,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Psyduck"
+        },
+        {
+          "count": 1,
+          "name": "Rosa's Encouragement"
+        },
+        {
+          "count": 1,
+          "name": "Ruffian"
+        },
+        {
+          "count": 1,
+          "name": "Rust Syndicate Grunt"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Unfair Stamp"
+        },
+        {
+          "count": 1,
+          "name": "Xerosic's Machinations"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 2,
+          "name": "Abra"
+        },
+        {
+          "count": 1,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 3,
+          "name": "Alakazam"
+        },
+        {
+          "count": 2,
+          "name": "Battle Cage"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Dawn"
+        },
+        {
+          "count": 2,
+          "name": "Dudunsparce"
+        },
+        {
+          "count": 1,
+          "name": "Dunsparce"
+        },
+        {
+          "count": 2,
+          "name": "Enriching Energy"
+        },
+        {
+          "count": 1,
+          "name": "Fezandipiti ex"
+        },
+        {
+          "count": 2,
+          "name": "Handheld Fan"
+        },
+        {
+          "count": 2,
+          "name": "Hilda"
+        },
+        {
+          "count": 3,
+          "name": "Kadabra"
+        },
+        {
+          "count": 1,
+          "name": "Lucky Helmet"
+        },
+        {
+          "count": 1,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 2,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 4,
+          "name": "Telepathic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Trumbeak"
+        }
+      ]
+    },
+    "opponentArchetype": "Alakazam / Toucannon",
+    "opponentArchetypeId": "01M331XQ7CFP525SASSK25TN1D",
+    "opponentArchetypeSource": "user",
+    "opponentName": "f5767515808cf537",
+    "parserVersion": 1,
+    "playedAt": "2026-09-21T22:32:19.164Z",
+    "players": [
+      "7463bcbb05259d8e",
+      "f5767515808cf537"
+    ],
+    "result": "win",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive"
+        ],
+        "cardsDrawn": 53,
+        "cardsPlayed": [
+          "Crushing Hammer",
+          "Buddy-Buddy Poffin",
+          "Ultra Ball",
+          "Lillie's Determination",
+          "Crushing Hammer",
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Pok\u00e9 Pad",
+          "Pok\u00e9 Pad",
+          "Night Stretcher",
+          "Rosa's Encouragement",
+          "Unfair Stamp",
+          "Crushing Hammer",
+          "Jamming Tower",
+          "Crushing Hammer",
+          "Xerosic's Machinations",
+          "Area Zero Underdepths",
+          "Boss's Orders"
+        ],
+        "damageDealt": 620,
+        "energyAttached": 7,
+        "evolutions": [
+          "Drakloak",
+          "Drakloak",
+          "Drakloak",
+          "Dragapult ex",
+          "Dragapult ex"
+        ],
+        "knockouts": 5,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Dreepy",
+          "Meowth ex",
+          "Budew",
+          "Fezandipiti ex"
+        ],
+        "prizesTaken": 6,
+        "turnsTaken": 5
+      },
+      "opponent": {
+        "attacks": [
+          "Super Psy Bolt",
+          "Teleportation Attack"
+        ],
+        "cardsDrawn": 56,
+        "cardsPlayed": [
+          "Pok\u00e9 Pad",
+          "Dawn",
+          "Hilda",
+          "Buddy-Buddy Poffin",
+          "Pok\u00e9 Pad",
+          "Dudunsparce",
+          "Battle Cage",
+          "Hilda",
+          "Night Stretcher"
+        ],
+        "damageDealt": 40,
+        "energyAttached": 4,
+        "evolutions": [
+          "Kadabra",
+          "Kadabra",
+          "Dudunsparce",
+          "Alakazam",
+          "Alakazam",
+          "Kadabra",
+          "Alakazam",
+          "Trumbeak"
+        ],
+        "knockouts": 2,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Abra",
+          "Dunsparce",
+          "Fezandipiti ex",
+          "Abra"
+        ],
+        "prizesTaken": 2,
+        "turnsTaken": 5
+      }
+    },
+    "turnCount": 10,
+    "unparsedCount": 0,
+    "uploadSource": "web",
+    "uploadedAt": "2026-09-21T22:32:19.164Z",
+    "userId": "user-3d8f5e32",
+    "wentFirst": false,
+    "winner": "7463bcbb05259d8e",
+    "wonCoinToss": false
+  },
+  "unparsedLines": []
+}
