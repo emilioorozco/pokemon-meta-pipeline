@@ -233,6 +233,8 @@ class GameSummary(ContractModel):
     opponent_archetype: str | None = None
     my_archetype_id: str | None = None
     my_archetype: str | None = None
+    my_archetype_source: ArchetypeSource | None = None
+    my_archetype_resolution: ArchetypeResolution | None = None
     opponent_archetype_id: str | None = None
     opponent_archetype_source: ArchetypeSource | None = None
     opponent_archetype_resolution: ArchetypeResolution | None = None

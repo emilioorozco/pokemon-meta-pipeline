@@ -487,11 +487,26 @@
         "opponentArchetypeId": {
           "type": "string"
         },
+        "myArchetypeSource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "user"
+          ]
+        },
         "opponentArchetypeSource": {
           "type": "string",
           "enum": [
             "auto",
             "user"
+          ]
+        },
+        "myArchetypeResolution": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "alias",
+            "created"
           ]
         },
         "opponentArchetypeResolution": {
