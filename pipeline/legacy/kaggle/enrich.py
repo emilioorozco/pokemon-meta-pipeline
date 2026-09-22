@@ -1,6 +1,6 @@
 """Enrich: recover episode metadata (timestamps, ratings, submission ids) from Kaggle.
 
-The replay JSONs on disk carry no timestamps — that metadata lives on Kaggle's
+The replay JSONs on disk carry no timestamps: that metadata lives on Kaggle's
 side and the original corpus pull discarded it. Kaggle's ListEpisodes endpoint
 accepts explicit episode ids and still answers for old episodes, returning per
 episode: createTime/endTime, and per agent: submissionId, reward, and the ladder
@@ -8,7 +8,7 @@ rating before/after the game.
 
 Caching contract: every raw API response is landed verbatim under
 LAKE_DIR/raw/episode_meta/ before anything parses it, and ids found in the cache
-are never re-fetched. Land the whole response — you can't re-ask a dead
+are never re-fetched. Land the whole response, because you can't re-ask a dead
 competition for fields you dropped.
 """
 

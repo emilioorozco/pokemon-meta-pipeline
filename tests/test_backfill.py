@@ -565,3 +565,126 @@ def test_settings_defaults_and_secrecy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert loaded.hmac_key == b"a-key"
     # The key must not be reachable by printing the settings anywhere.
     assert "a-key" not in repr(loaded)
+
+
+# --- The same run over a local directory (`--source-dir`) ------------------
+#
+# The point of these is that nothing after the read knows where the blob came
+# from: the committed fixtures go through the same validation, anonymization and
+# routing as an S3 object, with no bucket set and no credentials in reach. That
+# is what makes a demo or a first clone a real run of this stage.
+
+FIXTURES_DIR: Final = Path(__file__).parent / "fixtures"
+FIXTURE_FILES: Final = sorted(FIXTURES_DIR.glob("game-*.json"))
+needs_fixtures = pytest.mark.skipif(
+    not FIXTURE_FILES,
+    reason="no fixtures yet; run scripts/refresh_fixtures.py against the parsed bucket",
+)
+
+
+@pytest.fixture
+def local_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A machine with the anonymization key and nothing else: no bucket, no credentials."""
+    monkeypatch.delenv("PRA_BUCKET", raising=False)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setenv("HANDLE_HMAC_KEY", "test-key-not-a-real-secret")
+
+
+@needs_fixtures
+def test_a_source_dir_run_lands_the_fixtures_without_a_bucket(
+    local_env: None,
+    lake: tuple[Path, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bronze_dir, quarantine_dir = lake
+
+    exit_code = backfill.main(
+        [
+            "--source-dir",
+            str(FIXTURES_DIR),
+            "--bronze-dir",
+            str(bronze_dir),
+            "--quarantine-dir",
+            str(quarantine_dir),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert f"read: {len(FIXTURE_FILES)}" in out
+    assert f"landed: {len(FIXTURE_FILES)}" in out
+    assert "quarantined: none" in out
+    assert sum(count for _, count in read_smoke(bronze_dir)) == len(FIXTURE_FILES)
+    assert not quarantine_dir.exists()
+
+
+@needs_fixtures
+def test_a_source_dir_run_quarantines_the_broken_files_and_lands_the_rest(
+    local_env: None,
+    tmp_path: Path,
+    lake: tuple[Path, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """One good file, one truncated file, one unknown action kind: one row and two reasons."""
+    bronze_dir, quarantine_dir = lake
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    good = FIXTURE_FILES[0]
+    (source_dir / good.name).write_bytes(good.read_bytes())
+    (source_dir / "truncated.json").write_bytes(good.read_bytes()[:200])
+    (source_dir / "unknown-kind.json").write_bytes(_json(blob_with_unknown_kind()))
+
+    exit_code = backfill.main(
+        [
+            "--source-dir",
+            str(source_dir),
+            "--bronze-dir",
+            str(bronze_dir),
+            "--quarantine-dir",
+            str(quarantine_dir),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "read: 3" in out
+    assert "landed: 1" in out
+    assert "quarantined: contract_violation=1 invalid_json=1" in out
+    # The key is the path as given, relative to the source directory.
+    assert sidecar(quarantine_dir, "invalid_json", "truncated.json")["source_key"] == (
+        "truncated.json"
+    )
+    broken = sidecar(quarantine_dir, "contract_violation", "unknown-kind.json")
+    assert "entries.0.kind" in broken["detail"]
+    assert broken["contract_version_seen"] == 2
+
+
+@needs_fixtures
+def test_a_source_dir_dry_run_writes_nothing(
+    local_env: None,
+    lake: tuple[Path, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bronze_dir, quarantine_dir = lake
+
+    exit_code = backfill.main(
+        [
+            "--source-dir",
+            str(FIXTURES_DIR),
+            "--bronze-dir",
+            str(bronze_dir),
+            "--quarantine-dir",
+            str(quarantine_dir),
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    assert f"landed: {len(FIXTURE_FILES)}" in capsys.readouterr().out
+    assert not bronze_dir.exists()
+    assert not quarantine_dir.exists()
+
+
+def test_a_source_dir_that_is_not_a_directory_is_refused(local_env: None, tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        backfill.main(["--source-dir", str(tmp_path / "nowhere")])

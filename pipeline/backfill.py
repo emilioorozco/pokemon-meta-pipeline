@@ -1,10 +1,18 @@
-"""Bronze backfill: read every parsed blob in S3, validate it, land it or quarantine it.
+"""Bronze backfill: read every parsed blob, validate it, land it or quarantine it.
 
 This is the command that fills bronze from scratch and the command that refills
 it after the anonymization key rotates. It is a batch walk over a prefix rather
 than an event consumer on purpose: the history has to be ingestible at any time,
 and the same walk re-run over the same objects must produce the same lake, which
 the partition-replace write gives for free.
+
+Where the blobs come from is injected, not assumed: the run takes a `Source`
+(`pipeline.source`) that lists objects and reads one by key. In production that
+is `S3Source` over the application's bucket; `--source-dir PATH` swaps in
+`LocalSource` over a directory of files, which is how the committed fixtures are
+ingested with no bucket, no credentials and no network. Everything after the
+read is the same code on the same objects, so a local run is a real run of this
+stage and not a simulation of one.
 
 One object at a time is validated and anonymized, but the write happens once at
 the end: `write_partitions` replaces each touched `play_date` directory whole, so
@@ -68,7 +76,7 @@ from pipeline.quarantine import (
     write_quarantine,
 )
 from pipeline.settings import Settings
-from pipeline.source import S3Object, SourceBlob, get_blob, list_parsed_keys
+from pipeline.source import LocalSource, S3Source, Source, SourceBlob, SourceObject
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_s3.client import S3Client
@@ -160,29 +168,31 @@ def run_backfill(
     bronze_dir: Path = BRONZE_DIR,
     quarantine_dir: Path = QUARANTINE_DIR,
     *,
+    source: Source | None = None,
     now: datetime | None = None,
     limit: int | None = None,
     dry_run: bool = False,
 ) -> BackfillSummary:
-    """Walk the source prefix once and return what the run did.
+    """Walk the source once and return what the run did.
 
-    `now` is the run timestamp, the same value for every row and every
-    quarantine record; it defaults to the current UTC time. `limit` stops after
-    that many listed blobs, and `dry_run` does all the reading, validating and
-    counting while writing neither bronze nor quarantine.
+    `source` is where the blobs are read from; when it is None the run reads the
+    bucket in `settings`, through `s3` if a client is passed and through a
+    default client otherwise. `now` is the run timestamp, the same value for
+    every row and every quarantine record; it defaults to the current UTC time.
+    `limit` stops after that many listed blobs, and `dry_run` does all the
+    reading, validating and counting while writing neither bronze nor quarantine.
     """
     started = time.monotonic()
     when = now or datetime.now(UTC)
-    client = s3 if s3 is not None else _default_client(settings)
+    reading = source if source is not None else _s3_source(settings, s3)
     rejects = _Quarantiner(quarantine_dir, when, dry_run=dry_run)
     summary = BackfillSummary()
     pending: list[_Pending] = []
 
-    logger.info("listing s3://%s/%s", settings.bucket, settings.prefix)
-    listing = list_parsed_keys(client, settings.bucket, settings.prefix)
-    for obj in islice(listing, limit):
+    logger.info("listing %s", reading.label)
+    for obj in islice(reading.list(), limit):
         summary.read += 1
-        blob = get_blob(client, settings.bucket, obj.key)
+        blob = reading.get(obj.key)
         validated = _validate(blob, rejects)
         if validated is None:
             continue
@@ -244,7 +254,7 @@ def _validate(
 def _prepare(
     data: dict[str, Any],
     blob: SourceBlob,
-    obj: S3Object,
+    obj: SourceObject,
     settings: Settings,
     rejects: _Quarantiner,
 ) -> _Pending | None:
@@ -335,6 +345,12 @@ def _partition_counts(pending: list[_Pending]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _s3_source(settings: Settings, s3: "S3Client | None") -> S3Source:
+    """The production source: the bucket and prefix the settings name."""
+    client = s3 if s3 is not None else _default_client(settings)
+    return S3Source(client=client, bucket=settings.bucket, prefix=settings.prefix)
+
+
 def _default_client(settings: Settings) -> "S3Client":
     import boto3
 
@@ -349,7 +365,10 @@ def main(argv: list[str] | None = None) -> int:
     """Run the backfill from the command line and print the summary."""
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.backfill",
-        description="Backfill bronze from the parsed blobs in the application's S3 bucket.",
+        description=(
+            "Backfill bronze from the parsed blobs in the application's S3 bucket, "
+            "or from a local directory of blobs with --source-dir."
+        ),
     )
     parser.add_argument("--limit", type=int, default=None, help="stop after this many blobs")
     parser.add_argument(
@@ -357,10 +376,47 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="read and validate everything, write neither bronze nor quarantine",
     )
+    parser.add_argument(
+        "--source-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="read every *.json under PATH instead of S3; needs no bucket and no credentials",
+    )
+    parser.add_argument(
+        "--bronze-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="where the landed rows go (default: the configured bronze directory)",
+    )
+    parser.add_argument(
+        "--quarantine-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="where rejected blobs go (default: the configured quarantine directory)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    summary = run_backfill(Settings.from_env(), limit=args.limit, dry_run=args.dry_run)
+
+    source: Source | None = None
+    if args.source_dir is not None:
+        if not args.source_dir.is_dir():
+            parser.error(f"--source-dir is not a directory: {args.source_dir}")
+        source = LocalSource(args.source_dir)
+    # A local run reads no bucket, so it must not be blocked by an unset one.
+    settings = Settings.from_env(require_bucket=source is None)
+
+    summary = run_backfill(
+        settings,
+        bronze_dir=args.bronze_dir or BRONZE_DIR,
+        quarantine_dir=args.quarantine_dir or QUARANTINE_DIR,
+        source=source,
+        limit=args.limit,
+        dry_run=args.dry_run,
+    )
     print(summary)
     return 0
 
