@@ -1,0 +1,34 @@
+# Gold stage: dbt on DuckDB, reading the silver Parquet files in place.
+#
+# There is no loader and no warehouse to keep in sync: the sources are
+# `read_parquet(...)` expressions (models/sources.yml) and the only state is
+# the DuckDB file the profile points at, which is rebuilt from scratch by
+# `python -m pipeline.gold`.
+name: play_rough_pipeline
+version: "0.1.0"
+config-version: 2
+profile: play_rough_pipeline
+
+model-paths: ["models"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages", "logs"]
+
+flags:
+  # Continuous integration (CI) runs this offline; nothing here should reach
+  # out to the network on a build.
+  send_anonymous_usage_stats: false
+
+vars:
+  # Minimum games before a matchup cell is worth reading. The corpus is small,
+  # so every mart that aggregates by archetype carries the flag rather than
+  # filtering: a reader can see the thin cells and choose.
+  min_games: 5
+
+models:
+  play_rough_pipeline:
+    staging:
+      # Views: staging is a rename layer over Parquet, so materializing it
+      # would copy the lake into DuckDB for no gain.
+      +materialized: view
+    marts:
+      +materialized: table

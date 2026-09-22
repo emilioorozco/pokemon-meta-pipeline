@@ -56,6 +56,16 @@ counter keys, unparsed lines and extras. After the rewrite, bronze scans the
 blob for any remaining raw handle and quarantines the game rather than writing
 it. There is no exception list; the operator's own handle is hashed too.
 
+Silver goes one step further and drops most tokens entirely. A member uploaded
+their games and saw the notice below; the opponent they were matched against
+did neither, and a token is still a stable identifier for that person across
+every game they appear in. So silver computes the set of tokens that hold an
+uploader seat anywhere in bronze, and any token outside that set is written as
+NULL wherever it could reach a column, including the opponent name typed into a
+manual game. `game_sides.is_member` records which rows kept a token. The effect
+is that per-player analysis works for the people who opted in, while a stranger
+is only ever an anonymous seat with an archetype and a result.
+
 ## Key handling and rotation
 
 `HANDLE_HMAC_KEY` is 32 random bytes. It is stored in 1Password and injected

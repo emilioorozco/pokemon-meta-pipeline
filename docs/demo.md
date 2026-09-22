@@ -175,12 +175,31 @@ detail.
 3. The tests and the CI badge are the fallback proof. Step 2 and step 7 cover
    almost everything the other steps show, and both are one command.
 
-## Later stages (not yet)
+## Later stages (outside the timed sequence)
 
-- **Spark run** (silver): not yet. Placeholder for the PySpark job that types
-  the rows, explodes cards and events, and joins the archetype table.
-- **dbt docs** (gold): not yet. Placeholder for `dbt docs serve` over the star
-  schema and the mart tests.
+- **Spark run** (silver): runs today, but out of the timed sequence because it
+  needs Java and spends five seconds starting a Java Virtual Machine. After
+  step 5: `uv run python -m pipeline.silver --bronze-dir /tmp/demo/bronze
+  --silver-dir /tmp/demo/lake/silver --catalog tests/catalog.json`, then query
+  `/tmp/demo/lake/silver/game_sides/**/*.parquet` with the DuckDB snippet from
+  step 5. The output directory is `lake/silver` because the gold step below
+  reads `$PIPELINE_DATA_DIR/lake/silver`, which is the layout a real run
+  writes. What it proves: the grain change, the archetype alias map and the
+  reconciliation that fails the run when the counts do not add up.
+- **dbt docs** (gold): runs today, and also out of the timed sequence because
+  it needs the Spark run above to have produced silver first. After the Spark
+  run: `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.gold`, which
+  builds the star schema and the marts into `/tmp/demo/warehouse/meta.duckdb`
+  and then runs the 67 dbt tests, followed by
+  `uv run dbt docs generate --project-dir dbt --profiles-dir dbt` and
+  `uv run dbt docs serve --project-dir dbt --profiles-dir dbt` for the lineage
+  graph and the column descriptions. Query the result with the DuckDB snippet
+  from step 5, pointed at the warehouse file instead of the Parquet glob:
+  `select archetype_name, opponent_archetype_name, games, win_rate from
+  mart_matchups order by games desc limit 5`. What it proves: the grain change
+  becomes a star schema, every model and column is documented, and the tests
+  (keys, relationships, accepted values, two sides per game, matchup symmetry)
+  run as part of the build rather than beside it.
 - **MLflow UI**: not yet. Placeholder for the tracked win-probability runs and
   the registered model.
 - **FastAPI predict**: not yet. Placeholder for a `POST /predict` call against

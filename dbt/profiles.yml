@@ -1,0 +1,13 @@
+# Committed next to the project rather than left in ~/.dbt, so a fresh clone
+# builds with `dbt --project-dir dbt --profiles-dir dbt run` and nothing else.
+# There is no secret here: DuckDB is a file, and the file is under the
+# gitignored data directory.
+play_rough_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Same environment variable the Python package uses (pipeline/config.py),
+      # so the lake and the warehouse always move together.
+      path: "{{ env_var('PIPELINE_DATA_DIR', 'data') }}/warehouse/meta.duckdb"
+      threads: 4

@@ -20,6 +20,13 @@ No fixture may ever contain a real handle. The tests enforce the token shape
 (16 hex characters everywhere a handle can appear), so a file that slips through
 with a name in it fails the suite rather than reaching a reviewer.
 
+The card catalog fixture the silver tests join against is `tests/catalog.json`,
+one directory up, not here: this directory is a directory of blobs that the
+backfill ingests wholesale (`--source-dir tests/fixtures`), so any other JSON
+file in it would be read as a game and quarantined. Its keys are the identities
+silver resolves the fixtures' observed cards to, and its names are invented
+("Fixture Card 1"), so a test can tell a catalog hit from a passthrough.
+
 Refresh the whole set (replaces every `game-*.json` here):
 
 ```

@@ -23,6 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -41,5 +47,20 @@ jobs:
       - name: Type check
         run: uv run mypy pipeline tests scripts
 
+      # Three runs, one coverage number. The fast suite runs first and the gate
+      # is switched off for it (the 70% floor lives in pyproject, so it has to
+      # be overridden here); the Spark and dbt suites append to the same data
+      # file and the combined total, judged on the last of them, is what the
+      # build is gated on.
+      #
+      # The dbt suite needs the same Java install as the Spark one, because it
+      # builds silver from the fixtures before it can run the models over it,
+      # which is why it shares this job rather than getting its own.
       - name: Test
-        run: uv run pytest --cov=pipeline --cov-report=term-missing --cov-fail-under=70
+        run: uv run pytest --cov=pipeline --cov-report=term-missing --cov-fail-under=0
+
+      - name: Test (Spark)
+        run: uv run pytest -m spark --cov=pipeline --cov-append --cov-fail-under=0
+
+      - name: Test (dbt)
+        run: uv run pytest -m dbt --cov=pipeline --cov-append --cov-fail-under=70
