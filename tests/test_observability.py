@@ -332,3 +332,26 @@ def test_the_default_directory_follows_the_data_dir_variable(
 
     (row,) = read_rows(tmp_path / "lake" / "run_metrics")
     assert row["stage"] == "drift"
+
+
+def test_a_machine_without_git_still_writes_its_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A container with no git is the normal case, and it must not cost the row.
+
+    `git_commit` shells out, and a missing or unrunnable executable raises
+    `OSError` rather than returning a code. Unhandled, that raised while the row
+    was being built, so the whole `run_metrics` file went missing and only a
+    warning said so, which is exactly the case the table exists to cover. Found
+    in the Airflow image, which ships no git.
+    """
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    assert observability.git_commit() is None
+
+    configure_logging("silver", run_id="run-8", json_output=True)
+    with stage_run("silver", directory=tmp_path / "metrics") as metrics:
+        metrics.rows_out = 3
+
+    (row,) = read_rows(tmp_path / "metrics")
+    assert row["git_commit"] is None
+    assert (row["stage"], row["rows_out"], row["status"]) == ("silver", 3, STATUS_OK)

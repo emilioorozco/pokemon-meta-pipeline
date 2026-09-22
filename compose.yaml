@@ -3,10 +3,11 @@
 # Every batch stage works with no container at all: the lake is Parquet on disk,
 # the warehouse is a DuckDB file, and the model stage falls back to a plain
 # directory of runs and registered versions under `data/mlruns`. This file is
-# for the three things a directory cannot be: the MLflow user interface with a
+# for the four things a directory cannot be: the MLflow user interface with a
 # real database behind it, so runs can be compared in a browser and the registry
-# is shared, a long-running process that answers `POST /predict`, and the event
-# consumer, which is the one stage that waits on a queue instead of finishing.
+# is shared; a long-running process that answers `POST /predict`; the event
+# consumer, which is the one stage that waits on a queue instead of finishing;
+# and a scheduler that runs the stages in order on a clock instead of by hand.
 #
 #   docker compose up -d mlflow
 #   export MLFLOW_TRACKING_URI=http://localhost:5000
@@ -17,8 +18,15 @@
 #   docker compose up -d consumer
 #   docker compose logs -f consumer
 #
-# Everything it writes is under `data/`, which is gitignored, so bringing the
-# stack down and deleting that directory leaves no state behind.
+#   docker compose build airflow
+#   docker compose up -d airflow mlflow          # http://localhost:8080
+#   docker compose exec airflow airflow dags trigger play_rough_pipeline \
+#     --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+#
+# Everything it writes is under `data/mlflow/`, which is gitignored along with
+# the rest of `data/`, so bringing the stack down and deleting that directory
+# leaves no state behind. Airflow's own metadata database is a named volume
+# rather than a host directory, so `docker compose down -v` is what clears it.
 services:
   mlflow:
     image: ghcr.io/mlflow/mlflow
@@ -29,8 +37,17 @@ services:
       --artifacts-destination /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
+      --allowed-hosts localhost,127.0.0.1,mlflow,mlflow:5000,localhost:5000,127.0.0.1:5000
     ports:
       - "5000:5000"
+    # `--allowed-hosts` is not optional here. MLflow 3 rejects a request whose
+    # `Host` header it does not recognise, as protection against DNS rebinding,
+    # and its default list is localhost and the private address ranges. Inside
+    # the compose network the other services reach it as `mlflow:5000`, which is
+    # neither, so without the compose service name on that list every task that
+    # talks to the registry gets a 403 that says nothing about hostnames. The
+    # list is explicit rather than `*`: the point of the check is that it names
+    # what may reach the server.
     volumes:
       # SQLite metadata and the artifact store, both on the host so a rebuilt
       # container keeps the run history.
@@ -77,3 +94,83 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+  # The orchestrator, in the one mode that is a single container: `airflow
+  # standalone` runs the scheduler, the triggerer and the web server together
+  # against a SQLite metadata database, which is what a local demonstration of a
+  # DAG wants and exactly what a production install must not be. The executor is
+  # left at standalone's default (sequential) for the same reason: one task at a
+  # time is honest about what one container can do, and the DAG's only branch is
+  # a task that does not care when it runs.
+  #
+  # The image is built by `Dockerfile.airflow` rather than pulled: the tasks run
+  # PySpark, dbt, MLflow and LightGBM, and `_PIP_ADDITIONAL_REQUIREMENTS` would
+  # reinstall all of it on every container start and pin nothing.
+  #
+  # The repository is mounted, not copied, so the DAG runs the working tree: an
+  # edit to `pipeline/silver.py` or to a dbt model is in the next task run with
+  # no rebuild. Only a dependency change needs `docker compose build airflow`.
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: pra-airflow
+    command: standalone
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # So a freshly parsed DAG can be triggered without being unpaused first.
+      # Local only: the point of a paused-by-default DAG is that nobody
+      # schedules production by accident, and there is no production here.
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      # A local login on a container that is not exposed anywhere. The default
+      # is admin/admin; put AIRFLOW_ADMIN_PASSWORD in .env to change it. Nothing
+      # about this is a secret worth protecting, and nothing here should ever be
+      # reachable from outside the laptop it runs on.
+      #
+      # The migrate and create flags are what make the password below the one
+      # that works: the image's entrypoint honours them whatever the command is,
+      # so the admin user exists before `standalone` starts, and `standalone`
+      # then finds it instead of inventing a user with a random password of its
+      # own and writing it to a file nobody reads.
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      # Where the DAG finds the checkout and the interpreter that has the
+      # project's dependencies (see Dockerfile.airflow).
+      PIPELINE_DIR: /opt/pipeline
+      PIPELINE_PYTHON: /opt/pipeline-venv/bin/python
+      PIPELINE_DATA_DIR: /opt/pipeline/data
+      # The compose network name, not localhost: inside this container,
+      # localhost is this container. Set it empty to make the tasks record their
+      # runs in the plain directory under data/mlruns instead.
+      MLFLOW_TRACKING_URI: ${AIRFLOW_MLFLOW_TRACKING_URI-http://mlflow:5000}
+      # Forwarded from the host's shell or .env. The bucket settings matter only
+      # to a backfill that reads S3; the key is needed either way, including for
+      # the fixture run, because bronze anonymizes whatever it is given and
+      # refuses to run without one. Any string does locally.
+      HANDLE_HMAC_KEY: ${HANDLE_HMAC_KEY:-}
+      PRA_BUCKET: ${PRA_BUCKET:-}
+      PRA_PREFIX: ${PRA_PREFIX:-}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_PROFILE: ${AWS_PROFILE:-}
+    volumes:
+      - ./orchestration/airflow/dags:/opt/airflow/dags
+      # The repository, so the tasks run the working tree's commands, dbt
+      # project and fixtures.
+      - ./:/opt/pipeline
+      # The lake and the warehouse, named separately from the line above so the
+      # data directory is an explicit mount rather than a side effect of it.
+      - ./data:/opt/pipeline/data
+      # Airflow's own state: the SQLite database, the task logs and the
+      # generated config. A named volume, so `docker compose down` keeps it and
+      # `docker compose down -v` is the deliberate way to start clean.
+      - airflow-home:/opt/airflow
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+volumes:
+  airflow-home:

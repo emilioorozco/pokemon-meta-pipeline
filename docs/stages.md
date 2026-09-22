@@ -24,7 +24,8 @@ S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
         +--> [6 agent]   LangChain agent over the marts and card text
         |
         v
-[7 orchestrate]  Airflow DAG for 1-3, model retrain on schedule
+[7 orchestrate]  Airflow DAG over every stage above, daily, plus a quality gate
+        |        (`python -m pipeline.run_all` is the same list with no scheduler)
         |
         v
 [8 publish]  results written back to the application (S3 prefix it reads)
@@ -696,17 +697,174 @@ catalog. It answers questions such as "which archetype has the best record
 against X this season" by writing and running the mart query and citing the
 row counts.
 
-## 7. Orchestration (planned, Airflow)
+## 7. Orchestration (in progress, Airflow and a plain runner)
 
-Airflow standalone (single local process, SQLite metadata database) running
-`bronze >> silver >> gold >> quality_gate` daily, with a weekly `retrain`
-task downstream of `gold`. Each task is the stage's command-line entry point,
-so any other scheduler could call the same commands. Idempotent partitions make
-retries safe.
+Two ways to run the whole pipeline, over one list of stages. The scheduler is
+`orchestration/airflow/dags/play_rough_pipeline.py`, an Airflow DAG whose every
+task is a `BashOperator` calling a stage's command-line entry point; the plain
+runner is `python -m pipeline.run_all`, the same list as subprocesses with no
+scheduler at all. Neither holds any pipeline logic: a task that called the
+stages as Python functions would be a second way to invoke them, and the second
+way is the one that drifts.
 
-The observability half of it is already in place: the DAG run exports
-`PRA_RUN_ID`, every task picks it up, and `mart_pipeline_health` is what
-`quality_gate` reads. See "Ops: logging and run metrics" above.
+### The task graph
+
+```
+backfill -> spark_silver -> dbt_run -> dbt_test -> build_features -> train
+                                           |            -> promote -> drift -> quality_gate
+                                           +-> build_card_index
+```
+
+| task | command | why it is its own node |
+|---|---|---|
+| `backfill` | `pipeline.backfill [--source-dir]` | the only task that talks to the network, and the only one with a retry |
+| `spark_silver` | `pipeline.silver` | starts a JVM, gives it back |
+| `dbt_run` | `pipeline.gold --steps run` | a failed build is a different thing from a failed test |
+| `dbt_test` | `pipeline.gold --steps test` | 113 data tests; retryable on its own |
+| `build_features` | `pipeline.gold --steps run --select tag:ml` | the model's input as a named node |
+| `train` | `pipeline.train` | one MLflow run plus its baseline |
+| `promote` | `pipeline.promote --candidate latest` | the gate that can refuse a worse model |
+| `drift` | `pipeline.drift` | writes the report, exits 0 whether or not it flagged |
+| `build_card_index` | `pipeline.card_index`, when it exists | stage 6's retriever index; parallel because nothing waits on it |
+| `quality_gate` | `pipeline.quality_gate` | the only task allowed to fail a run that got this far |
+
+`--steps` and `--stage-name` exist for this graph. dbt's build and dbt's tests
+are two tasks, and three invocations of one command under one run identifier
+would otherwise write three `run_metrics` rows to one file and keep the last, so
+each names itself (`gold_run`, `gold_test`, `gold_features`). `run_all` keeps
+them as one `gold` step, because a terminal has no graph to draw.
+
+`build_features` is a rebuild: `dbt run` already built the feature table, since
+it builds the whole project. Having it as a node makes a feature change one task
+to rerun rather than a whole warehouse.
+
+### With compose
+
+```bash
+docker compose build airflow
+docker compose up -d airflow mlflow            # http://localhost:8080, admin/admin
+docker compose exec airflow airflow dags trigger play_rough_pipeline \
+  --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+docker compose exec airflow airflow tasks states-for-dag-run play_rough_pipeline <run id>
+docker compose down                            # -v also drops Airflow's database
+```
+
+`HANDLE_HMAC_KEY` has to be set even for the fixture run: the committed games
+are already anonymized, but bronze anonymizes whatever it is given and refuses
+to run without a key. Any string will do locally, and compose forwards it from
+the shell or from `.env`.
+
+`Dockerfile.airflow` builds the image from `apache/airflow:2.10.5-python3.12`
+and puts the project's dependencies in a virtual environment of their own at
+`/opt/pipeline-venv`, exported from `uv.lock` with hashes so the image gets the
+versions this repository resolved. Two environments in one image is the point:
+Airflow pins large parts of the same dependency tree the pipeline uses, and what
+a scheduler needs to schedule is not what a stage needs to run. The repository
+itself is bind mounted at `/opt/pipeline`, so the tasks run the working tree and
+only a dependency change needs a rebuild.
+
+The image also carries a headless JRE for Spark and `libgomp1` for LightGBM,
+which are the two native dependencies a pure `pip install` does not bring.
+
+The DAG is `@daily` with `catchup=False` and `max_active_runs=1`. It is
+unpaused at creation (`AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=false`), which
+is local convenience rather than a recommendation, and it has one consequence
+worth knowing: the first `docker compose up` also schedules the most recent
+completed daily interval, and that run takes the parameter defaults, which means
+S3. Without a bucket configured it fails at `backfill` and the fixture run is
+the manual one beside it. Pause the DAG, or set `PRA_BUCKET`, depending on which
+of the two you meant.
+
+### Without Airflow
+
+```bash
+python -m pipeline.run_all --source-dir tests/fixtures      # the whole thing, 20 seconds
+python -m pipeline.run_all --stop-after gold                # bronze, silver, gold
+python -m pipeline.run_all --skip train,promote,drift       # leave the model loop out
+PRA_RUN_ID=nightly-1 python -m pipeline.run_all             # or let it generate one
+```
+
+It runs each stage as `sys.executable -m pipeline.<stage>`, stops at the first
+non-zero exit and exits with that code, and closes with a table of what ran,
+what was skipped and how long each took. The same summary goes into a
+`run_metrics` row of its own, under the stage name `run_all`, with the per-stage
+durations in `extra_json`.
+
+### Parameters
+
+| parameter | default | what it does |
+|---|---|---|
+| `source_dir` | empty | empty reads the S3 bucket; `tests/fixtures` runs the committed games with no AWS account |
+| `ingest_mode` | `backfill` | `consumer` means the event-driven ingest is already landing bronze, so the first task is a logged no-op |
+
+`run_all` takes the same two as `--source-dir` and the `PRA_INGEST_MODE`
+environment variable, plus `--skip`, `--stop-after`, `--data-dir` and `--run-id`.
+
+### The run identifier
+
+Every task exports `PRA_RUN_ID={{ run_id }}`, Airflow's own identifier for the
+DAG run, so one run of the graph is one string in the UI, in every log line and
+in every `run_metrics` row. `run_all` does the same with `$PRA_RUN_ID` or a
+fresh one. After the fixture run above:
+
+```
+manual__2026-09-22T18-25-47-00-00-bronze_backfill.parquet
+manual__2026-09-22T18-25-47-00-00-silver.parquet
+manual__2026-09-22T18-25-47-00-00-gold_run.parquet
+manual__2026-09-22T18-25-47-00-00-gold_test.parquet
+manual__2026-09-22T18-25-47-00-00-gold_features.parquet
+manual__2026-09-22T18-25-47-00-00-train.parquet
+manual__2026-09-22T18-25-47-00-00-promote.parquet
+manual__2026-09-22T18-25-47-00-00-drift.parquet
+manual__2026-09-22T18-25-47-00-00-quality_gate.parquet
+```
+
+### The quality gate
+
+`python -m pipeline.quality_gate` is what turns a `run_metrics` row nobody
+queried into a run that goes red. It reads `mart_pipeline_health` and refuses
+when any stage's last run failed, or any stage's `quarantine_rate_over_threshold`
+is true, which is the 5% over the last ten runs that
+`dbt_project.yml`'s `quarantine_rate_alert` defines. Exit 1 is a verdict, exit 2
+is "the gate could not be run at all" (no warehouse, no mart), and the two are
+different things to be woken up by.
+
+```
+stage            status    quarantine  gate
+bronze_backfill  ok             0.0%  ok
+drift            ok             0.0%  ok
+gold_features    ok             0.0%  ok
+gold_run         ok             0.0%  ok
+gold_test        ok             0.0%  ok
+promote          ok             0.0%  ok
+silver           ok             0.0%  ok
+train            ok             0.0%  ok
+
+gate passed: 8 stage(s) healthy.
+```
+
+It judges every stage the warehouse knows about, not only the ones that just
+ran: a stage that failed last night and was not rerun is still broken this
+morning. The one stage it does not judge is itself, because a gate that read its
+own refusal back would stay red for ever.
+
+### Nothing to do is not a failure
+
+Three stages read `features_turn`, and a warehouse that built cleanly can hold
+no rows in it: a first run, or a corpus with no game carrying an archetype on
+both seats. `train` then logs `no training rows` and exits 0 without registering
+a version, `promote` logs `nothing to promote` when the registry is empty, and
+`drift` logs `nothing to compare`. `run_all` skips all three with the reason in
+its summary. On the ten committed fixtures none of that fires: `features_turn`
+holds 66 rows, the model trains, and `promote` rejects it for not beating the
+win-rate baseline, which is the gate working.
+
+### Still to come
+
+Sensors rather than a clock, once the SQS consumer is live: a DAG that starts
+when bronze has new partitions is a better shape than one that starts at 06:00
+and finds nothing. AWS Step Functions remains the managed alternative (stage
+list, stretch).
 
 ## 8. Publish back (planned)
 
@@ -772,8 +930,10 @@ result, because a run that did its work must not be marked broken by its own
 telemetry.
 
 Stage names, one per command: `bronze_backfill`, `silver`, `gold`, `train`,
-`promote`, `drift`, plus `refresh_fixtures` and `fetch_catalog` for the two
-maintenance scripts. `serve` is the exception: it is a long-running process with
+`promote`, `drift`, `quality_gate` and `run_all`, plus `refresh_fixtures` and
+`fetch_catalog` for the two maintenance scripts. Under the Airflow DAG the gold
+step is three tasks and names itself `gold_run`, `gold_test` and
+`gold_features`, for the reason section 7 gives. `serve` is the exception: it is a long-running process with
 no run to close, so it configures logging at startup and logs one record per
 request (method, path, status, duration in milliseconds, loaded model version)
 from a middleware, and writes no `run_metrics` row.
@@ -800,13 +960,14 @@ the mean of the per-run rates: a run that read three objects and rejected one is
 33%, and averaging that against a run of ten thousand would let a tiny run shout
 down a large one.
 
-**The alert that is not built yet.** `quarantine_rate_over_threshold` is true
-when a stage has quarantined more than 5% of what it read over its last ten runs
-(`quarantine_rate_alert` in `dbt/dbt_project.yml`). Nothing pages on it today.
-It belongs in stage 7: the Airflow DAG gets a `quality_gate` task after gold
-that reads this one column and fails the run, which is also where a failed
-stage's `run_metrics` row becomes a notification rather than a row nobody
-queried.
+**The alert.** `quarantine_rate_over_threshold` is true when a stage has
+quarantined more than 5% of what it read over its last ten runs
+(`quarantine_rate_alert` in `dbt/dbt_project.yml`), and `python -m
+pipeline.quality_gate` is what acts on it: the last task of the DAG and the last
+step of `run_all`, it reads this column and `last_status` and exits non-zero, so
+a failed stage's row becomes a red run rather than a row nobody queried. Nothing
+pages yet, because nothing is on call; the run going red is where a notifier
+would hang. See section 7.
 
 ## Open items
 

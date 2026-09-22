@@ -583,6 +583,30 @@ def run_training(
     to know where that row goes.
     """
     frame = load_features(warehouse)
+    if frame.empty:
+        # Not a failure. A warehouse that built cleanly and holds no feature
+        # rows is a corpus that has not produced a modellable game yet, which
+        # happens on a first run and on a small fixture set, and a scheduler
+        # should carry on to the next stage rather than page somebody. A
+        # warehouse that is missing entirely is still an error, and
+        # `load_features` has already raised by here if it was.
+        emit_summary(
+            logger,
+            "no training rows",
+            {"dataset": FEATURE_TABLE, "warehouse": str(warehouse), "rows": 0, "trained": False},
+            text=(
+                f"{FEATURE_TABLE} in {warehouse} holds no rows, so there is nothing to train on "
+                "and no version was registered. Land some games and run `python -m pipeline.gold` "
+                "again."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"trained": False, "reason": f"{FEATURE_TABLE} is empty"}
+        return 0
     train, holdout = split_by_date(frame)
     params = {**DEFAULT_PARAMS, **overrides}
     data_params = dataset_params(train, holdout)

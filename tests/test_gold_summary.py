@@ -9,6 +9,7 @@ miscounted model still exits 0.
 """
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -54,8 +55,16 @@ def test_the_summary_reads_as_two_lines() -> None:
 def test_the_command_line_records_the_counts_and_prints_the_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fake_run_gold(*, data_dir: Path, target: str, summary: GoldSummary | None = None) -> int:
+    def fake_run_gold(
+        *,
+        data_dir: Path,
+        target: str,
+        summary: GoldSummary | None = None,
+        steps: Sequence[str] = gold.STEPS,
+        select: str | None = None,
+    ) -> int:
         assert summary is not None
+        assert list(steps) == list(gold.STEPS)
         summary.steps["run"] = (19, 19)
         summary.steps["test"] = (113, 113)
         return 0
@@ -76,7 +85,14 @@ def test_a_failed_dbt_run_is_a_failed_row_and_the_exit_code(
 ) -> None:
     """dbt exiting non-zero is not an exception, so the status has to be set by hand."""
 
-    def fake_run_gold(*, data_dir: Path, target: str, summary: GoldSummary | None = None) -> int:
+    def fake_run_gold(
+        *,
+        data_dir: Path,
+        target: str,
+        summary: GoldSummary | None = None,
+        steps: Sequence[str] = gold.STEPS,
+        select: str | None = None,
+    ) -> int:
         assert summary is not None
         summary.steps["run"] = (19, 18)
         return 1
@@ -99,3 +115,58 @@ def read_metric_rows(directory: Path) -> list[dict[str, Any]]:
         for path in sorted(directory.glob("*.parquet"))
         for row in pq.read_table(path).to_pylist()
     ]
+
+
+def test_a_partial_build_records_itself_under_its_own_stage_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """What the DAG's three dbt tasks depend on: one command, three separable rows.
+
+    Without `--stage-name` all three would write `<run id>-gold.parquet` and the
+    last one would be the only one left, so the graph would have three nodes and
+    the metrics table one.
+    """
+    seen: dict[str, object] = {}
+
+    def fake_run_gold(
+        *,
+        data_dir: Path,
+        target: str,
+        summary: GoldSummary | None = None,
+        steps: Sequence[str] = gold.STEPS,
+        select: str | None = None,
+    ) -> int:
+        assert summary is not None
+        seen["steps"] = list(steps)
+        seen["select"] = select
+        summary.steps["run"] = (2, 2)
+        return 0
+
+    monkeypatch.setattr(gold, "run_gold", fake_run_gold)
+
+    code = gold.main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--steps",
+            "run",
+            "--select",
+            "tag:ml",
+            "--stage-name",
+            "gold_features",
+        ]
+    )
+
+    assert code == 0
+    assert seen == {"steps": ["run"], "select": "tag:ml"}
+    # No test line, because no test step ran.
+    assert "tests:" not in capsys.readouterr().out
+    (row,) = read_metric_rows(tmp_path / "lake" / "run_metrics")
+    assert row["stage"] == "gold_features"
+    assert json.loads(row["extra_json"])["select"] == "tag:ml"
+
+
+def test_an_unknown_step_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as raised:
+        gold.main(["--data-dir", str(tmp_path), "--steps", "compile"])
+    assert raised.value.code == 2

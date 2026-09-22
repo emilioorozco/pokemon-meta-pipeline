@@ -1,0 +1,74 @@
+# Airflow with the pipeline's dependencies beside it, not mixed into it.
+#
+#   docker compose build airflow
+#   docker compose up -d airflow mlflow
+#   open http://localhost:8080
+#
+# Two environments in one image, deliberately. Airflow pins large parts of the
+# same dependency tree this project uses (Jinja, SQLAlchemy, Flask, pandas) and
+# installing PySpark, dbt, MLflow and LightGBM into Airflow's own environment is
+# a resolution fight with no prize at the end of it: what the scheduler needs to
+# schedule and what a stage needs to run are different questions. So the
+# project's dependencies go into a virtual environment of their own at
+# `/opt/pipeline-venv`, and the DAG runs `/opt/pipeline-venv/bin/python -m
+# pipeline.<stage>` from `/opt/pipeline`. Airflow's upgrade path and the
+# pipeline's are then independent, which is the same reason Airflow's own
+# documentation reaches for a second environment when tasks have heavy
+# dependencies.
+#
+# The image carries the dependencies, not the code. `compose.yaml` bind mounts
+# the repository at `/opt/pipeline` and the tasks run with that as the working
+# directory, so the current directory is first on `sys.path` and an edit on the
+# host is in the next task run without a rebuild. It also means the dbt project,
+# the profiles and `tests/fixtures` are the ones in the checkout.
+#
+# Reproducible from `uv.lock`: the requirements are exported from the lockfile
+# at build time with hashes, so the image gets the versions the repository
+# resolved and the build fails rather than resolving something newer. The
+# project itself is deliberately not installed, since the mount provides it.
+FROM apache/airflow:2.10.5-python3.12
+
+# Airflow 2.10.5 rather than 3.x. Airflow 3 is the current stable release and
+# it is what `pyproject.toml`'s `orchestration` extra resolves to, but `airflow
+# standalone` in 2.10 is one process group with a SQLite database behind it and
+# nothing else to configure, which is exactly what a local demonstration of a
+# DAG wants, and it is the version the image's `_AIRFLOW_WWW_USER_*` variables
+# still create a web user from. The DAG file imports `BashOperator` from either
+# location, so moving to 3.x is a tag change here and a retest, not a rewrite.
+
+USER root
+# Three things the base image does not have and the tasks do need. Spark is a
+# Java program with a Python front end, so silver needs a runtime, headless
+# because nothing here draws. LightGBM links against the OpenMP runtime, and
+# without `libgomp1` the training task fails on the import rather than on
+# anything to do with the model. `procps` is for looking at what a task is doing
+# from inside the container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       default-jre-headless libgomp1 procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/pipeline-venv \
+    && chown airflow: /opt/pipeline-venv
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+USER airflow
+
+# Only the three files the export needs, so a change to `pipeline/` does not
+# reinstall PySpark. `--no-emit-project` leaves the project itself out: the code
+# arrives on the mount, and installing a copy of it here would be a second
+# `pipeline` package for imports to choose between.
+COPY pyproject.toml uv.lock README.md /opt/pipeline-lock/
+RUN cd /opt/pipeline-lock \
+    && uv export --frozen --no-dev --no-emit-project \
+       --extra spark --extra dbt --extra ml \
+       --output-file /tmp/pipeline-requirements.txt \
+    && uv venv --python 3.12 /opt/pipeline-venv \
+    && VIRTUAL_ENV=/opt/pipeline-venv uv pip install \
+       --requirements /tmp/pipeline-requirements.txt \
+    && rm -f /tmp/pipeline-requirements.txt
+
+# Where the DAG looks for the interpreter and the checkout. Set here as well as
+# in compose so the image is runnable on its own.
+ENV PIPELINE_PYTHON=/opt/pipeline-venv/bin/python \
+    PIPELINE_DIR=/opt/pipeline

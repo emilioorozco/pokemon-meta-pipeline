@@ -158,14 +158,24 @@ def current_run_id() -> str:
 
 
 def git_commit() -> str | None:
-    """The commit this run was made at, or None outside a checkout."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    """The commit this run was made at, or None outside a checkout.
+
+    None rather than a raise when git is not there at all, which is the normal
+    case in a container: the Airflow image ships no git, and a run that cannot
+    name its commit must still be able to write the row that says what it did.
+    Before this caught `OSError` a task in that image wrote no `run_metrics` row
+    at all, because the column's value raised while the row was being built.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None

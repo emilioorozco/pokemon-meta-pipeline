@@ -45,6 +45,7 @@ flowchart LR
     AIR -.-> BRZ
     AIR -.-> SLV
     AIR -.-> GLD
+    AIR -.-> MDL
   end
   subgraph BACK["Back to the app"]
     PUB["Marts and win probabilities"]
@@ -57,8 +58,8 @@ flowchart LR
   SRV --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ,SLV,GLD,MDL,SRV done
-  class SQS,AGT,AIR,PUB,DASH planned
+  class UP,API,S3,DDB,BF,BRZ,SLV,GLD,MDL,SRV,AIR done
+  class SQS,AGT,PUB,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -127,6 +128,19 @@ the `win-probability-drift` experiment, prints one verdict line and exits 0
 whether or not it flagged. It never retrains: on a corpus this small the flag
 is a prompt to look, and `train` then `promote` is what acts on it.
 
+Orchestration is real, in two shapes over one list of stages.
+`python -m pipeline.run_all` runs every stage in order as a subprocess of the
+same interpreter, under one `PRA_RUN_ID`, stopping at the first non-zero exit
+and closing with a table of what ran, what was skipped and how long each took:
+the whole pipeline over the committed fixtures is about twenty seconds.
+`docker compose up -d airflow` is the same list as a daily Airflow DAG,
+`backfill >> spark_silver >> dbt_run >> dbt_test >> build_features >> train >>
+promote >> drift >> quality_gate`, every task a `BashOperator` calling one of
+the commands below so the DAG holds no pipeline logic of its own. Both end with
+`python -m pipeline.quality_gate`, which reads `mart_pipeline_health` and fails
+the run when a stage's last run failed or its quarantine rate is over the
+threshold, which is what turns a telemetry row into a red run.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
@@ -137,6 +151,8 @@ uv run python -m pipeline.train                                # gold -> model, 
 uv run python -m pipeline.promote                              # judge the newest version
 uv run python -m pipeline.serve                                # serve the promoted one, port 8000
 uv run python -m pipeline.drift                                # feature drift against the train window
+uv run python -m pipeline.quality_gate                         # fail if a stage's last run failed
+uv run python -m pipeline.run_all --source-dir tests/fixtures  # every stage above, in order
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
 uv run pytest -m dbt                                           # gold tests, silver then dbt
@@ -236,6 +252,25 @@ PRA_RUN_ID=nightly-1 uv run python -m pipeline.backfill --source-dir tests/fixtu
 uv run python -c "import duckdb; duckdb.sql(\"select stage, last_status, last_duration_s, quarantine_rate from read_parquet('data/lake/run_metrics/*.parquet')\").show()"
 ```
 
+Under the scheduler that identifier is Airflow's own, so one DAG run is one
+string in the user interface, in every log line and in every `run_metrics` row:
+
+```bash
+docker compose build airflow
+docker compose up -d airflow mlflow            # http://localhost:8080, admin/admin
+docker compose exec airflow airflow dags trigger play_rough_pipeline \
+  --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+docker compose down
+```
+
+The image is Airflow with the project's dependencies in a virtual environment of
+their own, exported from `uv.lock`, and the repository bind mounted beside it,
+so a task runs the working tree and only a dependency change needs a rebuild.
+`source_dir` empty reads the S3 bucket instead of the fixtures, and
+`ingest_mode=consumer` turns the ingest task into a logged no-op for when the
+event-driven consumer is the one landing bronze. Details in
+[docs/stages.md](docs/stages.md) section 7.
+
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
 disallowed, all four pytest runs with a 70% coverage floor on the combined
@@ -266,7 +301,8 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
       card-text retrieval, scored against a golden question set
 - [x] Structured JSON logging with a shared run identifier, and a `run_metrics`
       row per stage per run surfaced by two dbt models
-- [ ] Airflow directed acyclic graph (DAG) calling the stage commands in order
+- [x] Airflow directed acyclic graph (DAG) calling the stage commands in order,
+      plus `python -m pipeline.run_all` for the same list with no scheduler
 - [ ] Publish marts and per-archetype predictions back to the application
 - [ ] Stretch: AWS Step Functions as the managed alternative to Airflow
 
@@ -359,10 +395,12 @@ dbt/models/ml/     the model's training data: scope rules, split cutoff,
 dbt/models/ops/    the pipeline's own telemetry: run_metrics and
                    mart_pipeline_health over the run-metrics Parquet
 data/lake/run_metrics/  one Parquet row per stage per run (gitignored)
-compose.yaml       local services: MLflow, the predict API and the consumer
+compose.yaml       local services: MLflow, the predict API, the consumer and
+                   Airflow standalone
 Dockerfile         the consumer as a container; compose.yaml runs it
 Dockerfile.serve   image for the predict service; carries no model, loads the alias
-dags/              planned: Airflow DAG definitions
+Dockerfile.airflow Airflow plus the project's dependencies in a venv of their own
+orchestration/airflow/dags/  the DAG: one BashOperator per stage command
 ```
 
 ## Docs

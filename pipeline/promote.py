@@ -128,18 +128,19 @@ def read_version(client: MlflowClient, version: str) -> Candidate:
     )
 
 
-def latest_version(client: MlflowClient) -> str:
-    """The highest version number of the registered model, as a string.
+def latest_version(client: MlflowClient) -> str | None:
+    """The highest version number of the registered model, or None when there are none.
 
     By number rather than by creation time, because that is what "version 3" in
-    a decision line means to whoever reads it later.
+    a decision line means to whoever reads it later. None rather than an error
+    for an empty registry: a scheduled run whose trainer had no rows to train on
+    has nothing to promote, and that is a step to skip, not a run to fail. An
+    explicit `--candidate 7` that does not exist is still an error, because that
+    one was asked for by name.
     """
     versions = client.search_model_versions(f"name = '{REGISTERED_MODEL_NAME}'")
     if not versions:
-        raise PromotionError(
-            f"{REGISTERED_MODEL_NAME} has no versions in the registry at "
-            f"{client.tracking_uri}; run `python -m pipeline.train` first"
-        )
+        return None
     return str(max(int(version.version) for version in versions))
 
 
@@ -257,6 +258,23 @@ def run_promotion(
         os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     client = MlflowClient(tracking_uri=tracking_uri)
     version = latest_version(client) if candidate == "latest" else candidate
+    if version is None:
+        emit_summary(
+            logger,
+            "nothing to promote",
+            {"model": REGISTERED_MODEL_NAME, "tracking_uri": tracking_uri, "promoted": False},
+            text=(
+                f"{REGISTERED_MODEL_NAME} has no versions in the registry at {tracking_uri}, so "
+                "there is nothing to judge. Run `python -m pipeline.train` first."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"promoted": False, "reason": "no registered versions"}
+        return 0
     current = read_version(client, version)
     incumbent = production_version(client)
     promote, reason = decide(current, incumbent, metric)

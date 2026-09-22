@@ -834,7 +834,28 @@ def run_drift(
 
     frame = with_dates(load_features(warehouse))
     if frame.empty:
-        raise DriftError(f"{FEATURE_TABLE} in {warehouse} is empty, so there is nothing to compare")
+        # A skip rather than a failure, for the same reason the trainer's empty
+        # table is one: a warehouse that built cleanly and holds no feature rows
+        # has produced nothing to compare, and the next scheduled run will have
+        # the answer. A window that selects too few rows out of a table that has
+        # some is a different thing and still exits EXIT_TOO_SMALL below: that
+        # one is an answer about the window the caller chose.
+        emit_summary(
+            logger,
+            "nothing to compare",
+            {"dataset": FEATURE_TABLE, "warehouse": str(warehouse), "rows": 0},
+            text=(
+                f"{FEATURE_TABLE} in {warehouse} holds no rows, so there is no distribution to "
+                "compare and no report was written."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"reason": f"{FEATURE_TABLE} is empty"}
+        return 0
     effective_as_of = as_of or frame["play_date"].max().date()
     report = build_report(
         frame=frame,
