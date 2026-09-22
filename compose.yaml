@@ -1,15 +1,18 @@
-# Local services the pipeline can talk to, none of them required to run it.
+# Local services the pipeline can talk to, neither of them required to run it.
 #
-# Every stage works with no container at all: the lake is Parquet on disk, the
-# warehouse is a DuckDB file, and the model stage falls back to a plain
-# directory of runs under `data/mlruns`. This file is for the one thing a
-# directory cannot give you, which is the MLflow user interface with a real
-# database behind it, so runs can be compared in a browser and the registry
-# has somewhere to live when the serving stage arrives.
+# Every batch stage works with no container at all: the lake is Parquet on disk,
+# the warehouse is a DuckDB file, and the model stage falls back to a plain
+# directory of runs and registered versions under `data/mlruns`. This file is
+# for the two things a directory cannot be: the MLflow user interface with a
+# real database behind it, so runs can be compared in a browser and the registry
+# is shared, and a long-running process that answers `POST /predict`.
 #
 #   docker compose up -d mlflow
 #   export MLFLOW_TRACKING_URI=http://localhost:5000
 #   uv run python -m pipeline.train
+#   uv run python -m pipeline.promote
+#   docker compose up -d predict
+#   curl localhost:8000/health
 #
 # Everything it writes is under `data/mlflow/`, which is gitignored along with
 # the rest of `data/`, so bringing the stack down and deleting that directory
@@ -30,4 +33,28 @@ services:
       # SQLite metadata and the artifact store, both on the host so a rebuilt
       # container keeps the run history.
       - ./data/mlflow:/mlflow
+    restart: unless-stopped
+
+  # The serving stage. It holds no model: on start it loads whichever version
+  # holds the `production` alias from the service above, so a promotion plus a
+  # `curl -X POST localhost:8000/reload` is the whole deployment.
+  #
+  # `depends_on` waits for the container, not for the server inside it, and that
+  # is deliberate rather than an oversight: a tracking server that is not up yet
+  # is the same state as a registry with nothing promoted, and the service
+  # reports both the same way, through `model_loaded: false` on `/health`.
+  predict:
+    build:
+      context: .
+      dockerfile: Dockerfile.serve
+    container_name: pra-predict
+    command: python -m pipeline.serve --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      # The compose network name of the service above, not localhost: inside
+      # this container, localhost is this container.
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      - mlflow
     restart: unless-stopped

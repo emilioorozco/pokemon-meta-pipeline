@@ -313,9 +313,18 @@ The grain and the tests do not change.
 ## 4. Model (in progress, LightGBM under MLflow)
 
 Input: `features_turn`, read out of the same DuckDB warehouse gold wrote.
-Command: `python -m pipeline.train` (`--experiment`, `--tracking-uri`,
-`--params key=value ...`, `--warehouse`). Output: two MLflow runs. Nothing is
-written back to the warehouse.
+Commands: `python -m pipeline.train` (`--experiment`, `--tracking-uri`,
+`--params key=value ...`, `--warehouse`), `python -m pipeline.promote`
+(`--candidate`, `--metric`, `--tracking-uri`) and `python -m pipeline.serve`
+(`--host`, `--port`, `--tracking-uri`, `--alias`). Output: two MLflow runs and
+one new registered model version per training run, an alias move per accepted
+promotion, and an HTTP service. Nothing is written back to the warehouse.
+
+The three are deliberately three commands and not one. Training is allowed to
+produce a worse model, promotion is the only thing that decides what is served,
+and serving holds no opinion at all: it loads whatever the alias points at. A
+single `train-and-deploy` command would make every scheduled retrain a
+deployment.
 
 ### The features
 
@@ -376,13 +385,15 @@ result, not a crash.
 
 ### Tracking
 
-`MLFLOW_TRACKING_URI` when it is set, otherwise a plain directory of runs at
-`data/mlruns`, so a fresh clone trains with no server. MLflow 3 keeps that
-directory store behind `MLFLOW_ALLOW_FILE_STORE`, which the command sets for
+`MLFLOW_TRACKING_URI` when it is set, otherwise a plain directory of runs and
+registered versions at `data/mlruns`, so a fresh clone trains, registers,
+promotes and serves with no server at all. MLflow 3 keeps that directory store
+behind `MLFLOW_ALLOW_FILE_STORE`, which each of the three commands sets for
 itself; reading the same runs with `mlflow ui --backend-store-uri data/mlruns`
 means exporting it by hand. `compose.yaml` has an
 `mlflow` service (SQLite backend, artifacts on a mounted volume, port 5000) for
-when the user interface is wanted:
+when the user interface is wanted, or when the registry has to be shared by
+more than one machine:
 
 ```bash
 docker compose up -d mlflow
@@ -390,16 +401,125 @@ export MLFLOW_TRACKING_URI=http://localhost:5000
 uv run python -m pipeline.train
 ```
 
+### The registry and the promotion step
+
+Every training run registers its model as a new version of the `win-probability`
+registered model, tagged with `holdout_logloss`, `holdout_auc`,
+`beats_baseline`, `train_to` and `holdout_to`. The baseline run is not
+registered: it is a yardstick, and a registry entry nothing can serve is a
+loaded gun. Registering unconditionally is the point, because "which models
+have we trained" and "which model are we serving" are different questions and
+the second one has its own command.
+
+`python -m pipeline.promote` answers the second. It reads the candidate's
+holdout numbers (from the version tags, falling back to the source run's
+metrics) and compares them with whatever currently holds the `production`
+alias:
+
+- `beats_baseline` must be 1, or it is refused. A model can improve on the
+  model before it and still lose to the archetype win-rate group-by, and
+  shipping that is the same numbers with a LightGBM dependency in front.
+- Then the primary metric, `--metric logloss` by default: lower is better, and
+  the candidate has to be at least as good. On an exact tie the other metric
+  breaks it (`auc`, higher is better), and a tie on both promotes, because the
+  newer version was trained on more recent games.
+- The first ever promotion has nothing to compare against, so beating the
+  baseline is the whole test.
+
+Accepted, the candidate takes the `production` alias. Refused, it takes
+`staging` and the reason is written onto the version as a `promotion_decision`
+tag and printed. Either way the command prints one line and exits 0, because a
+refusal is the gate working; exit 2 is for a candidate that does not exist.
+
+Aliases, not stages. MLflow 3 deprecates the old `Staging` and `Production`
+stages, and an alias is the better shape anyway: it is a pointer, so
+`models:/win-probability@production` is a stable address, a rollback is moving
+the pointer back, and the version's own history stays a record rather than
+something that gets edited.
+
+```
+train      -> version 4 registered, tagged, serving nothing
+promote    -> rejected: version 4 has holdout logloss 0.3682 against 0.1987 at
+              version 3. win-probability version 4 now holds @staging.
+```
+
+### Serving
+
+`python -m pipeline.serve` runs a FastAPI application (uvicorn, port 8000) that
+loads `models:/win-probability@production` and the archetype code map from that
+version's run, and answers:
+
+- `POST /predict`: one board state at the start of a turn, one win probability,
+  with the model name, version and alias that produced it. `prize_diff` is
+  computed when it is left out. An archetype the model never trained on is
+  encoded as the missing category the trainer uses for exactly that case and
+  named back in `unknown_archetypes`, rather than rejected: the metagame moves
+  every set release, and a 422 would make the ordinary case an error.
+- `GET /health`: liveness and `model_loaded`.
+- `GET /model`: which version is loaded, when, and its holdout numbers.
+- `POST /reload`: re-read the alias, so a promotion reaches the service without
+  a restart.
+
+It loads by alias rather than by version, which is what makes the promotion
+step a deployment: `promote` moves the pointer, `/reload` picks it up, and no
+image is rebuilt. It also means an empty registry is a state and not a crash.
+A service that exited because nothing is promoted yet would tell an
+orchestrator the image is broken; instead it starts, `/health` reports
+`model_loaded: false`, and `/predict` answers 503 with the two commands that
+fix it.
+
+The request and response models are Pydantic with a description on every field,
+so `/docs` is the schema rather than a separate document, and the feature list
+itself lives in `pipeline/ml_features.py`, imported by both the trainer and the
+service. A test asserts the request fields are exactly that list.
+
+```bash
+uv run python -m pipeline.serve &
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
+  "turn_number": 8, "went_first": true,
+  "archetype_key": "name:charizard-ex", "opponent_archetype_key": "name:gardevoir-ex",
+  "prizes_taken_self": 3, "prizes_taken_opp": 1,
+  "knockouts_self": 3, "knockouts_opp": 1, "cards_drawn_self": 26,
+  "energy_attached_self": 5, "pokemon_played_self": 6, "trainers_played_self": 15,
+  "evolutions_self": 2, "attacks_self": 4, "turns_played_self": 4 }'
+```
+
+```json
+{"win_probability": 0.4469, "model_name": "win-probability",
+ "model_version": "3", "model_alias": "production",
+ "features_used": ["turn_number", "..."], "unknown_archetypes": []}
+```
+
+`compose.yaml` has a `predict` service (built from `Dockerfile.serve`, port
+8000, `MLFLOW_TRACKING_URI` pointed at the `mlflow` service) for running it
+next to the tracking server. The image carries no model, on purpose.
+
 ### Tests
 
-`tests/test_train.py` (marker `ml`, skipped by the default run, and the only
-slow suite that needs no Java) builds a synthetic `features_turn` straight into
-a temporary DuckDB file, with a signal planted in `prize_diff`, and runs the
-whole command against it into a temporary tracking directory. It asserts the
-run exists with the required parameters, metrics and artifacts, that the logged
-model loads and returns probabilities in [0, 1], that the baseline run exists
-and loses to the planted signal, and that the last training day is before the
-first holdout day.
+`tests/test_train.py` and `tests/test_promote.py` (marker `ml`, skipped by the
+default run, and the only slow suites that need no Java) build a synthetic
+`features_turn` straight into a temporary DuckDB file, with a signal planted in
+`prize_diff`, and run the real commands against it into a temporary tracking
+directory. The training tests assert the run exists with the required
+parameters, metrics and artifacts, that the logged model loads and returns
+probabilities in [0, 1], that the baseline run exists and loses to the planted
+signal, and that the last training day is before the first holdout day. The
+promotion tests train three versions in a row, a short run, a single boosting
+round on two leaves, and a long run, and assert that the first takes
+`production`, that the deliberately broken second is refused with its reason on
+the version and `production` unmoved, that the third moves the alias, and that
+a candidate that does not exist exits 2. The rule itself is also tested
+directly on hand-built versions, for the ties and the undefined metrics three
+training runs cannot be made to produce on demand.
+
+`tests/test_serve.py` is in the **fast** suite, not the `ml` one. The loader is
+injected, so the endpoints are driven with a stub model through Starlette's
+test client: no tracking server, no registry, no LightGBM. It covers the four
+endpoints, a probability in [0, 1] carrying its version, an unknown archetype
+reported rather than refused, a malformed body as a 422, and `/reload` swapping
+the loaded version. What needs a real registry is tested against one in the
+promotion suite; what needs neither should not cost a model train.
 
 ### The honest claim
 
@@ -418,12 +538,16 @@ than a percentile of everything, and the tracking store becomes the compose
 service or a hosted one. Cross-validation over time folds becomes worth its
 runtime, which at 28 games it is not.
 
-## 5. Serving (planned, FastAPI)
+## 5. Serving (in progress, FastAPI)
 
-A small FastAPI service that loads the registered model and answers
-`POST /predict` with archetype pair and optional early-game features, and
-`GET /matchups/{archetype}` from the gold marts. It reads DuckDB read-only and
-never touches bronze.
+`POST /predict` is live; it is documented in stage 4, next to the registry and
+the alias it loads by, because the three commands are one loop and splitting
+them across two sections would hide that. `python -m pipeline.serve` is the
+command and `compose.yaml`'s `predict` service is the container.
+
+Still planned: `GET /matchups/{archetype}` straight from the gold marts, over a
+read-only DuckDB connection, so the application can ask for a matchup table
+without the model being involved at all. It would never touch bronze.
 
 ## 6. Agent (planned, LangChain)
 

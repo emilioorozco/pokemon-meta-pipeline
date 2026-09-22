@@ -4070,11 +4070,14 @@ dbt = [
     { name = "dbt-duckdb" },
 ]
 ml = [
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "lightgbm" },
     { name = "matplotlib" },
     { name = "mlflow" },
     { name = "pandas" },
     { name = "scikit-learn" },
+    { name = "uvicorn" },
 ]
 orchestration = [
     { name = "apache-airflow" },
@@ -4087,6 +4090,8 @@ spark = [
 dev = [
     { name = "boto3-stubs", extra = ["s3"] },
     { name = "dbt-duckdb" },
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "lightgbm" },
     { name = "matplotlib" },
@@ -4102,6 +4107,7 @@ dev = [
     { name = "ruff" },
     { name = "scikit-learn" },
     { name = "types-jsonschema" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -4110,6 +4116,8 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34" },
     { name = "dbt-duckdb", marker = "extra == 'dbt'", specifier = ">=1.9" },
     { name = "duckdb", specifier = ">=1.0" },
+    { name = "fastapi", marker = "extra == 'ml'", specifier = ">=0.110" },
+    { name = "httpx", marker = "extra == 'ml'", specifier = ">=0.27" },
     { name = "lightgbm", marker = "extra == 'ml'", specifier = ">=4.3" },
     { name = "matplotlib", marker = "extra == 'ml'", specifier = ">=3.8" },
     { name = "mlflow", marker = "extra == 'ml'", specifier = ">=3" },
@@ -4119,6 +4127,7 @@ requires-dist = [
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "scikit-learn", marker = "extra == 'ml'", specifier = ">=1.4" },
+    { name = "uvicorn", marker = "extra == 'ml'", specifier = ">=0.29" },
 ]
 provides-extras = ["spark", "dbt", "ml", "orchestration"]
 
@@ -4126,6 +4135,8 @@ provides-extras = ["spark", "dbt", "ml", "orchestration"]
 dev = [
     { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.34" },
     { name = "dbt-duckdb", specifier = ">=1.9" },
+    { name = "fastapi", specifier = ">=0.110" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21" },
     { name = "lightgbm", specifier = ">=4.3" },
     { name = "matplotlib", specifier = ">=3.8" },
@@ -4141,6 +4152,7 @@ dev = [
     { name = "ruff", specifier = ">=0.5" },
     { name = "scikit-learn", specifier = ">=1.4" },
     { name = "types-jsonschema", specifier = ">=4.21" },
+    { name = "uvicorn", specifier = ">=0.29" },
 ]
 
 [[package]]
