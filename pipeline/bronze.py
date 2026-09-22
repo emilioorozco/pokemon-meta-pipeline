@@ -14,6 +14,18 @@ of appending duplicates, and there is no dedupe step downstream. Writes are
 atomic per partition: the file lands under a temporary name in the partition
 directory and is moved into place with `os.replace`.
 
+`write_partitions` is the batch write, for a caller that holds every game of a
+day at once (the backfill). `upsert_records` and `delete_game` are the
+single-game writes, for a caller that holds one game (the event consumer): they
+read the partition, drop the rows for the game ids they are about to write or
+remove, and rewrite the partition through the same atomic replace, so bronze has
+one writer and one on-disk layout whichever command is running. Both are a
+read-modify-write of a whole day, which at a few dozen rows per partition costs
+less than the machinery to avoid it; `find_by_source_key` is the matching read,
+a scan of every partition for one `source_key`. What changes at scale is in
+`upsert_records`.
+
+
 Why the schema is pinned from the contract models rather than inferred: with
 inference, a batch where every game happens to lack `summary.elo` produces a
 null-typed column while another batch produces a struct, and a reader spanning
@@ -52,6 +64,7 @@ from typing import Any, Final, Literal, Union, get_args, get_origin
 
 import duckdb
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
@@ -99,6 +112,14 @@ class BronzeRecord:
     source_key: str
     source_version_id: str | None = None
     source_last_modified: datetime | None = None
+
+
+@dataclass(frozen=True)
+class LandedGame:
+    """A game that is in bronze: which game, and which partition holds it."""
+
+    game_id: str
+    play_date: str
 
 
 def play_date_for(blob: ParsedBlobV2) -> str:
@@ -177,6 +198,90 @@ def write_partitions(
     return written
 
 
+def upsert_records(
+    records: Iterable[BronzeRecord],
+    bronze_dir: Path,
+    ingested_at: datetime,
+    *,
+    real_handles: set[str] | None = None,
+) -> dict[str, int]:
+    """Land the records without dropping the games already in their partitions.
+
+    The single-game counterpart of `write_partitions`: each touched partition is
+    read, the rows whose `game_id` this call is about to write are dropped, the
+    new rows are appended and the partition is written back through the same
+    atomic replace. Landing the same game twice therefore leaves one row for it
+    and leaves every other game of that day alone, which is what an event
+    consumer needs and what a plain `write_partitions` of one game would destroy.
+    Returns the rows this call landed per date, not the size of the partitions.
+
+    At scale this read-modify-write is the wrong shape: a day with a million
+    rows would be rewritten per event. The replacements are then an append-only
+    file per event plus a periodic compaction, or a table format (Apache Iceberg,
+    Delta Lake) that does the row-level upsert itself. At a few dozen rows per
+    day, rewriting the day is cheaper than either.
+    """
+    batch = list(records)
+    if real_handles:
+        _check_no_leaks(batch, real_handles)
+
+    by_date: dict[str, list[dict[str, Any]]] = {}
+    for record in batch:
+        row = to_row(record, ingested_at)
+        by_date.setdefault(row["play_date"], []).append(row)
+
+    written: dict[str, int] = {}
+    for date in sorted(by_date):
+        rows = by_date[date]
+        partition_dir = bronze_dir / f"play_date={date}"
+        fresh = pa.Table.from_pylist(rows, schema=bronze_schema())
+        kept = _without_games(_partition_table(partition_dir), {row["game_id"] for row in rows})
+        _write_partition_table(partition_dir, pa.concat_tables([kept, fresh]))
+        written[date] = len(rows)
+    return written
+
+
+def delete_game(bronze_dir: Path, play_date: str, game_id: str) -> int:
+    """Remove one game from its partition; returns the rows removed (0 or 1).
+
+    The partition is rewritten without the game, and a partition left with no
+    rows is removed entirely rather than kept as an empty file, so a day that
+    has been fully deleted upstream disappears from the dataset instead of
+    reading back as a day with no games.
+    """
+    partition_dir = bronze_dir / f"play_date={play_date}"
+    existing = _partition_table(partition_dir)
+    if existing is None:
+        return 0
+    kept = _without_games(existing, {game_id})
+    removed = existing.num_rows - kept.num_rows
+    if not removed:
+        return 0
+    if kept.num_rows:
+        _write_partition_table(partition_dir, kept)
+    else:
+        shutil.rmtree(partition_dir, ignore_errors=True)
+    return removed
+
+
+def find_by_source_key(bronze_dir: Path, source_key: str) -> LandedGame | None:
+    """The game landed from `source_key`, found by scanning every partition.
+
+    The lookup a delete event needs: the object is already gone from S3, so its
+    play date cannot be read off the blob and the only record of where the row
+    went is bronze itself. Two columns of every partition file are read, which is
+    cheap for a corpus this size and linear in partitions as it grows; the scale
+    fix is a small `game_id -> play_date` index (a sidecar table, or the
+    warehouse) written alongside each partition and read here instead.
+    """
+    for path in sorted(bronze_dir.glob(f"play_date=*/{PART_FILENAME}")):
+        table = pq.read_table(path, columns=["game_id", "source_key", "play_date"])
+        for row in table.to_pylist():
+            if row["source_key"] == source_key:
+                return LandedGame(game_id=str(row["game_id"]), play_date=str(row["play_date"]))
+    return None
+
+
 def read_smoke(bronze_dir: Path) -> list[tuple[str, int]]:
     """Games per play date, read back out of the written Parquet with DuckDB.
 
@@ -225,7 +330,31 @@ def bronze_schema() -> pa.Schema:
 
 def _write_partition(partition_dir: Path, rows: list[dict[str, Any]]) -> None:
     """Replace one partition directory with a single Parquet file."""
-    table = pa.Table.from_pylist(rows, schema=bronze_schema())
+    _write_partition_table(partition_dir, pa.Table.from_pylist(rows, schema=bronze_schema()))
+
+
+def _partition_table(partition_dir: Path) -> pa.Table | None:
+    """The partition as written, or None when the day holds nothing yet."""
+    path = partition_dir / PART_FILENAME
+    if not path.is_file():
+        return None
+    return pq.read_table(path)
+
+
+def _without_games(table: pa.Table | None, game_ids: set[str]) -> pa.Table:
+    """The partition minus those games; an absent partition reads as no rows.
+
+    The rows that stay are kept as Arrow rather than as Python dicts, so a
+    rewrite never re-derives a value: what was written is what is written back.
+    """
+    if table is None:
+        return bronze_schema().empty_table()
+    listed = pa.array(sorted(game_ids), pa.string())
+    return table.filter(pc.invert(pc.is_in(table.column("game_id"), value_set=listed)))
+
+
+def _write_partition_table(partition_dir: Path, table: pa.Table) -> None:
+    """Replace one partition directory with a single Parquet file."""
     shutil.rmtree(partition_dir, ignore_errors=True)
     partition_dir.mkdir(parents=True, exist_ok=True)
     target = partition_dir / PART_FILENAME

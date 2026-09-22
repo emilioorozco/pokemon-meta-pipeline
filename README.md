@@ -130,6 +130,7 @@ is a prompt to look, and `train` then `promote` is what acts on it.
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
+uv run python -m pipeline.consume                              # drain the event queue into bronze
 uv run python -m pipeline.silver                               # bronze -> silver, needs Java
 uv run python -m pipeline.gold                                 # silver -> gold, dbt on DuckDB
 uv run python -m pipeline.train                                # gold -> model, tracked in MLflow
@@ -200,6 +201,11 @@ Query the result with DuckDB, which reads the Parquet files in place:
 ```bash
 uv run python -c "import duckdb; duckdb.sql(\"select play_date, count(*) games from read_parquet('data/lake/bronze/**/*.parquet', hive_partitioning=true) group by 1 order by 1\").show()"
 ```
+
+The event path exists as a command: `python -m pipeline.consume` drains S3
+notifications from an SQS queue into the same bronze write and removes a game
+when its object is deleted, with the queue, its dead-letter queue and the bucket
+notification still to be deployed ([docs/stages.md](docs/stages.md)).
 
 The four test commands are one suite split by cost: the default run skips
 anything marked `spark`, `dbt` or `ml`, `-m spark` runs the silver tests, each
@@ -302,6 +308,7 @@ here. Access is configured through environment variables (`.env.example`):
 ```
 PRA_BUCKET        S3 bucket that holds parsed/{userId}/{gameId}.json
 PRA_PREFIX        key prefix to read, default parsed/
+PRA_QUEUE_URL     SQS queue of S3 events; needed by the consumer, not the backfill
 AWS_REGION        bucket region, default us-west-2
 AWS_PROFILE       optional named AWS profile
 HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
@@ -315,7 +322,7 @@ quarantines the rest under `data/lake/quarantine/` with a reason code.
 ## Layout
 
 ```
-pipeline/          Python package: contract, anonymization, bronze, backfill
+pipeline/          Python package: contract, anonymization, bronze, backfill, consumer
 pipeline/legacy/   deprecated first source (Kaggle corpus), kept for reference
 contract/          parsed-blob.schema.json, copied verbatim from the producer
 scripts/           maintenance commands, including the fixture refresh
@@ -328,7 +335,8 @@ dbt/               dbt project (DuckDB): sources, staging views, star schema,
                    marts, its own tests, and the committed profiles.yml
 dbt/models/ml/     the model's training data: scope rules, split cutoff,
                    features_turn
-compose.yaml       local services: the MLflow tracking server and the predict API
+compose.yaml       local services: MLflow, the predict API and the consumer
+Dockerfile         the consumer as a container; compose.yaml runs it
 Dockerfile.serve   image for the predict service; carries no model, loads the alias
 dags/              planned: Airflow DAG definitions
 ```

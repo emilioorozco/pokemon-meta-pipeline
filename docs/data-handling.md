@@ -102,11 +102,17 @@ with no opponent decklist in any of them.
 ## Deletion requests
 
 A member asks an admin to delete a game or all of their games. The admin
-deletes the game in the application, which removes its S3 objects. Today the
-next backfill run rewrites each touched `play_date` partition in full from
-what is in S3, so the deleted game drops out of bronze. Once the event-driven
-path exists, the S3 delete event removes the game from bronze without waiting
-for a backfill. Either way, silver and gold are rebuilt from bronze and follow.
+deletes the game in the application, which removes its S3 objects. Two things
+then take it out of bronze, and neither needs the member to ask twice. The
+next backfill run rewrites each touched `play_date` partition in full from what
+is in S3, so the deleted game drops out. And when the consumer
+(`python -m pipeline.consume`) is running, the S3 delete event removes the game
+from its partition within seconds: the row is found by its `source_key`, the
+partition is rewritten without it, and a partition left with no games is
+removed. The consumer is the faster path and the backfill is the one that is
+always true, so a deletion that happened while no consumer was up is still
+applied by the next run. Either way, silver and gold are rebuilt from bronze
+and follow.
 
 The minimum a deletion flow needs, and what this design provides: a way to
 ask (the admin), a way to find every copy (bronze partition by play date,
@@ -131,4 +137,6 @@ that a member can ask an admin to delete their games at any time.
 
 - Dev bucket exclusion is by configuration (`PRA_BUCKET` points at one
   environment) and is not yet enforced in code.
-- Deletion is batch (next backfill run) until the event-driven path lands.
+- Deletion propagates on the S3 delete event when the consumer is running and
+  at the next backfill otherwise. The queue the consumer reads is not deployed
+  yet, so today it is the backfill in practice.
