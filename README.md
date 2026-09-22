@@ -42,6 +42,8 @@ HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
 PIPELINE_DATA_DIR where the lake and warehouse are written, default ./data
 ```
 
+Data handling, anonymization and deletion: see [docs/data-handling.md](docs/data-handling.md).
+
 ## Layout
 
 ```
