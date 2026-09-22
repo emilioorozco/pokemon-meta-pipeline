@@ -300,6 +300,16 @@ so a task runs the working tree and only a dependency change needs a rebuild.
 event-driven consumer is the one landing bronze. Details in
 [docs/stages.md](docs/stages.md) section 7.
 
+AWS (Amazon Web Services) Step Functions, the managed alternative in the
+roadmap below, stayed a design rather than a build: this pipeline already has
+an orchestrator that runs anywhere Docker does, with one command and no AWS
+account, and standing up a state machine, an ECS (Elastic Container Service)
+task role and a database for MLflow to run what a laptop already runs
+correctly would be infrastructure with no user. The design, a state machine
+mirroring the DAG above one to one, its retries, its cost, and when it would
+actually be worth building, is in
+[docs/orchestration-on-aws.md](docs/orchestration-on-aws.md).
+
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
 disallowed, all four pytest runs with a 70% coverage floor on the combined
@@ -448,6 +458,8 @@ orchestration/airflow/dags/  the DAG: one BashOperator per stage command
 - [data-handling.md](docs/data-handling.md) collection, anonymization, what is
   never published, deletion and key rotation
 - [demo.md](docs/demo.md) running the pipeline on the fixtures, no AWS account
+- [orchestration-on-aws.md](docs/orchestration-on-aws.md) the Step Functions
+  design that replaced the AWS stretch goal, and why it was not built
 - [adr/](docs/adr/) architecture decision records
 
 The original stage 1, built against a finished Kaggle competition's replay
