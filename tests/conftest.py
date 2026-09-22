@@ -77,6 +77,30 @@ def bronze_from_fixtures(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return bronze_dir
 
 
+@pytest.fixture(scope="session")
+def silver_from_fixtures(
+    spark: "SparkSession",
+    bronze_from_fixtures: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """A whole data directory with the fixture bronze and a silver run beside it.
+
+    Returns the root, not the silver directory, because that root is what
+    `PIPELINE_DATA_DIR` names: the dbt sources resolve
+    `$PIPELINE_DATA_DIR/lake/silver/<table>/**/*.parquet`, so the layout here
+    has to be the layout a real run writes. `run_silver` raises on a failed
+    reconciliation, so a broken silver build fails the gold tests at setup
+    rather than as a wrong number later.
+    """
+    from pipeline import silver
+
+    root = tmp_path_factory.mktemp("datadir")
+    lake = root / "lake"
+    shutil.copytree(bronze_from_fixtures, lake / "bronze")
+    silver.run_silver(spark, lake / "bronze", lake / "silver", CATALOG_PATH)
+    return root
+
+
 @pytest.fixture
 def scratch_bronze(bronze_from_fixtures: Path, tmp_path: Path) -> Path:
     """A writable copy of the fixture bronze, for a test that adds a partition of its own."""
