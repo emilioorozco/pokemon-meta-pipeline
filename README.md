@@ -55,8 +55,8 @@ flowchart LR
   SRV --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ done
-  class SQS,SLV,GLD,SRV,AGT,AIR,PUB,DASH planned
+  class UP,API,S3,DDB,BF,BRZ,SLV done
+  class SQS,GLD,SRV,AGT,AIR,PUB,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -78,10 +78,18 @@ Bronze ingest is real. The backfill has run against the production bucket:
 **128 games, 0 quarantined, 10 play-date partitions**, all handles anonymized
 and leak-checked before anything was written.
 
+Silver is real too. `python -m pipeline.silver` reads those bronze partitions
+with PySpark and writes four tables (`games`, `game_sides`, `turns`,
+`cards_seen`), archetype names resolved through an alias map built from bronze
+itself and non-member tokens dropped, then reconciles the row counts against
+bronze and exits non-zero if they do not add up.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
-uv run pytest                                                  # unit and contract tests
+uv run python -m pipeline.silver                               # bronze -> silver, needs Java
+uv run pytest                                                  # fast suite, no JVM
+uv run pytest -m spark                                         # silver tests, needs Java 17+
 ```
 
 `op run` is the 1Password command-line interface; it injects `HANDLE_HMAC_KEY`
@@ -96,10 +104,16 @@ Query the result with DuckDB, which reads the Parquet files in place:
 uv run python -c "import duckdb; duckdb.sql(\"select play_date, count(*) games from read_parquet('data/lake/bronze/**/*.parquet', hive_partitioning=true) group by 1 order by 1\").show()"
 ```
 
+The two test commands are one suite split by cost: the default run skips
+anything marked `spark`, and `-m spark` runs only those, each of which starts a
+Java Virtual Machine (JVM). CI runs both and gates on their combined coverage.
+`scripts/fetch_catalog.py` downloads the card catalog silver joins against; the
+stage runs without it, with null catalog columns.
+
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
-disallowed, `pytest` with a 70% coverage floor, and the checked-in contract
-file tested against the reader.
+disallowed, both pytest runs with a 70% coverage floor on the combined number,
+and the checked-in contract file tested against the reader.
 
 ## Roadmap
 
@@ -113,7 +127,7 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
 - [x] Data-handling, consent, deletion and key-rotation policy
 - [ ] Event-driven ingest: S3 notification to an Amazon Simple Queue Service
       (SQS) queue with a dead-letter queue, drained by a consumer
-- [ ] Silver in PySpark: typed tables, cards exploded, archetypes resolved
+- [x] Silver in PySpark: typed tables, cards exploded, archetypes resolved
 - [ ] Gold in dbt on DuckDB: star schema and marts, with dbt tests
 - [ ] Win-probability model in MLflow, FastAPI serving, drift report
 - [ ] LangChain agent: structured query language (SQL) over the marts and
@@ -199,6 +213,7 @@ tests/             unit, contract and data-quality tests
 tests/fixtures/    committed anonymized stock games, no decklists
 docs/              concepts, discovery, schema, stage plan, decision records
 data/              local lake and warehouse output (gitignored)
+data/catalog/      card catalog fetched from the bucket, not committed
 dbt/               planned: dbt project (DuckDB), staging, star schema, marts
 dags/              planned: Airflow DAG definitions
 ```

@@ -177,8 +177,13 @@ detail.
 
 ## Later stages (not yet)
 
-- **Spark run** (silver): not yet. Placeholder for the PySpark job that types
-  the rows, explodes cards and events, and joins the archetype table.
+- **Spark run** (silver): runs today, but out of the timed sequence because it
+  needs Java and spends five seconds starting a Java Virtual Machine. After
+  step 5: `uv run python -m pipeline.silver --bronze-dir /tmp/demo/bronze
+  --silver-dir /tmp/demo/silver --catalog tests/catalog.json`, then query
+  `/tmp/demo/silver/game_sides/**/*.parquet` with the DuckDB snippet from step
+  5. What it proves: the grain change, the archetype alias map and the
+  reconciliation that fails the run when the counts do not add up.
 - **dbt docs** (gold): not yet. Placeholder for `dbt docs serve` over the star
   schema and the mart tests.
 - **MLflow UI**: not yet. Placeholder for the tracked win-probability runs and

@@ -96,27 +96,89 @@ becomes an S3 inventory report, the loop becomes a Spark job reading the same
 JSON, and the logic (validate, anonymize, flatten, partitioned write) does not
 change.
 
-## 2. Silver (planned, PySpark)
+## 2. Silver (in progress, PySpark)
 
-Input: bronze tables, `catalog/cards.json`, the archetype table and its alias
-tombstones exported from the application.
+Input: the bronze Parquet tables and, optionally, the card catalog
+(`data/catalog/cards.json`, fetched by `scripts/fetch_catalog.py`). No archetype
+export is needed: the alias map is built from bronze itself, see below.
 
-Output tables:
+Command: `python -m pipeline.silver` (`--bronze-dir`, `--silver-dir`,
+`--catalog`, `--master`). It needs a Java Virtual Machine (JVM); everything else
+is the `spark` extra.
 
-- `silver.game_seat`: typed, `excluded_from_stats` rows dropped, `is_owner`
-  and `is_winner` resolved, archetype name resolved through aliases to a
-  canonical `archetype_key`, season attached.
-- `silver.seat_card`: one row per (game, seat, card) from `observed_cards`
-  and, where present, `decklist_cards`, with a `card_source` of `observed` or
-  `decklist`, joined to the catalog by `card_id` or lowercased name.
-- `silver.game_event`: typed events with `turn_number`, `actor_seat`, and the
-  numeric `fields` (`n`, `damage`) promoted to columns.
-- Derived features per seat: prizes taken by turn, first knockout turn, energy
-  attached by turn 3, distinct attackers, went first.
+Bronze is one nested row per game. Silver is the grain change, four tables under
+`data/lake/silver/<table>/play_date=YYYY-MM-DD/`:
 
-Why Spark: the joins and explodes are where data grows (events are the largest
-table by far, cards per seat multiply rows). The same job runs on a laptop
-in local mode and on a cluster unchanged.
+- `games`: one row per game. Identity and lineage (`game_id`, `user_id`,
+  `play_date`, `played_at`, `source_key`, `ingested_at`, `contract_version`),
+  the export's own description of itself (`export_variant`, `upload_source`,
+  `parser_version`, `unparsed_count`, `played_at_source`, `has_full_decklists`,
+  `excluded_from_stats`, `season_id`, `season_name`), and the outcome with every
+  handle already resolved to a seat: `result` (the uploader's), `winner_seat`,
+  `went_first_seat`, `coin_toss_winner_seat`, `first_player`, `my_side`,
+  `turn_count`, `end_reason`.
+- `game_sides`: two rows per game, seat 0 and seat 1. `is_uploader`,
+  `player_token`, `is_member`, the archetype columns (`archetype_id`,
+  `archetype_name`, `archetype_name_raw`, `archetype_source`),
+  `result_for_seat`, `went_first`, one `stats_*` column per `SideStats` counter,
+  and the seat's decklist facts (`decklist_source`, `decklist_complete`,
+  `decklist_card_count`). This is the grain the gold fact table is built on.
+- `turns`: one row per turn segment. `turn_number`, `seat`, `n_entries` and nine
+  counters by action kind (`n_draw`, `n_attach`, `n_attack`, `n_play_pokemon`,
+  `n_play_trainer`, `n_evolve`, `n_retreat`, `n_knockout`, `n_prize_taken`),
+  plus `concession`. Every action line in the segment is counted, the top-level
+  entries and the sub-entries under them alike, because the draw a Professor's
+  Research causes is printed as a sub-entry of the line that played it. A kind
+  with no counter still lands in `n_entries`. No `fields_json` is parsed here.
+- `cards_seen`: one row per (game, seat, card) from `summary.observedCards`,
+  left joined to the card catalog.
+
+Three rules are worth stating on their own.
+
+**Archetype aliases.** An archetype is renamed upstream by editing one shared
+row, and the rename reaches a game only the next time that game is written, so
+older bronze rows keep the old label forever. Silver therefore builds the alias
+map out of bronze: for each `archetype_id`, the canonical name is the one the
+most recently ingested game gives it, and every other game carrying that id
+inherits it. The label the row actually arrived with is kept as
+`archetype_name_raw`, so the rename is visible rather than erased. Ties inside a
+run break on play date and then game id, so the map is the same on every rerun.
+
+**Strangers.** `member_tokens` is the set of player tokens that hold an uploader
+seat somewhere in bronze. Every other token belongs to somebody who was matched
+against a member and never uploaded anything, so they never saw the in-app
+notice and never consented to anything. Those tokens are written as NULL in
+`game_sides.player_token` and anywhere else a token could reach a column, and
+`is_member` records which is which. See [data-handling.md](data-handling.md).
+
+**Reconciliation.** After the write the run asserts `games_in == games_out`,
+`game_sides == 2 * games` and no duplicate `(game_id, seat, card_id)` in
+`cards_seen`, prints each check and the per-table row counts, and exits non-zero
+on a failure. The tables are on disk either way: a run that dropped half the
+games is worse silent than loud.
+
+Two shapes of the real data decide how cards are keyed, and both are the
+opposite of what the field names suggest. `observedCards` never carries a
+`cardId`, in a stock or a debug export, because it is derived from the battle
+log and the log prints names. A decklist reference is the mirror image: card ids
+and no names. So `cards_seen.card_id` is the identity silver can actually
+resolve, the reference's `cardId` when it has one, else its `baseCardId`, else
+its lowercased name, which keeps the grain non-null and lets the catalog join
+hit whenever the key is a real client card id. For `in_decklist` the catalog is
+the bridge between the two key spaces: a decklist entry contributes its card id
+and, when the catalog knows that id, the lowercased catalog name. With no
+catalog the run still works, with null catalog columns and id-to-id matching,
+but `in_decklist` then reads false everywhere and is not worth querying until
+the catalog has been fetched.
+
+Why Spark: the joins and explodes are where data grows (cards per seat and turns
+per game multiply rows). The same job runs on a laptop in local mode and on a
+cluster unchanged.
+
+At 1000x, what changes is configuration, not code: the master URL (`--master`
+or `PRA_SPARK_MASTER`), the input and output paths becoming `s3a://`, and
+`spark.sql.shuffle.partitions`, which is 8 here because a laptop run with the
+default 200 spends more time on empty tasks than on work.
 
 ## 3. Gold (planned, dbt on DuckDB)
 
@@ -197,16 +259,16 @@ querying the warehouse. Only the public-safe subset (section 3) is published.
 
 ## Open items
 
-- Manual games: `exportVariant: "manual"` games have no blob in `parsed/`. The
-  pipeline cannot see them until upstream either writes a summary-only v2 blob
-  for them or the project decides they stay out of scope. Until then, marts
-  state "uploaded games only".
+- Manual games: `exportVariant: "manual"` games now arrive as summary-only v2
+  blobs, so bronze lands them and silver gives them a `games` row and two
+  `game_sides` rows with null counters, no turns and no cards seen. Any mart
+  that counts turns or cards has to exclude them explicitly.
 - v1 backfill: v1 blobs are quarantined, not landed, because they carry no play
   date. An upstream admin re-parse rewrites them as v2 and the next run picks
   them up with no code change here.
-- Archetype and alias export: silver needs the application's archetype rows
-  (with `mergedInto` tombstones). The export format (a JSON object under the
-  bucket, or an API call) is not decided.
+- Archetype tombstones: the alias map is derived from bronze, which handles a
+  rename but not a merge of two archetype ids into one. A `mergedInto` export
+  from the application is still the only way to collapse those.
 
 ## History
 

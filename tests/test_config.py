@@ -27,8 +27,16 @@ def test_defaults_are_repo_relative() -> None:
     assert (
         root / "lake",
         root / "lake" / "bronze",
+        root / "lake" / "silver",
+        root / "catalog" / "cards.json",
         root / "warehouse" / "meta.duckdb",
-    ) == (config.LAKE_DIR, config.BRONZE_DIR, config.WAREHOUSE_PATH)
+    ) == (
+        config.LAKE_DIR,
+        config.BRONZE_DIR,
+        config.SILVER_DIR,
+        config.CATALOG_PATH,
+        config.WAREHOUSE_PATH,
+    )
 
 
 def test_env_override_moves_every_derived_path(reloaded_config: Path) -> None:
@@ -36,5 +44,13 @@ def test_env_override_moves_every_derived_path(reloaded_config: Path) -> None:
     assert (
         root,
         root / "lake" / "bronze",
+        root / "lake" / "silver",
+        root / "catalog" / "cards.json",
         root / "warehouse" / "meta.duckdb",
-    ) == (config.PIPELINE_DATA_DIR, config.BRONZE_DIR, config.WAREHOUSE_PATH)
+    ) == (
+        config.PIPELINE_DATA_DIR,
+        config.BRONZE_DIR,
+        config.SILVER_DIR,
+        config.CATALOG_PATH,
+        config.WAREHOUSE_PATH,
+    )

@@ -264,15 +264,161 @@ never published. The sidecar is the part that gets grepped, pasted into an
 issue and read across runs, so it carries no handle: `detail` holds paths and
 validator messages only, and a leaking dict key is reported as `<key>`.
 
-## 8. Quirks and the column that carries each
+## 8. Silver tables
+
+Parquet under `data/lake/silver/<table>/play_date=YYYY-MM-DD/`, written by
+`python -m pipeline.silver` (PySpark). Every table is partitioned by
+`play_date`, written with dynamic partition overwrite so a rerun replaces only
+the days it touches, and projected onto a schema pinned in
+`pipeline.silver.SILVER_SCHEMAS` rather than inferred from the batch, for the
+same reason bronze pins its own. Silver filters nothing: excluded games and
+manual games are present and flagged, and gold decides what to drop.
+
+### 8.1 `games`
+
+One row per game.
+
+| Column | Type | Nullable | From |
+|---|---|---|---|
+| `game_id` | string | no | `summary.gameId` |
+| `user_id` | string | no | `summary.userId` |
+| `play_date` (partition) | date | no | bronze partition |
+| `played_at` | timestamp | no | `summary.playedAt` |
+| `played_at_source` | string | yes | `summary.playedAtSource` |
+| `export_variant` | string | no | `stock`, `debug` or `manual` |
+| `upload_source` | string | yes | `summary.uploadSource` |
+| `turn_count` | int | no | `summary.turnCount` |
+| `end_reason` | string | no | `summary.endReason` |
+| `result` | string | no | the uploader's result, as the summary records it |
+| `winner_seat` | int | yes | position of `summary.winner` in `summary.players` |
+| `went_first_seat` | int | yes | `summary.wentFirst` read against `mySide` |
+| `coin_toss_winner_seat` | int | yes | `summary.wonCoinToss` read against `mySide` |
+| `first_player` | int | yes | seat of the player of the first `turn` segment |
+| `excluded_from_stats` | boolean | no | `summary.excludedFromStats`, null read as false |
+| `has_full_decklists` | boolean | yes | `summary.hasFullDecklists` |
+| `my_side` | int | yes | `summary.mySide` |
+| `season_id`, `season_name` | string | yes | `summary` |
+| `parser_version`, `unparsed_count`, `contract_version` | int | no | `summary`, bronze |
+| `source_key` | string | no | bronze |
+| `ingested_at` | timestamp | no | bronze |
+
+`went_first_seat` and `first_player` answer the same question from two sources:
+the summary's `wentFirst` flag read against `mySide`, and the player named in
+the header of the log's first turn. On the current corpus they agree on all 124
+games that have a log. Both are kept because that agreement is a cheap ongoing
+check on the producer's seat resolution, and it is the kind of thing that breaks
+quietly: the legacy stage's `firstPlayer = -1` sentinel gave both seats
+`went_first = false` until a check like this one caught it.
+
+### 8.2 `game_sides`
+
+Two rows per game, seat 0 and seat 1. The grain gold's fact table is built on.
+
+| Column | Type | Nullable | From |
+|---|---|---|---|
+| `game_id`, `play_date` | string, date | no | `games` |
+| `seat` | int | no | 0 or 1 |
+| `is_uploader` | boolean | no | `seat == summary.mySide` |
+| `player_token` | string | yes | `summary.players[seat]`, NULL for a stranger |
+| `is_member` | boolean | no | the token holds an uploader seat somewhere in bronze |
+| `archetype_id` | string | yes | `myArchetypeId` or `opponentArchetypeId` |
+| `archetype_name` | string | yes | the canonical name for that id, see 8.5 |
+| `archetype_name_raw` | string | yes | the label this row arrived with |
+| `archetype_source` | string | yes | `auto`, `user`, `manual` or null |
+| `result_for_seat` | string | no | `win`, `loss`, `tie` or `unknown` |
+| `went_first` | boolean | yes | `went_first_seat == seat` |
+| `stats_*` | int or list of string | yes | one column per `SideStats` field (section 5), matched to the seat by handle; null for a manual game |
+| `decklist_source`, `decklist_complete`, `decklist_card_count` | string, boolean, int | yes | the seat's decklist (section 6), null when it shared none |
+
+The uploader's archetype comes from `myArchetype`, and when no shared archetype
+row is linked, from the deck record the upload was attached to (`deckName`, then
+`myDeckMeta.deckName`); the opponent's comes from `opponentArchetype`. A manual
+game with no archetype row for the opponent falls back to the name the uploader
+typed, which bronze has already replaced with a token, so the stranger rule in
+8.5 applies to it like any other token.
+
+### 8.3 `turns`
+
+One row per `turn` segment.
+
+| Column | Type | Nullable | From |
+|---|---|---|---|
+| `game_id`, `play_date` | string, date | no | `games` |
+| `turn_number` | int | yes | `segment.turnNumber` |
+| `seat` | int | yes | seat of `segment.player`, null when the header named nobody |
+| `n_entries` | int | no | every action line in the segment, entries and sub-entries |
+| `n_draw` | int | no | `opening_hand`, `draw`, `draw_named`, `mulligan_draw` |
+| `n_attach` | int | no | `attach` |
+| `n_attack` | int | no | `attack` |
+| `n_play_pokemon` | int | no | `play_pokemon` |
+| `n_play_trainer` | int | no | `play_card`, `play_stadium` |
+| `n_evolve` | int | no | `evolve` |
+| `n_retreat` | int | no | `retreat` |
+| `n_knockout` | int | no | `knockout` |
+| `n_prize_taken` | int | no | `prize` |
+| `concession` | boolean | no | a `concede` line in this segment |
+
+The buckets follow the producer's own `deriveStats` definitions (section 5), so
+a counter summed over a game matches the side counter it came from. `drawn_cards`
+is deliberately in no bucket: it is the sub-entry that lists what a `draw` drew,
+so counting it would count the same draw twice. A kind in no bucket still counts
+toward `n_entries`. A manual game has no segments and therefore no turn rows.
+
+### 8.4 `cards_seen`
+
+One row per (game, seat, card) from `summary.observedCards`, deduplicated.
+
+| Column | Type | Nullable | From |
+|---|---|---|---|
+| `game_id`, `play_date` | string, date | no | `games` |
+| `seat` | int | no | `mySide` for `observedCards.me`, the other seat for `.opponent` |
+| `card_id` | string | no | the reference's `cardId`, else `baseCardId`, else its lowercased `name` |
+| `base_card_id`, `card_name`, `set_code`, `number` | string | yes | the reference as it arrived |
+| `count_seen` | int | no | `CardRef.count` |
+| `in_decklist` | boolean | yes | the card is in that seat's decklist; null when the seat shared none |
+| `catalog_name`, `catalog_set`, `catalog_type`, `catalog_hp`, `catalog_reg` | string, string, string, int, string | yes | `catalog/cards.json`, joined LEFT on `card_id` |
+
+Why `card_id` is not simply `cardId`: `observedCards` never carries one, in a
+stock or a debug export, because it is derived from the battle log and the log
+prints names. A decklist reference is the mirror image, card ids and no names.
+The coalesce above is the identity silver can actually resolve, it is never
+null, which is what makes the grain a grain, and it matches a catalog key
+whenever the export gave a real client card id. For `in_decklist` the catalog
+bridges the two key spaces: a decklist entry contributes its card id and, when
+the catalog knows that id, the lowercased catalog name. Without the catalog
+there is no bridge, so an observed card keyed by name never matches a decklist
+keyed by id and `in_decklist` reads false for every row of a seat that shared a
+list; fetch the catalog before reading that column. A game with no `mySide`
+produces no rows, because neither list can be attached to a seat.
+
+A cards-seen row is a lower bound on a decklist, never a decklist. Section 3 of
+[data-handling.md](data-handling.md) says what may be published from it.
+
+### 8.5 Alias resolution and the stranger rule
+
+`archetype_name` is resolved through an alias map built from bronze itself: for
+each `archetype_id`, the canonical name is the one the most recently ingested
+game gives it, because a rename upstream reaches a game only when that game is
+rewritten and older rows keep the old label. `archetype_name_raw` keeps what the
+row arrived with.
+
+`player_token` is NULL unless the token holds an uploader seat somewhere in
+bronze. Opponents who never uploaded a game never saw the in-app notice, so
+their tokens are not carried into silver even in pseudonymous form;
+`is_member` records the distinction, and a manual game's typed-in opponent name
+goes through the same rule.
+
+## 9. Quirks and the column that carries each
 
 | Quirk | Where it lands |
 |---|---|
-| Cards seen are a lower bound on the deck | `game_seat.observed_cards` versus `decklist_cards`; marts label "cards seen rate" |
+| Cards seen are a lower bound on the deck | `cards_seen.in_decklist`, null unless that seat shared a list; marts label "cards seen rate" |
 | `(clientId) Name` prefixes | stripped in `fields`, still present in `text` |
-| Unparsed lines | `game.unparsed_count`, `game.unparsed_lines`, `game_event.kind = 'other'` |
-| `mySide` may be null | `game.my_side` null, `game_seat.is_owner` null, `game.result` `unknown` |
-| Excluded games | `game.excluded_from_stats`, filtered in every silver and gold model |
-| Handle changes | identity is `user_id`; `player_hash` is per handle, so one account can map to several hashes |
-| Manual games | not present in `parsed/`, therefore not in bronze today |
+| Unparsed lines | `games.unparsed_count`, bronze `unparsed_lines`, entries of kind `other` |
+| `mySide` may be null | `games.my_side` null, no seat is the uploader, `games.result` `unknown`, no `cards_seen` rows |
+| Excluded games | `games.excluded_from_stats`, kept in silver and filtered in every gold model |
+| Handle changes | identity is `user_id`; the token is per handle, so one account can map to several tokens |
+| Manual games | landed and given two `game_sides` rows, with null counters, no turns and no cards seen |
+| `observedCards` has no card ids | `cards_seen.card_id` falls back to the lowercased name (section 8.4) |
+| A decklist has no card names | `in_decklist` matches through the catalog (section 8.4) |
 | `playedAt` defaults to upload time | `play_date_source` for v1; v2 rows carry `played_at` and `uploaded_at` so the gap is measurable |
