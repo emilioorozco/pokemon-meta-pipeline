@@ -36,6 +36,7 @@ does not exist.
 """
 
 import argparse
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -50,6 +51,11 @@ from pipeline.config import (
     STAGING_ALIAS,
     default_tracking_uri,
 )
+from pipeline.observability import RunMetrics, configure_logging, emit_summary, stage_run
+
+logger = logging.getLogger(__name__)
+
+STAGE: Final = "promote"
 
 # The two metrics a version can be judged on, and which direction is better.
 LOWER_IS_BETTER: Final[dict[str, bool]] = {"logloss": True, "auc": False}
@@ -122,18 +128,19 @@ def read_version(client: MlflowClient, version: str) -> Candidate:
     )
 
 
-def latest_version(client: MlflowClient) -> str:
-    """The highest version number of the registered model, as a string.
+def latest_version(client: MlflowClient) -> str | None:
+    """The highest version number of the registered model, or None when there are none.
 
     By number rather than by creation time, because that is what "version 3" in
-    a decision line means to whoever reads it later.
+    a decision line means to whoever reads it later. None rather than an error
+    for an empty registry: a scheduled run whose trainer had no rows to train on
+    has nothing to promote, and that is a step to skip, not a run to fail. An
+    explicit `--candidate 7` that does not exist is still an error, because that
+    one was asked for by name.
     """
     versions = client.search_model_versions(f"name = '{REGISTERED_MODEL_NAME}'")
     if not versions:
-        raise PromotionError(
-            f"{REGISTERED_MODEL_NAME} has no versions in the registry at "
-            f"{client.tracking_uri}; run `python -m pipeline.train` first"
-        )
+        return None
     return str(max(int(version.version) for version in versions))
 
 
@@ -240,8 +247,10 @@ def apply(client: MlflowClient, candidate: Candidate, promote: bool, reason: str
     client.set_registered_model_alias(REGISTERED_MODEL_NAME, STAGING_ALIAS, candidate.version)
 
 
-def run_promotion(*, candidate: str, metric: str, tracking_uri: str) -> int:
-    """Compare, decide, move the alias, print one line. Returns 0 either way."""
+def run_promotion(
+    *, candidate: str, metric: str, tracking_uri: str, metrics: RunMetrics | None = None
+) -> int:
+    """Compare, decide, move the alias, report one line. Returns 0 either way."""
     if tracking_uri.startswith("file:"):
         # Same opt in the trainer makes, for the same reason: a plain directory
         # is a supported store in MLflow 3 only when this is set, and a laptop
@@ -249,12 +258,60 @@ def run_promotion(*, candidate: str, metric: str, tracking_uri: str) -> int:
         os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     client = MlflowClient(tracking_uri=tracking_uri)
     version = latest_version(client) if candidate == "latest" else candidate
+    if version is None:
+        emit_summary(
+            logger,
+            "nothing to promote",
+            {"model": REGISTERED_MODEL_NAME, "tracking_uri": tracking_uri, "promoted": False},
+            text=(
+                f"{REGISTERED_MODEL_NAME} has no versions in the registry at {tracking_uri}, so "
+                "there is nothing to judge. Run `python -m pipeline.train` first."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"promoted": False, "reason": "no registered versions"}
+        return 0
     current = read_version(client, version)
     incumbent = production_version(client)
     promote, reason = decide(current, incumbent, metric)
     apply(client, current, promote, reason)
     alias = PRODUCTION_ALIAS if promote else STAGING_ALIAS
-    print(f"{reason}. {REGISTERED_MODEL_NAME} version {current.version} now holds @{alias}.")
+    line = f"{reason}. {REGISTERED_MODEL_NAME} version {current.version} now holds @{alias}."
+    emit_summary(
+        logger,
+        "promotion decision",
+        {
+            "candidate_version": current.version,
+            "promoted": promote,
+            "alias": alias,
+            "metric": metric,
+            "reason": reason,
+            "incumbent_version": incumbent.version if incumbent else None,
+            "holdout_logloss": current.logloss,
+            "holdout_auc": current.auc,
+            "beats_baseline": current.beats_baseline,
+        },
+        text=line,
+    )
+    # One version judged, one alias moved: the rows a promotion touches are
+    # registry rows, so "in" and "out" are both one and the decision is the part
+    # worth keeping.
+    if metrics is not None:
+        metrics.rows_in = 1
+        metrics.rows_out = 1
+        metrics.rows_quarantined = 0
+        metrics.extra = {
+            "candidate_version": current.version,
+            "promoted": promote,
+            "alias": alias,
+            "metric": metric,
+            "reason": reason,
+            "incumbent_version": incumbent.version if incumbent else None,
+        }
     return 0
 
 
@@ -286,12 +343,15 @@ def main(argv: list[str] | None = None) -> int:
         help="MLflow tracking URI (default: MLFLOW_TRACKING_URI, else file:./data/mlruns)",
     )
     args = parser.parse_args(argv)
+    configure_logging(STAGE)
     try:
-        return run_promotion(
-            candidate=args.candidate,
-            metric=args.metric,
-            tracking_uri=args.tracking_uri or default_tracking_uri(),
-        )
+        with stage_run(STAGE) as metrics:
+            return run_promotion(
+                candidate=args.candidate,
+                metric=args.metric,
+                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                metrics=metrics,
+            )
     except PromotionError as error:
         parser.exit(2, f"{parser.prog}: {error}\n")
 

@@ -1,0 +1,42 @@
+# The collector the predict service exports its spans to.
+#
+# A collector rather than the service talking to Jaeger directly, which it could
+# do: the point of the extra hop is that the service knows one address and one
+# protocol forever, and where the spans actually go is a configuration change
+# here instead of a redeploy of the thing being traced. Swapping Jaeger for a
+# hosted backend is three lines in `exporters` below.
+receivers:
+  otlp:
+    protocols:
+      # HTTP only. The service exports over `opentelemetry-exporter-otlp-proto-
+      # http`, so the gRPC receiver would be a port nothing connects to.
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Spans are sent on in batches rather than one request per span, for the same
+  # reason the service batches on its side: the collector is not on the serving
+  # path and must not behave as if it were.
+  batch: {}
+
+exporters:
+  # Prints a line per batch to the collector's own log, which is how "did the
+  # span leave the service at all" is answered without opening a user interface.
+  debug:
+    verbosity: normal
+  # Onward to Jaeger, over OTLP gRPC, which all-in-one accepts on 4317.
+  # Plaintext because both ends are on a compose network on one laptop.
+  otlp:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp]
+  telemetry:
+    logs:
+      level: info

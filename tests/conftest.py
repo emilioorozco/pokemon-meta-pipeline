@@ -34,6 +34,31 @@ TEST_HMAC_KEY: Final = b"tests-only-key-not-a-real-secret"
 INGESTED_AT: Final = datetime(2026, 9, 23, 9, 0, tzinfo=UTC)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolated_run_metrics(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Point `PIPELINE_DATA_DIR` at a temporary directory for the whole test session.
+
+    Autouse and unconditional, because any test that calls a stage's `main`
+    writes a `run_metrics` row, and the default location for that row is the
+    repository's own `data/` directory. One forgotten fixture would mean a test
+    run quietly appending to a developer's lake.
+
+    Session scoped rather than per test, and with its own `MonkeyPatch` because
+    the built-in one is not: a module-scoped fixture such as `test_promote`'s
+    registry is set up before any function-scoped fixture, and it trains a real
+    model, so a per-test patch would come too late to catch it.
+
+    Only the run-metrics path moves. `pipeline.config` resolved its other paths
+    when it was imported, so the tests that pass explicit directories keep
+    passing them, and `pipeline.observability.run_metrics_dir` is the one place
+    that re-reads the variable.
+    """
+    root = tmp_path_factory.mktemp("pipeline-data")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PIPELINE_DATA_DIR", str(root))
+        yield root
+
+
 @pytest.fixture(scope="session")
 def spark() -> Iterator["SparkSession"]:
     """A local SparkSession for the whole test session.

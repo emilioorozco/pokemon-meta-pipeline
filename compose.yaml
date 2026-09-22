@@ -3,10 +3,17 @@
 # Every batch stage works with no container at all: the lake is Parquet on disk,
 # the warehouse is a DuckDB file, and the model stage falls back to a plain
 # directory of runs and registered versions under `data/mlruns`. This file is
-# for the three things a directory cannot be: the MLflow user interface with a
+# for the four things a directory cannot be: the MLflow user interface with a
 # real database behind it, so runs can be compared in a browser and the registry
-# is shared, a long-running process that answers `POST /predict`, and the event
-# consumer, which is the one stage that waits on a queue instead of finishing.
+# is shared; a long-running process that answers `POST /predict`; the event
+# consumer, which is the one stage that waits on a queue instead of finishing;
+# and a scheduler that runs the stages in order on a clock instead of by hand.
+#
+# Plus one optional group, behind the `observability` profile: an OpenTelemetry
+# collector, Jaeger, Prometheus and Grafana, which trace and chart the predict
+# service. They are a profile because nothing else needs them, and four more
+# containers on every `docker compose up predict` is how a local stack stops
+# being started.
 #
 #   docker compose up -d mlflow
 #   export MLFLOW_TRACKING_URI=http://localhost:5000
@@ -17,8 +24,21 @@
 #   docker compose up -d consumer
 #   docker compose logs -f consumer
 #
-# Everything it writes is under `data/`, which is gitignored, so bringing the
-# stack down and deleting that directory leaves no state behind.
+#   docker compose build airflow
+#   docker compose up -d airflow mlflow          # http://localhost:8080
+#   docker compose exec airflow airflow dags trigger play_rough_pipeline \
+#     --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+#
+#   docker compose --profile observability up -d --build predict grafana
+#   open http://localhost:16686                  # Jaeger, traces
+#   open http://localhost:3000                   # Grafana, the predict dashboard
+#   open http://localhost:9090                   # Prometheus, the raw queries
+#   docker compose --profile observability down
+#
+# Everything it writes is under `data/mlflow/`, which is gitignored along with
+# the rest of `data/`, so bringing the stack down and deleting that directory
+# leaves no state behind. Airflow's own metadata database is a named volume
+# rather than a host directory, so `docker compose down -v` is what clears it.
 services:
   mlflow:
     image: ghcr.io/mlflow/mlflow
@@ -29,8 +49,17 @@ services:
       --artifacts-destination /mlflow/artifacts
       --host 0.0.0.0
       --port 5000
+      --allowed-hosts localhost,127.0.0.1,mlflow,mlflow:5000,localhost:5000,127.0.0.1:5000
     ports:
       - "5000:5000"
+    # `--allowed-hosts` is not optional here. MLflow 3 rejects a request whose
+    # `Host` header it does not recognise, as protection against DNS rebinding,
+    # and its default list is localhost and the private address ranges. Inside
+    # the compose network the other services reach it as `mlflow:5000`, which is
+    # neither, so without the compose service name on that list every task that
+    # talks to the registry gets a 403 that says nothing about hostnames. The
+    # list is explicit rather than `*`: the point of the check is that it names
+    # what may reach the server.
     volumes:
       # SQLite metadata and the artifact store, both on the host so a rebuilt
       # container keeps the run history.
@@ -57,8 +86,123 @@ services:
       # The compose network name of the service above, not localhost: inside
       # this container, localhost is this container.
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # Where the spans go. Set here rather than in the image, because the
+      # collector is a local convenience and a service started without one has
+      # to keep working: `pipeline.telemetry` installs a no-op tracer when this
+      # is empty, and also when it names a host that does not resolve, which is
+      # what this address is when the observability profile is not enabled.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
+      # Demonstrations only. `PRA_SERVE_STUB_MODEL=1 docker compose up -d
+      # predict` answers `/predict` from a hand-written logistic instead of the
+      # registry, which is what makes the tracing and dashboard demo runnable on
+      # a laptop whose registry holds nothing promoted. It says `stub` in the
+      # response, in the log and on every metric label; it is never a model.
+      PRA_SERVE_STUB_MODEL: ${PRA_SERVE_STUB_MODEL:-}
     depends_on:
-      - mlflow
+      mlflow:
+        condition: service_started
+      # The collector, like the tracking server above, is waited for as a
+      # container and not as a ready process: an export to a collector that is
+      # still starting is a dropped batch of spans, which is the correct
+      # outcome and not a reason to hold the service down.
+      #
+      # `required: false` is what lets this service stay out of the
+      # observability profile. Without it, a dependency that is in a profile
+      # nobody enabled is an invalid project rather than an absent collector,
+      # and `docker compose up predict` would refuse to start at all.
+      otel-collector:
+        condition: service_started
+        required: false
+    restart: unless-stopped
+
+  # ------------------------------------------------------------ observability
+  #
+  # The four services below are one profile, because they are one decision: run
+  # them and the predict service is traced and charted, leave them out and it
+  # serves exactly as before. Without the profile, `docker compose up -d mlflow
+  # predict` is the two containers it has always been.
+  #
+  #   docker compose --profile observability up -d --build predict grafana
+  #   curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '...'
+  #   open http://localhost:16686    # Jaeger: one trace, with its inference span
+  #   open http://localhost:3000     # Grafana: Play Rough / Predict service
+  #   open http://localhost:9090     # Prometheus, for writing the query first
+  #   docker compose --profile observability down
+  #
+  # `predict` is deliberately not in the profile. It is the thing being
+  # observed, it runs on its own, and `depends_on: otel-collector` is what
+  # starts the collector alongside it once the profile is active.
+
+  # Where the spans land first. See orchestration/observability/otel-collector.yaml
+  # for why the service does not talk to Jaeger directly.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.137.0
+    container_name: pra-otel-collector
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./orchestration/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    # 4318 is not published to the host: the only exporter is the predict
+    # container, which reaches it over the compose network. A port on the
+    # laptop would be an open OTLP receiver for no reason.
+    depends_on:
+      - jaeger
+    restart: unless-stopped
+
+  # Trace storage and the trace user interface, in memory. Restarting it loses
+  # every trace, which is the right trade for a laptop: traces are for the
+  # request in front of you, and the long-lived record of what the service did
+  # is the metrics and the request log.
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    container_name: pra-jaeger
+    profiles: [observability]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+    restart: unless-stopped
+
+  # The metrics store. It scrapes `predict:8000/metrics` every fifteen seconds
+  # (orchestration/observability/prometheus.yml) and keeps nothing on the host,
+  # so `docker compose down` is also how the history is cleared.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: pra-prometheus
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./orchestration/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # The dashboard. Anonymous viewing is on and the login form is off, which is
+  # correct for a container bound to a laptop and would be indefensible
+  # anywhere else; the datasource and the dashboard are both provisioned from
+  # files, so the panels are in the repository rather than in a volume nobody
+  # backs up.
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: pra-grafana
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: light
+      # Straight into the one dashboard there is, rather than onto a home page
+      # with a link to it.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/predict.json
+    volumes:
+      - ./orchestration/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./orchestration/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
   # The event consumer, run the way it would run on a small box: one service,
@@ -77,3 +221,83 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+  # The orchestrator, in the one mode that is a single container: `airflow
+  # standalone` runs the scheduler, the triggerer and the web server together
+  # against a SQLite metadata database, which is what a local demonstration of a
+  # DAG wants and exactly what a production install must not be. The executor is
+  # left at standalone's default (sequential) for the same reason: one task at a
+  # time is honest about what one container can do, and the DAG's only branch is
+  # a task that does not care when it runs.
+  #
+  # The image is built by `Dockerfile.airflow` rather than pulled: the tasks run
+  # PySpark, dbt, MLflow and LightGBM, and `_PIP_ADDITIONAL_REQUIREMENTS` would
+  # reinstall all of it on every container start and pin nothing.
+  #
+  # The repository is mounted, not copied, so the DAG runs the working tree: an
+  # edit to `pipeline/silver.py` or to a dbt model is in the next task run with
+  # no rebuild. Only a dependency change needs `docker compose build airflow`.
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: pra-airflow
+    command: standalone
+    ports:
+      - "8080:8080"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # So a freshly parsed DAG can be triggered without being unpaused first.
+      # Local only: the point of a paused-by-default DAG is that nobody
+      # schedules production by accident, and there is no production here.
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      # A local login on a container that is not exposed anywhere. The default
+      # is admin/admin; put AIRFLOW_ADMIN_PASSWORD in .env to change it. Nothing
+      # about this is a secret worth protecting, and nothing here should ever be
+      # reachable from outside the laptop it runs on.
+      #
+      # The migrate and create flags are what make the password below the one
+      # that works: the image's entrypoint honours them whatever the command is,
+      # so the admin user exists before `standalone` starts, and `standalone`
+      # then finds it instead of inventing a user with a random password of its
+      # own and writing it to a file nobody reads.
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      # Where the DAG finds the checkout and the interpreter that has the
+      # project's dependencies (see Dockerfile.airflow).
+      PIPELINE_DIR: /opt/pipeline
+      PIPELINE_PYTHON: /opt/pipeline-venv/bin/python
+      PIPELINE_DATA_DIR: /opt/pipeline/data
+      # The compose network name, not localhost: inside this container,
+      # localhost is this container. Set it empty to make the tasks record their
+      # runs in the plain directory under data/mlruns instead.
+      MLFLOW_TRACKING_URI: ${AIRFLOW_MLFLOW_TRACKING_URI-http://mlflow:5000}
+      # Forwarded from the host's shell or .env. The bucket settings matter only
+      # to a backfill that reads S3; the key is needed either way, including for
+      # the fixture run, because bronze anonymizes whatever it is given and
+      # refuses to run without one. Any string does locally.
+      HANDLE_HMAC_KEY: ${HANDLE_HMAC_KEY:-}
+      PRA_BUCKET: ${PRA_BUCKET:-}
+      PRA_PREFIX: ${PRA_PREFIX:-}
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_PROFILE: ${AWS_PROFILE:-}
+    volumes:
+      - ./orchestration/airflow/dags:/opt/airflow/dags
+      # The repository, so the tasks run the working tree's commands, dbt
+      # project and fixtures.
+      - ./:/opt/pipeline
+      # The lake and the warehouse, named separately from the line above so the
+      # data directory is an explicit mount rather than a side effect of it.
+      - ./data:/opt/pipeline/data
+      # Airflow's own state: the SQLite database, the task logs and the
+      # generated config. A named volume, so `docker compose down` keeps it and
+      # `docker compose down -v` is the deliberate way to start clean.
+      - airflow-home:/opt/airflow
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+volumes:
+  airflow-home:

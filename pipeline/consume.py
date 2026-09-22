@@ -67,6 +67,16 @@ step, or a table format (Apache Iceberg, Delta Lake) that does the row-level
 upsert and delete itself. The contract, the routing and the quarantine do not
 change with either.
 
+What one run of this command records, and why the unit is the batch: every other
+stage is a run with an end, so it opens one `stage_run` and closes it when the
+work is done. A consumer has no end. Its unit of work is one receive batch, so
+each batch that came back with messages is timed and recorded as a
+`run_metrics` row, and an idle long poll records nothing, because a queue with
+nothing on it is not a run that read nothing. The row is the run's, not the
+batch's, as everywhere else in the table (one row per run per stage), so a
+process that has been polling for days holds the row of its most recent batch
+rather than growing a file per poll.
+
 Nothing here logs a handle or any blob content: the logs carry keys, reasons,
 counts and message ids.
 """
@@ -84,6 +94,7 @@ from urllib.parse import unquote_plus
 from pipeline.backfill import LEAK_PATHS_SHOWN, Quarantiner, land_records, process_object
 from pipeline.bronze import BronzeLeakError, delete_game, find_by_source_key
 from pipeline.config import BRONZE_DIR, QUARANTINE_DIR
+from pipeline.observability import configure_logging, emit_summary, stage_run
 from pipeline.quarantine import (
     CONTRACT_VIOLATION,
     HANDLE_LEAK_CHECK_FAILED,
@@ -100,6 +111,8 @@ if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
 
 logger = logging.getLogger(__name__)
 
+STAGE: Final = "consume"
+
 DEFAULT_MAX_MESSAGES: Final = 10
 DEFAULT_WAIT_SECONDS: Final = 20
 DEFAULT_VISIBILITY_TIMEOUT: Final = 60
@@ -111,6 +124,23 @@ REMOVED: Final = "ObjectRemoved"
 # Quarantine reasons that are a property of the blob and so will not come out
 # differently on a redelivery; see the module docstring.
 HANDLED_REASONS: Final = (INVALID_JSON, CONTRACT_VIOLATION, V1_BLOB, HANDLE_LEAK_CHECK_FAILED)
+
+
+@dataclass(frozen=True)
+class _Tally:
+    """The running counters at one instant, so a batch is reported as a difference.
+
+    The summary counts a whole drain, and a `run_metrics` row counts one batch.
+    Rather than keep a second set of counters in step with the first, the batch
+    is the subtraction of the tally taken before it from the tally taken after.
+    """
+
+    received: int
+    landed: int
+    quarantined: int
+    deleted: int
+    ignored: int
+    left_for_redelivery: int
 
 
 @dataclass
@@ -211,14 +241,49 @@ class _Consumer:
         """Receive and handle messages until `once` is satisfied or the process is stopped."""
         try:
             while True:
-                for message in self._receive():
-                    self._handle(message)
+                messages = self._receive()
+                if messages:
+                    self._batch(messages)
                 if once:
                     break
         except KeyboardInterrupt:
             logger.info("interrupted: finishing the current batch and reporting")
         self.summary.quarantined = dict(sorted(self.rejects.counts.items()))
         return self.summary
+
+    def _batch(self, messages: list["MessageTypeDef"]) -> None:
+        """Handle one non-empty receive batch and record it as one `run_metrics` row.
+
+        The counts are filled in a `finally` rather than after the loop so a
+        batch that is interrupted, or that dies on the queue itself, still says
+        how far it got beside the `failed` status `stage_run` writes for it.
+        """
+        before = self._tally()
+        with stage_run(STAGE) as metrics:
+            try:
+                for message in messages:
+                    self._handle(message)
+            finally:
+                after = self._tally()
+                metrics.rows_in = after.received - before.received
+                metrics.rows_out = after.landed - before.landed
+                metrics.rows_quarantined = after.quarantined - before.quarantined
+                metrics.extra = {
+                    "deleted": after.deleted - before.deleted,
+                    "ignored": after.ignored - before.ignored,
+                    "left_for_redelivery": (after.left_for_redelivery - before.left_for_redelivery),
+                }
+
+    def _tally(self) -> _Tally:
+        """The counters as they stand, quarantines included, for one end of a batch."""
+        return _Tally(
+            received=self.summary.received,
+            landed=self.summary.landed,
+            quarantined=sum(self.rejects.counts.values()),
+            deleted=self.summary.deleted,
+            ignored=self.summary.ignored,
+            left_for_redelivery=self.summary.left_for_redelivery,
+        )
 
     def _receive(self) -> list["MessageTypeDef"]:
         """One long poll. An empty result is normal: the queue is idle."""
@@ -366,7 +431,7 @@ def _counts(counts: dict[str, int]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the consumer from the command line and print the summary at exit."""
+    """Run the consumer from the command line and report the summary at exit."""
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.consume",
         description=(
@@ -409,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging(STAGE)
 
     settings = Settings.from_env(require_queue=True)
     summary = run_consumer(
@@ -420,7 +485,21 @@ def main(argv: list[str] | None = None) -> int:
         max_messages=args.max_messages,
         wait_seconds=args.wait_seconds,
     )
-    print(summary)
+    emit_summary(
+        logger,
+        "consume summary",
+        {
+            "received": summary.received,
+            "landed": summary.landed,
+            "quarantined": sum(summary.quarantined.values()),
+            "quarantined_by_reason": summary.quarantined,
+            "deleted": summary.deleted,
+            "ignored": summary.ignored,
+            "left_for_redelivery": summary.left_for_redelivery,
+            "duration_s": round(summary.duration_s, 4),
+        },
+        text=str(summary),
+    )
     return 0
 
 

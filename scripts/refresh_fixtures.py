@@ -44,9 +44,9 @@ scan; that is a safe failure, and a re-run draws a new key and clears it.
 import argparse
 import copy
 import json
+import logging
 import os
 import secrets
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,11 +57,16 @@ from pydantic import ValidationError
 from pipeline.anonymize import anonymize, assert_no_handles, handles_in, token_for
 from pipeline.config import REPO_ROOT
 from pipeline.contract import ContractError, ParsedBlobV2, parse_blob
+from pipeline.observability import STATUS_FAILED, configure_logging, emit_summary, stage_run
 from pipeline.settings import DEFAULT_PREFIX, DEFAULT_REGION
 from pipeline.source import SourceBlob, get_blob, list_parsed_keys
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_s3.client import S3Client
+
+logger = logging.getLogger(__name__)
+
+STAGE: Final = "refresh_fixtures"
 
 SCRUBBED_KEYS: Final = (
     "uploadTokenId",
@@ -337,22 +342,51 @@ def report(scan: Scan, selection: Selection) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Refresh the fixture set from the bucket and print the coverage summary."""
+    """Refresh the fixture set from the bucket and report the coverage summary."""
     args = _parse_args(argv)
+    configure_logging(STAGE)
     key = args.seed_key or secrets.token_bytes(KEY_BYTES)
-    scan = scan_bucket(_default_client(), args.bucket, DEFAULT_PREFIX)
-    selection = select_fixtures(scan.candidates, args.count)
-    try:
-        fixtures = [
-            build_fixture(candidate, number, key)
-            for number, candidate in enumerate(selection.picked, start=1)
-        ]
-    except FixtureError as exc:
-        # Nothing has been written yet, so the previous fixture set survives.
-        print(f"aborted: {exc}", file=sys.stderr)
-        return 1
-    write_fixtures(fixtures, args.out)
-    print(report(scan, selection))
+    with stage_run(STAGE) as metrics:
+        scan = scan_bucket(_default_client(), args.bucket, DEFAULT_PREFIX)
+        selection = select_fixtures(scan.candidates, args.count)
+        metrics.rows_in = scan.listed
+        metrics.rows_quarantined = scan.skipped
+        try:
+            fixtures = [
+                build_fixture(candidate, number, key)
+                for number, candidate in enumerate(selection.picked, start=1)
+            ]
+        except FixtureError as exc:
+            # Nothing has been written yet, so the previous fixture set survives.
+            # The message carries a gameId prefix and masked paths only.
+            metrics.rows_out = 0
+            metrics.status = STATUS_FAILED
+            metrics.error = f"{type(exc).__name__}: {exc}"
+            metrics.extra = {"candidates": len(scan.candidates)}
+            logger.error("fixture refresh aborted", extra={"reason": str(exc)})
+            return 1
+        written = write_fixtures(fixtures, args.out)
+        metrics.rows_out = len(written)
+        metrics.extra = {
+            "candidates": len(scan.candidates),
+            "picked": len(selection.picked),
+            "coverage_met": selection.met,
+            "coverage_unmet": selection.unmet,
+        }
+
+    emit_summary(
+        logger,
+        "fixture refresh summary",
+        {
+            "listed": scan.listed,
+            "not_v2": scan.skipped,
+            "candidates": len(scan.candidates),
+            "picked": len(selection.picked),
+            "coverage_met": selection.met,
+            "coverage_unmet": selection.unmet,
+        },
+        text=report(scan, selection),
+    )
     return 0
 
 

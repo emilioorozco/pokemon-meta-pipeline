@@ -51,8 +51,8 @@ could reproduce.
 
 import argparse
 import json
+import logging
 import os
-import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,7 +69,7 @@ from mlflow.tracking import MlflowClient
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import log_loss, roc_auc_score
 
-from pipeline.config import REGISTERED_MODEL_NAME, REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
+from pipeline.config import REGISTERED_MODEL_NAME, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.ml_features import (
     CATEGORICAL,
     LABEL,
@@ -77,6 +77,16 @@ from pipeline.ml_features import (
     ArchetypeCodes,
     design_matrix,
 )
+from pipeline.observability import (
+    RunMetrics,
+    configure_logging,
+    emit_summary,
+    git_commit,
+    stage_run,
+)
+
+logger = logging.getLogger(__name__)
+STAGE: Final = "train"
 
 FEATURE_TABLE: Final = "features_turn"
 DEFAULT_EXPERIMENT: Final = "win-probability"
@@ -162,20 +172,6 @@ class Baseline:
         ]
         clamped = np.clip(np.asarray(rates, dtype=float), BASELINE_CLIP, 1 - BASELINE_CLIP)
         return np.asarray(clamped, dtype=float)
-
-
-def git_commit() -> str | None:
-    """The commit this run was trained at, or None outside a checkout."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
 
 
 def parse_params(pairs: Sequence[str]) -> dict[str, Any]:
@@ -532,8 +528,12 @@ def report(
     tracking_uri: str,
     experiment: str,
     version: str,
-) -> None:
-    """Print the numbers a reader needs to judge the run, including the bad news."""
+) -> str:
+    """The numbers a reader needs to judge the run, including the bad news.
+
+    Returned rather than printed: the command line hands it to `emit_summary`,
+    which logs the run's fields as one record and writes this block to stdout.
+    """
     lines = [
         f"experiment: {experiment} at {tracking_uri}",
         f"{FEATURE_TABLE}: {data_params['train_rows'] + data_params['holdout_rows']} rows, "
@@ -565,7 +565,7 @@ def report(
         f"registered {REGISTERED_MODEL_NAME} version {version}. "
         "It serves nothing until `python -m pipeline.promote` moves the production alias."
     )
-    print("\n".join(lines))
+    return "\n".join(lines)
 
 
 def run_training(
@@ -574,9 +574,39 @@ def run_training(
     experiment: str,
     tracking_uri: str,
     overrides: dict[str, Any],
+    metrics: RunMetrics | None = None,
 ) -> int:
-    """Both runs, end to end. Returns 0 whether or not the model wins."""
+    """Both runs, end to end. Returns 0 whether or not the model wins.
+
+    `metrics` is filled in with the run's counts and numbers when one is passed,
+    so the command line records a `run_metrics` row without this function having
+    to know where that row goes.
+    """
     frame = load_features(warehouse)
+    if frame.empty:
+        # Not a failure. A warehouse that built cleanly and holds no feature
+        # rows is a corpus that has not produced a modellable game yet, which
+        # happens on a first run and on a small fixture set, and a scheduler
+        # should carry on to the next stage rather than page somebody. A
+        # warehouse that is missing entirely is still an error, and
+        # `load_features` has already raised by here if it was.
+        emit_summary(
+            logger,
+            "no training rows",
+            {"dataset": FEATURE_TABLE, "warehouse": str(warehouse), "rows": 0, "trained": False},
+            text=(
+                f"{FEATURE_TABLE} in {warehouse} holds no rows, so there is nothing to train on "
+                "and no version was registered. Land some games and run `python -m pipeline.gold` "
+                "again."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"trained": False, "reason": f"{FEATURE_TABLE} is empty"}
+        return 0
     train, holdout = split_by_date(frame)
     params = {**DEFAULT_PARAMS, **overrides}
     data_params = dataset_params(train, holdout)
@@ -622,16 +652,46 @@ def run_training(
         model_uri=model_uri, holdout=model_holdout, data_params=data_params, beats=beats
     )
 
-    report(
-        data_params=data_params,
-        model=model_holdout,
-        baseline=baseline_holdout,
-        importance=importance,
-        beats=beats,
-        tracking_uri=tracking_uri,
-        experiment=experiment,
-        version=version,
+    emit_summary(
+        logger,
+        "train summary",
+        {
+            "experiment": experiment,
+            "tracking_uri": tracking_uri,
+            "registered_version": version,
+            "beats_baseline": beats,
+            "holdout_logloss": round(model_holdout.logloss, 6),
+            "holdout_auc": round(model_holdout.auc, 6),
+            "baseline_logloss": round(baseline_holdout.logloss, 6),
+            "baseline_auc": round(baseline_holdout.auc, 6),
+            **data_params,
+        },
+        text=report(
+            data_params=data_params,
+            model=model_holdout,
+            baseline=baseline_holdout,
+            importance=importance,
+            beats=beats,
+            tracking_uri=tracking_uri,
+            experiment=experiment,
+            version=version,
+        ),
     )
+    if metrics is not None:
+        rows = data_params["train_rows"] + data_params["holdout_rows"]
+        metrics.rows_in = rows
+        metrics.rows_out = rows
+        metrics.rows_quarantined = 0
+        metrics.extra = {
+            "registered_version": version,
+            "beats_baseline": beats,
+            "holdout_logloss": model_holdout.logloss,
+            "holdout_auc": model_holdout.auc,
+            "baseline_logloss": baseline_holdout.logloss,
+            "baseline_auc": baseline_holdout.auc,
+            "experiment": experiment,
+            **data_params,
+        }
     return 0
 
 
@@ -663,13 +723,16 @@ def main(argv: list[str] | None = None) -> int:
         help="DuckDB warehouse holding features_turn",
     )
     args = parser.parse_args(argv)
+    configure_logging(STAGE)
     try:
-        return run_training(
-            warehouse=args.warehouse,
-            experiment=args.experiment,
-            tracking_uri=args.tracking_uri or default_tracking_uri(),
-            overrides=parse_params(args.params),
-        )
+        with stage_run(STAGE) as metrics:
+            return run_training(
+                warehouse=args.warehouse,
+                experiment=args.experiment,
+                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                overrides=parse_params(args.params),
+                metrics=metrics,
+            )
     except (TrainingDataError, ValueError) as error:
         parser.exit(2, f"{parser.prog}: {error}\n")
 

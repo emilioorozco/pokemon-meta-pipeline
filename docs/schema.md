@@ -521,3 +521,49 @@ bounds, `inclusion_rate` the tighter one, and nothing averages them together.
 | `observedCards` has no card ids | `cards_seen.card_id` falls back to the lowercased name (section 8.4) |
 | A decklist has no card names | `in_decklist` matches through the catalog (section 8.4) |
 | `playedAt` defaults to upload time | `play_date_source` for v1; v2 rows carry `played_at` and `uploaded_at` so the gap is measurable |
+
+## 11. Run metrics
+
+Not game data. One row per stage per run, written by
+`pipeline.observability.stage_run` as a single Parquet file per run at
+`$PIPELINE_DATA_DIR/lake/run_metrics/<run id>-<stage>.parquet`, and surfaced by
+the `run_metrics` and `mart_pipeline_health` dbt models. The schema is pinned in
+`RUN_METRICS_SCHEMA`, the same reason bronze and silver pin theirs: a run with
+nothing quarantined must not type `rows_quarantined` differently from a run that
+had some.
+
+| column | type | notes |
+|---|---|---|
+| `run_id` | string | `PRA_RUN_ID` when the scheduler set one, else 16 random hex characters. Shared by every stage of one DAG run and on every log line of it |
+| `stage` | string | `bronze_backfill`, `consume`, `silver`, `gold`, `train`, `promote`, `drift`, `quality_gate`, `run_all`, `refresh_fixtures`, `fetch_catalog`. With `run_id`, the grain |
+| `started_at` | timestamp, UTC | when the stage body was entered |
+| `finished_at` | timestamp, UTC | when it left, whether it returned or raised |
+| `duration_s` | double | from a monotonic clock, not from the two timestamps |
+| `rows_in` | int64, nullable | objects listed, games read, models attempted, feature rows loaded. NULL means the stage does not count its input, which is not zero |
+| `rows_out` | int64, nullable | rows landed, games written, models built |
+| `rows_quarantined` | int64, nullable | rows the stage refused; 0 for the stages that cannot quarantine |
+| `status` | string | `ok` or `failed` |
+| `error` | string, nullable | exception class and message on a failure. Never blob content: the pipeline's exceptions carry paths, counts and reasons |
+| `extra_json` | string | per-stage detail as a JSON object: partition counts for the backfill, the reconciliation lines for silver, the holdout numbers for train. JSON rather than a struct, because every stage puts different keys in it |
+| `git_commit` | string, nullable | the commit the stage ran at, NULL outside a checkout |
+| `hostname` | string, nullable | which machine, so one bad runner is told from a bad stage |
+
+What each stage counts:
+
+| stage | `rows_in` | `rows_out` | `rows_quarantined` |
+|---|---|---|---|
+| `bronze_backfill` | objects read from the source | rows landed in bronze | blobs written to quarantine |
+| `consume` | messages in one receive batch | rows landed in bronze | blobs written to quarantine |
+| `silver` | games in bronze | rows in `games` | 0 |
+| `gold` | dbt nodes the run attempted | nodes built without an error | 0 |
+| `train` | feature rows, train plus holdout | the same rows | 0 |
+| `promote` | 1, the version judged | 1 | 0 |
+| `drift` | reference rows plus current rows | features compared | 0 |
+| `quality_gate` | stages in `mart_pipeline_health` | stages that passed | 0 |
+| `run_all` | stages in the list | stages that ran and succeeded | 0 |
+| `refresh_fixtures` | objects listed | fixture files written | objects that were not v2 blobs |
+| `fetch_catalog` | 1 | 1 | 0 |
+
+`consume` writes one row per receive batch that had messages, and none for an
+idle poll: it never finishes, so the batch is the only run it has.
+`serve` writes no row: it is a process, not a run, and its unit is the request.

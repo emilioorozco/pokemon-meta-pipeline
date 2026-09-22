@@ -83,6 +83,7 @@ from pipeline.bronze import (
 )
 from pipeline.config import BRONZE_DIR, QUARANTINE_DIR
 from pipeline.contract import ContractError, ParsedBlobV2, parse_blob
+from pipeline.observability import configure_logging, emit_summary, stage_run
 from pipeline.quarantine import (
     CONTRACT_VIOLATION,
     HANDLE_LEAK_CHECK_FAILED,
@@ -105,6 +106,7 @@ V1_HINT = (
 )
 AFTER_ANONYMIZATION = "after anonymization: "
 LEAK_PATHS_SHOWN = 5
+STAGE = "bronze_backfill"
 
 
 @dataclass
@@ -437,7 +439,7 @@ def _counts(counts: dict[str, int]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the backfill from the command line and print the summary."""
+    """Run the backfill from the command line and report the summary."""
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.backfill",
         description=(
@@ -474,7 +476,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging(STAGE)
 
     source: Source | None = None
     if args.source_dir is not None:
@@ -484,15 +486,39 @@ def main(argv: list[str] | None = None) -> int:
     # A local run reads no bucket, so it must not be blocked by an unset one.
     settings = Settings.from_env(require_bucket=source is None)
 
-    summary = run_backfill(
-        settings,
-        bronze_dir=args.bronze_dir or BRONZE_DIR,
-        quarantine_dir=args.quarantine_dir or QUARANTINE_DIR,
-        source=source,
-        limit=args.limit,
-        dry_run=args.dry_run,
+    with stage_run(STAGE) as metrics:
+        summary = run_backfill(
+            settings,
+            bronze_dir=args.bronze_dir or BRONZE_DIR,
+            quarantine_dir=args.quarantine_dir or QUARANTINE_DIR,
+            source=source,
+            limit=args.limit,
+            dry_run=args.dry_run,
+        )
+        metrics.rows_in = summary.read
+        metrics.rows_out = summary.landed
+        metrics.rows_quarantined = sum(summary.quarantined.values())
+        metrics.extra = {
+            "full_decklists_landed": summary.full_decklists_landed,
+            "partitions": summary.partitions,
+            "quarantined_by_reason": summary.quarantined,
+            "dry_run": args.dry_run,
+        }
+
+    emit_summary(
+        logger,
+        "backfill summary",
+        {
+            "read": summary.read,
+            "landed": summary.landed,
+            "quarantined": sum(summary.quarantined.values()),
+            "quarantined_by_reason": summary.quarantined,
+            "full_decklists_landed": summary.full_decklists_landed,
+            "partitions": summary.partitions,
+            "duration_s": round(summary.duration_s, 4),
+        },
+        text=str(summary),
     )
-    print(summary)
     return 0
 
 

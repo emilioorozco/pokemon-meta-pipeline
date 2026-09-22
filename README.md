@@ -45,20 +45,21 @@ flowchart LR
     AIR -.-> BRZ
     AIR -.-> SLV
     AIR -.-> GLD
+    AIR -.-> MDL
   end
   subgraph BACK["Back to the app"]
-    PUB["Marts and win probabilities"]
+    PUB["Insights table (DynamoDB)"]
     DASH["Community dashboard"]
     PUB --> DASH
   end
   S3 -- "list prefix" --> BF
   S3 -- "S3 event" --> SQS
-  GLD --> PUB
-  SRV --> PUB
+  GLD -- "marts" --> PUB
+  MDL -- "version and alias" --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ,SLV,GLD,MDL,SRV done
-  class SQS,AGT,AIR,PUB,DASH planned
+  class UP,API,S3,DDB,BF,SQS,BRZ,SLV,GLD,MDL,SRV,AIR,PUB done
+  class AGT,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -127,6 +128,45 @@ the `win-probability-drift` experiment, prints one verdict line and exits 0
 whether or not it flagged. It never retrains: on a corpus this small the flag
 is a prompt to look, and `train` then `promote` is what acts on it.
 
+Orchestration is real, in two shapes over one list of stages.
+`python -m pipeline.run_all` runs every stage in order as a subprocess of the
+same interpreter, under one `PRA_RUN_ID`, stopping at the first non-zero exit
+and closing with a table of what ran, what was skipped and how long each took:
+the whole pipeline over the committed fixtures is about twenty seconds.
+`docker compose up -d airflow` is the same list as a daily Airflow DAG,
+`backfill >> spark_silver >> dbt_run >> dbt_test >> build_features >> train >>
+promote >> drift >> quality_gate >> publish`, every task a `BashOperator`
+calling one of the commands below so the DAG holds no pipeline logic of its own.
+Both run `python -m pipeline.quality_gate` before the publish, which reads
+`mart_pipeline_health` and fails the run when a stage's last run failed or its
+quarantine rate is over the threshold: that is what turns a telemetry row into a
+red run, and it is why numbers a gate would have refused never reach the
+application.
+
+The loop closes. `python -m pipeline.publish` writes the marts into the
+application's DynamoDB table (`PRA_INSIGHTS_TABLE`), keyed the way its pages
+read them: `MATCHUP` by ordered archetype pair, `WEEKLY#<archetype>` by ISO
+week, `ARCHETYPE` for the leaderboard, and one `META` row carrying the run
+identifier, the game count and whichever model version holds the `production`
+alias. A publish is a refresh rather than a merge: every row goes in under the
+new run identifier, in batches of 25, and the rows of the previous run are
+deleted afterwards, so a reader mid-publish sees old numbers or new ones and
+never a gap. `--dry-run` builds every item and prints the counts and samples
+without an account that can write. On the production warehouse that is 180
+matchup rows, 109 weekly rows, 80 archetype rows and the meta row, from 289
+mart rows and 128 games.
+
+The serving stage is instrumented, which is the one place a run-per-stage row
+does not fit. Every request is an OpenTelemetry span with a `predict.inference`
+child around the model call, exported to a collector when one is configured and
+a no-op when there is not; `GET /metrics` is a Prometheus exposition of request
+rate and latency by route, inference latency and prediction counts by model
+version, and an agent tool-call counter stage 6 will start using.
+`docker compose --profile observability up -d predict grafana` adds the
+collector, Jaeger, Prometheus and a provisioned Grafana dashboard next to the
+service, and the default `docker compose up -d mlflow predict` is still the two
+containers it has always been.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
@@ -137,6 +177,9 @@ uv run python -m pipeline.train                                # gold -> model, 
 uv run python -m pipeline.promote                              # judge the newest version
 uv run python -m pipeline.serve                                # serve the promoted one, port 8000
 uv run python -m pipeline.drift                                # feature drift against the train window
+uv run python -m pipeline.quality_gate                         # fail if a stage's last run failed
+uv run python -m pipeline.publish --dry-run                    # the marts as they would be published
+uv run python -m pipeline.run_all --source-dir tests/fixtures  # every stage above, in order
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
 uv run pytest -m dbt                                           # gold tests, silver then dbt
@@ -217,6 +260,46 @@ coverage. `scripts/fetch_catalog.py` downloads the
 card catalog silver joins against; the stage runs without it, with null catalog
 columns.
 
+Every stage logs the same way and records the same row. `pipeline/observability.py`
+installs a standard-library JSON logger on standard error (one object per line
+with `ts`, `level`, `logger`, `stage`, `run_id`, `msg` and whatever fields the
+call passed) and renders the same records as one readable line each in a
+terminal or under `PRA_LOG_FORMAT=console`. Standard output stays the command's
+own result, so a summary block is still a table a person reads while the log
+beside it stays parseable. Every stage of one run shares a `run_id`, from
+`PRA_RUN_ID` when a scheduler sets one, and closes by writing a single Parquet
+row to `data/lake/run_metrics/` with its duration, its rows in, out and
+quarantined, and `ok` or `failed`. Two dbt models read that back: `run_metrics`
+and `mart_pipeline_health`, one row per stage with the last run's outcome and
+the quarantine rate over the last ten. The two commands that never finish say it
+differently: `python -m pipeline.consume` writes that row per receive batch and
+nothing for an idle poll, and `python -m pipeline.serve` logs a record per
+request instead, because a service has no run to close.
+
+```bash
+PRA_RUN_ID=nightly-1 uv run python -m pipeline.backfill --source-dir tests/fixtures
+uv run python -c "import duckdb; duckdb.sql(\"select stage, last_status, last_duration_s, quarantine_rate from read_parquet('data/lake/run_metrics/*.parquet')\").show()"
+```
+
+Under the scheduler that identifier is Airflow's own, so one DAG run is one
+string in the user interface, in every log line and in every `run_metrics` row:
+
+```bash
+docker compose build airflow
+docker compose up -d airflow mlflow            # http://localhost:8080, admin/admin
+docker compose exec airflow airflow dags trigger play_rough_pipeline \
+  --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+docker compose down
+```
+
+The image is Airflow with the project's dependencies in a virtual environment of
+their own, exported from `uv.lock`, and the repository bind mounted beside it,
+so a task runs the working tree and only a dependency change needs a rebuild.
+`source_dir` empty reads the S3 bucket instead of the fixtures, and
+`ingest_mode=consumer` turns the ingest task into a logged no-op for when the
+event-driven consumer is the one landing bronze. Details in
+[docs/stages.md](docs/stages.md) section 7.
+
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
 disallowed, all four pytest runs with a 70% coverage floor on the combined
@@ -245,8 +328,12 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
       comparison, written to a report and logged as an MLflow run
 - [ ] LangChain agent: structured query language (SQL) over the marts and
       card-text retrieval, scored against a golden question set
-- [ ] Airflow directed acyclic graph (DAG) with structured logs and metrics
-- [ ] Publish marts and per-archetype predictions back to the application
+- [x] Structured JSON logging with a shared run identifier, and a `run_metrics`
+      row per stage per run surfaced by two dbt models
+- [x] Airflow directed acyclic graph (DAG) calling the stage commands in order,
+      plus `python -m pipeline.run_all` for the same list with no scheduler
+- [x] Publish the marts back to the application: the matchup, weekly and
+      archetype rows in its DynamoDB table, refreshed under one run identifier
 - [ ] Stretch: AWS Step Functions as the managed alternative to Airflow
 
 ## Scope and limits
@@ -309,6 +396,7 @@ here. Access is configured through environment variables (`.env.example`):
 PRA_BUCKET        S3 bucket that holds parsed/{userId}/{gameId}.json
 PRA_PREFIX        key prefix to read, default parsed/
 PRA_QUEUE_URL     SQS queue of S3 events; needed by the consumer, not the backfill
+PRA_INSIGHTS_TABLE DynamoDB table the marts are published into; needed by publish
 AWS_REGION        bucket region, default us-west-2
 AWS_PROFILE       optional named AWS profile
 HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
@@ -322,7 +410,8 @@ quarantines the rest under `data/lake/quarantine/` with a reason code.
 ## Layout
 
 ```
-pipeline/          Python package: contract, anonymization, bronze, backfill, consumer
+pipeline/          Python package: contract, anonymization, bronze, backfill,
+                   consumer, gold, model, serving, orchestration, publish
 pipeline/legacy/   deprecated first source (Kaggle corpus), kept for reference
 contract/          parsed-blob.schema.json, copied verbatim from the producer
 scripts/           maintenance commands, including the fixture refresh
@@ -335,10 +424,17 @@ dbt/               dbt project (DuckDB): sources, staging views, star schema,
                    marts, its own tests, and the committed profiles.yml
 dbt/models/ml/     the model's training data: scope rules, split cutoff,
                    features_turn
-compose.yaml       local services: MLflow, the predict API and the consumer
+dbt/models/ops/    the pipeline's own telemetry: run_metrics and
+                   mart_pipeline_health over the run-metrics Parquet
+data/lake/run_metrics/  one Parquet row per stage per run (gitignored)
+orchestration/observability/  collector, Prometheus and Grafana configuration,
+                   and the provisioned predict dashboard
+compose.yaml       local services: MLflow, the predict API, the consumer,
+                   Airflow standalone, and the observability profile
 Dockerfile         the consumer as a container; compose.yaml runs it
 Dockerfile.serve   image for the predict service; carries no model, loads the alias
-dags/              planned: Airflow DAG definitions
+Dockerfile.airflow Airflow plus the project's dependencies in a venv of their own
+orchestration/airflow/dags/  the DAG: one BashOperator per stage command
 ```
 
 ## Docs

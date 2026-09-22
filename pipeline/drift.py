@@ -72,6 +72,7 @@ contributes both seats.
 
 import argparse
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date
@@ -96,8 +97,12 @@ from pipeline.ml_features import CATEGORICAL, LABEL, MODEL_FEATURES
 # The loader is imported rather than rewritten: it reads `features_turn` by an
 # explicit column list, and a drift report built from a second copy of that
 # list would be a report about a table nobody trains on.
+from pipeline.observability import RunMetrics, configure_logging, emit_summary, stage_run
 from pipeline.train import FEATURE_TABLE, TrainingDataError, load_features
 
+logger = logging.getLogger(__name__)
+
+STAGE: Final = "drift"
 DEFAULT_EXPERIMENT: Final = "win-probability-drift"
 # The features PSI is computed over: everything the model is given except the
 # two archetype columns, which are compared as a mix instead.
@@ -817,6 +822,7 @@ def run_drift(
     tracking_uri: str,
     experiment: str,
     out_dir: Path,
+    metrics: RunMetrics | None = None,
 ) -> int:
     """The whole comparison. Returns 0 whether or not it flagged, 3 with nothing to compare."""
     if tracking_uri.startswith("file:"):
@@ -828,7 +834,28 @@ def run_drift(
 
     frame = with_dates(load_features(warehouse))
     if frame.empty:
-        raise DriftError(f"{FEATURE_TABLE} in {warehouse} is empty, so there is nothing to compare")
+        # A skip rather than a failure, for the same reason the trainer's empty
+        # table is one: a warehouse that built cleanly and holds no feature rows
+        # has produced nothing to compare, and the next scheduled run will have
+        # the answer. A window that selects too few rows out of a table that has
+        # some is a different thing and still exits EXIT_TOO_SMALL below: that
+        # one is an answer about the window the caller chose.
+        emit_summary(
+            logger,
+            "nothing to compare",
+            {"dataset": FEATURE_TABLE, "warehouse": str(warehouse), "rows": 0},
+            text=(
+                f"{FEATURE_TABLE} in {warehouse} holds no rows, so there is no distribution to "
+                "compare and no report was written."
+            ),
+            level=logging.WARNING,
+        )
+        if metrics is not None:
+            metrics.rows_in = 0
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {"reason": f"{FEATURE_TABLE} is empty"}
+        return 0
     effective_as_of = as_of or frame["play_date"].max().date()
     report = build_report(
         frame=frame,
@@ -840,17 +867,64 @@ def run_drift(
         warehouse=warehouse,
     )
     if report.current.rows < MIN_CURRENT_ROWS:
-        print(
-            f"the {window_days} days up to {effective_as_of.isoformat()} hold "
-            f"{report.current.rows} feature rows, fewer than the {MIN_CURRENT_ROWS} this "
-            "compares on. Every distribution over that few rows is noise, so no report was "
-            "written. Widen --window-days, move --as-of, or wait for more games."
+        emit_summary(
+            logger,
+            "drift window too small",
+            {
+                "window_days": window_days,
+                "as_of": effective_as_of.isoformat(),
+                "current_rows": report.current.rows,
+                "min_current_rows": MIN_CURRENT_ROWS,
+            },
+            text=(
+                f"the {window_days} days up to {effective_as_of.isoformat()} hold "
+                f"{report.current.rows} feature rows, fewer than the {MIN_CURRENT_ROWS} this "
+                "compares on. Every distribution over that few rows is noise, so no report was "
+                "written. Widen --window-days, move --as-of, or wait for more games."
+            ),
+            level=logging.WARNING,
         )
+        if metrics is not None:
+            metrics.rows_in = report.reference.rows + report.current.rows
+            metrics.rows_out = 0
+            metrics.rows_quarantined = 0
+            metrics.extra = {
+                "reason": "window too small",
+                "current_rows": report.current.rows,
+                "min_current_rows": MIN_CURRENT_ROWS,
+                "exit_code": EXIT_TOO_SMALL,
+            }
         return EXIT_TOO_SMALL
 
     report_path, summary_path = write_outputs(report, out_dir)
     log_run(report, reference, report_path, summary_path, experiment)
-    print(console(report, report_path, summary_path))
+    emit_summary(
+        logger,
+        "drift summary",
+        {
+            "reference_rows": report.reference.rows,
+            "current_rows": report.current.rows,
+            "max_psi": report.max_psi,
+            "archetype_mix_psi": report.mix.psi,
+            "drifted": report.drifted,
+            "flagged_features": [drift.feature for drift in report.features if drift.flagged],
+            "report_path": str(report_path),
+            "summary_path": str(summary_path),
+        },
+        text=console(report, report_path, summary_path),
+    )
+    if metrics is not None:
+        metrics.rows_in = report.reference.rows + report.current.rows
+        metrics.rows_out = len(report.features)
+        metrics.rows_quarantined = 0
+        metrics.extra = {
+            "reference_rows": report.reference.rows,
+            "current_rows": report.current.rows,
+            "max_psi": report.max_psi,
+            "archetype_mix_psi": report.mix.psi,
+            "drifted": report.drifted,
+            "flagged_features": [drift.feature for drift in report.features if drift.flagged],
+        }
     return 0
 
 
@@ -918,17 +992,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.window_days < 1:
         parser.exit(2, f"{parser.prog}: --window-days must be at least 1\n")
+    configure_logging(STAGE)
     try:
-        return run_drift(
-            warehouse=args.warehouse,
-            reference=args.reference,
-            window_days=args.window_days,
-            as_of=args.as_of,
-            threshold=args.psi_threshold,
-            tracking_uri=args.tracking_uri or default_tracking_uri(),
-            experiment=args.experiment,
-            out_dir=args.out_dir,
-        )
+        with stage_run(STAGE) as metrics:
+            return run_drift(
+                warehouse=args.warehouse,
+                reference=args.reference,
+                window_days=args.window_days,
+                as_of=args.as_of,
+                threshold=args.psi_threshold,
+                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                experiment=args.experiment,
+                out_dir=args.out_dir,
+                metrics=metrics,
+            )
     except (DriftError, TrainingDataError, ValueError) as error:
         parser.exit(2, f"{parser.prog}: {error}\n")
 

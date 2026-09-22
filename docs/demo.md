@@ -244,12 +244,48 @@ detail.
   expiry of a model is measured rather than assumed, the archetype mix is
   where a set release shows up first, and the command flags and exits 0
   instead of retraining anything.
+- **Traces and dashboards**: runs today, and out of the timed sequence because
+  it is six containers. `docker compose --profile observability up -d --build
+  predict grafana` brings up the predict service and the tracking server with an
+  OpenTelemetry collector, Jaeger, Prometheus and Grafana beside them. Send a
+  handful of `/predict` calls, then open http://localhost:16686 and pick a
+  trace: it is two spans, the request and `predict.inference` inside it,
+  carrying the model version, the alias and how many archetypes the model had
+  never seen. http://localhost:3000 is the provisioned dashboard: request rate
+  and p95 by route above inference p95 and prediction counts by model version.
+  `docker compose --profile observability down` when finished. If nothing holds
+  the `production` alias, which on this corpus is the normal state because the
+  promotion gate refuses a model that does not beat its baseline, add
+  `PRA_SERVE_STUB_MODEL=1` to the command: the
+  service then answers from a hand-written logistic that reports `stub`
+  everywhere a version is reported. Demonstrations only; it is never a model.
+  What it proves: the three pillars are wired, and the question "why is the p95
+  up" can be followed from a dashboard to a span rather than guessed at.
 - **Agent question**: not yet. Placeholder for asking the agent a matchup
   question and watching it write the mart query.
-- **Airflow DAG**: not yet. Placeholder for the scheduled
-  `bronze >> silver >> gold >> quality_gate` run.
+- **Airflow DAG**: runs today, and out of the timed sequence because the image
+  takes a few minutes to build the first time. `docker compose build airflow`,
+  `docker compose up -d airflow mlflow`, then
+  `docker compose exec airflow airflow dags trigger play_rough_pipeline --conf
+  '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'` and watch the
+  eleven tasks go green in the browser at http://localhost:8080 (admin/admin).
+  `docker compose down` when finished. The quick version, with no Docker at
+  all, is `uv run python -m pipeline.run_all --source-dir tests/fixtures
+  --data-dir /tmp/demo`, which runs the same nine stages in about twenty
+  seconds and prints a table of what ran and how long each took. What it
+  proves: every stage is a command, one run identifier ties all of their
+  `run_metrics` rows together, and the last task reads those rows back and is
+  allowed to fail the run.
+- **Publish**: runs today, and out of the timed sequence because it writes to
+  an account. `uv run python -m pipeline.publish --dry-run` builds every item
+  the application's DynamoDB table would receive and prints the counts, one
+  sample per kind and the meta row, without needing credentials that can write;
+  with `PRA_INSIGHTS_TABLE` set it writes them, then deletes the rows of the
+  previous run. What it proves: the warehouse is not the end of the line, the
+  refresh is atomic enough to read through, and every row on the application's
+  side names the run that produced it.
 - **Dashboard**: not yet. Placeholder for the published archetype and matchup
-  views.
+  views, which read the table the publish step writes.
 
 ## Rehearsal log
 
