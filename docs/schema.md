@@ -163,78 +163,70 @@ enforce it. Comparison key: lowercased `name` when known, else `baseCardId`.
 
 Card catalog (`catalog/cards.json`): `{ [cardId]: { name, set, number, type?, hp?, reg? } }`.
 
-## 7. Bronze tables
+## 7. Bronze table
 
-Parquet under `data/lake/bronze/<table>/play_date=YYYY-MM-DD/`, Hive
-partitioning, one partition rewritten per run. All string values that can
-contain a handle pass through the anonymizer; `*_hash` columns hold the keyed
-hash, and no raw handle is stored in bronze. Common lineage columns on every
-table: `source_key` (the S3 key), `source_version_id` (S3 object version),
-`schema_version` (1 or 2), `ingested_at`.
+Parquet under `data/lake/bronze/play_date=YYYY-MM-DD/part-0.parquet`, Hive
+partitioning, one row per game. A run deletes and rewrites whole every partition
+it touches, so re-ingesting the same games replaces them instead of appending
+duplicates; the file is staged under a temporary name in the partition
+directory and moved into place, so a reader never sees a half-written part.
+Compression is zstd. Every string that can carry a handle passes through the
+anonymizer before the write, and the batch is refused if a raw handle survives
+the rewrite, so no handle is stored in bronze.
 
-### `game`: one row per game
+Bronze keeps the blob's shape rather than flattening it: `summary` is a struct,
+`segments` a list of structs, the decklists structs. The seat and event grains
+(section 8 names columns at those grains) are projections of these columns and
+are produced in silver, where the joins that need them already live. Only v2
+blobs are written; a v1 blob is upgraded to v2 or quarantined before it reaches
+the writer, so there is no S3-last-modified fallback in the table.
 
-| Column | Type | Nullable | From |
-|---|---|---|---|
-| `game_id` | string | no | key / `summary.gameId` |
-| `user_id` | string | no | key / `summary.userId` |
-| `play_date` (partition) | date | no | `summary.playedAt`; v1 fallback: S3 last-modified |
-| `play_date_source` | string | no | `"summary"` or `"s3_last_modified"` |
-| `played_at`, `uploaded_at` | timestamp | v1: null | summary |
-| `export_variant` | string | v1: null | summary |
-| `parser_version`, `unparsed_count` | int | no | summary; v1: `unparsedLines` length, parser version null |
-| `turn_count` | int | no | summary; v1: count of `turn` segments |
-| `end_reason` | string | v1: null | summary |
-| `winner_hash` | string | yes | summary `winner`; v1: `win` / `concede` action |
-| `my_side`, `my_side_source` | int, string | yes | summary |
-| `result` | string | v1: null | summary |
-| `excluded_from_stats` | boolean | no (default false) | summary |
-| `has_full_decklists` | boolean | no | summary, else presence of both decklists in blob |
-| `season_id`, `season_name` | string | yes | summary |
-| `elo_previous`, `elo_new`, `elo_delta`, `elo_mode` | int, int, int, string | yes | `summary.elo` |
-| `upload_source`, `match_id` | string | yes | summary |
-| `segment_count`, `entry_count`, `unparsed_lines` | int, int, list<string> | no | blob |
-| `extras` | map<string, list<string>> | no | blob (anonymized) |
+The Parquet schema is pinned from the contract models, not inferred from the
+batch being written. Inference would type `summary.elo` as a struct in a batch
+that has one and as null in a batch that does not, and a reader spanning both
+partitions would see two incompatible schemas.
 
-### `game_seat`: one row per (game, seat)
+### Lineage columns
 
 | Column | Type | Nullable | From |
 |---|---|---|---|
-| `game_id`, `user_id`, `play_date` | as above | no | |
-| `seat` | int (0 or 1) | no | index in `summary.players`; v1: order of `statsByPlayer` keys, which is player order |
-| `player_hash` | string | no | anonymized handle |
-| `is_owner` | boolean | yes | `seat == my_side` |
-| `is_winner` | boolean | yes | `players[seat] == winner`; null when no winner |
-| `went_first` | boolean | yes | `go_first` action in segments (actor and `first` field) |
-| `won_coin_toss` | boolean | yes | `coin_toss` action with `won = true` |
-| `cards_drawn`, `energy_attached`, `damage_dealt`, `knockouts`, `prizes_taken`, `mulligans`, `turns_taken` | int | no | `statsByPlayer[handle]` |
-| `pokemon_played`, `cards_played`, `evolutions`, `attacks` | list<string> | no | `statsByPlayer[handle]` |
-| `archetype_name`, `archetype_id`, `archetype_source` | string | yes | opponent seat: `summary.opponentArchetype*`; owner seat: `summary.myArchetype*` when present |
-| `observed_cards` | list<struct<name, card_id, count>> | yes | `summary.observedCards.me` / `.opponent` mapped by seat |
-| `decklist_source`, `decklist_complete`, `decklist_card_count` | string, boolean, int | yes | `myDecklist` / `opponentDecklist` mapped by seat |
-| `decklist_cards` | list<struct<card_id, base_card_id, name, set, number, count>> | yes | same; never leaves bronze for public outputs |
-| `deck_id`, `deck_version`, `deck_name` | string, int, string | owner seat only | summary |
+| `game_id` | string | no | `summary.gameId`, lifted so a filter needs no struct access |
+| `user_id` | string | no | `summary.userId` |
+| `play_date` (partition) | string in the file, `DATE` from the Hive path | no | `summary.playedAt`, first 10 characters |
+| `play_date_source` | string | no | `"summary"`; the only value while v1 blobs are excluded |
+| `played_at` | timestamp (us, UTC) | no | `summary.playedAt` |
+| `contract_version` | int32 | no | `2` |
+| `source_key` | string | no | the S3 key the blob was read from |
+| `source_version_id` | string | yes | S3 object version |
+| `source_last_modified` | timestamp (us, UTC) | yes | S3 object last-modified |
+| `ingested_at` | timestamp (us, UTC) | no | run time, the same value for the whole run |
 
-Exactly two rows per game is a hard check; a game with fewer than two
-discovered players is quarantined.
-
-### `game_event`: one row per entry and per sub-entry
+### Blob columns
 
 | Column | Type | Nullable | From |
 |---|---|---|---|
-| `game_id`, `user_id`, `play_date` | as above | no | |
-| `segment_index` | int | no | position in `segments` |
-| `segment_kind` | string | no | `Segment.kind` |
-| `turn_number` | int | turn only | `Segment.turnNumber` |
-| `segment_player_hash` | string | turn only | `Segment.player` |
-| `entry_index` | int | no | position in `entries` |
-| `sub_index` | int | null for entries | position in `subs` |
-| `line` | int | no | `Action.line` |
-| `kind` | string | no | `Action.kind` |
-| `actor_hash` | string | yes | `Action.actor` |
-| `text` | string | no | `Action.text`, anonymized |
-| `fields` | map<string, string> | no | `Action.fields`, values stringified, handle-bearing values anonymized |
-| `details` | list<string> | sub-entries only | `SubEntry.details`, anonymized |
+| `summary` | struct, one field per section 2 row | no | `summary` |
+| `segments` | list<struct> mirroring section 3, entries and sub-entries nested inside | no | `segments` |
+| `stats_by_player` | list<struct<handle, stats>> | no | `statsByPlayer` |
+| `unparsed_lines` | list<string> | no | `unparsedLines` |
+| `extras` | list<struct<tag, lines>> | no | `extras` |
+| `my_decklist`, `opponent_decklist` | struct per section 6 | yes | blob |
+
+Two conversions the Parquet types force:
+
+- `fields` (section 4) is an open record: its values are
+  `string | number | boolean` and its keys differ per `kind`, so there is no
+  stable struct for it and Parquet has no heterogeneous map. Every entry and
+  sub-entry carries `fields_json` instead, the record as compact JSON text with
+  keys sorted. Readers use a JSON function on it; silver promotes the numeric
+  fields it cares about (`n`, `damage`) to real columns.
+- `statsByPlayer` and `extras` are records keyed by handle and by tag. A
+  Parquet map with a struct value reads back awkwardly in DuckDB, so both
+  become lists of structs and key order follows the blob.
+  `summary.elo.modeElos` stays a map: its values are plain integers.
+
+A smoke query reads the output back after every run:
+`SELECT play_date, count(*) FROM read_parquet('bronze/**/*.parquet', hive_partitioning=true) GROUP BY 1`.
 
 ### Quarantine record
 

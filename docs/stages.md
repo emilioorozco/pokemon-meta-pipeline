@@ -8,7 +8,7 @@ stage reaches back into a previous stage's internals.
 S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
         |
         v
-[1 bronze]  validate, anonymize, flatten -> game / game_seat / game_event Parquet
+[1 bronze]  validate, anonymize, land one nested row per game as Parquet
         |                                    (+ quarantine)
         v
 [2 silver]  PySpark: typed, cards exploded, catalog + archetype aliases joined, features
@@ -55,8 +55,9 @@ Steps per object:
    `unparsedLines`, `extras`, summary fields). Then scan the rewritten blob for
    any remaining raw handle; a hit quarantines `handle_leak_check_failed`
    rather than writing.
-7. Flatten into `game`, `game_seat`, `game_event` rows as defined in
-   [schema.md](schema.md).
+7. Land one row per game with the blob kept nested (summary struct, segments
+   list, decklists) as defined in [schema.md](schema.md); seat and event grains
+   are produced in silver.
 
 Output: the three bronze tables, partitioned by `play_date`, each touched
 partition deleted and rewritten in full (idempotent); quarantine records as
