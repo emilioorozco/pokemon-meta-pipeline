@@ -22,6 +22,10 @@ BRONZE_DIR = LAKE_DIR / "bronze"
 SILVER_DIR = LAKE_DIR / "silver"
 # Rejected blobs are kept as received, so this directory stays local and gitignored.
 QUARANTINE_DIR = LAKE_DIR / "quarantine"
+# One Parquet row per stage per run, written by `pipeline.observability.stage_run`
+# and read by the `ops` dbt models. It lives in the lake rather than beside the
+# logs because it is a table that gets queried, not a stream that gets tailed.
+RUN_METRICS_DIR = LAKE_DIR / "run_metrics"
 # The card catalog is an export of the client's card database, downloaded by
 # scripts/fetch_catalog.py. It is reference data, not lake output, but it is
 # large and not ours to redistribute, so it lives under the gitignored data dir.

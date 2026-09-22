@@ -15,12 +15,15 @@ competition for fields you dropped.
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 from pipeline.config import LAKE_DIR
+
+logger = logging.getLogger(__name__)
 
 LIST_EPISODES_URL = "https://www.kaggle.com/api/i/competitions.EpisodeService/ListEpisodes"
 META_CACHE_DIR = LAKE_DIR / "raw" / "episode_meta"
@@ -60,10 +63,13 @@ def fetch_missing(episode_ids: list[int], cache_dir: Path = META_CACHE_DIR) -> i
         payload = _fetch_chunk(chunk)
         got = {ep["id"] for ep in payload.get("episodes", [])}
         if not_found := set(chunk) - got:
-            print(f"  warning: {len(not_found)} ids not returned: {sorted(not_found)[:5]}...")
+            logger.warning(
+                "ids not returned",
+                extra={"missing": len(not_found), "examples": sorted(not_found)[:5]},
+            )
         out = cache_dir / f"chunk-{chunk[0]}-{chunk[-1]}.json"
         out.write_text(json.dumps(payload))
-        print(f"  fetched {len(got)} episodes -> {out.name}")
+        logger.info("episode chunk cached", extra={"episodes": len(got), "file": out.name})
         if i + CHUNK_SIZE < len(missing):
             time.sleep(SLEEP_BETWEEN_CALLS_S)
     return len(missing)

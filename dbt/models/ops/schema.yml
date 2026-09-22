@@ -1,0 +1,124 @@
+version: 2
+
+models:
+  - name: run_metrics
+    description: >
+      One row per stage per run, read straight off the Parquet files
+      `pipeline.observability.stage_run` writes. This is the operational table,
+      not a game table: nothing here joins to the star schema, and the grain is
+      a pipeline run rather than a game. A data directory with no completed run
+      yet produces an empty relation of the same shape rather than a build
+      error, which is what lets a fresh clone run `dbt build` before it has run
+      a stage. See docs/schema.md section 11 and docs/stages.md, "Ops: logging
+      and run metrics".
+    columns:
+      - name: run_id
+        description: >
+          The identifier every stage of one orchestrated run shares, from
+          `PRA_RUN_ID` when the scheduler set one and a random 16 hex characters
+          otherwise. It is on every log line of the run as well, which is how a
+          row here is tied back to the log.
+      - name: stage
+        description: >
+          Which stage wrote the row: bronze_backfill, silver, gold, train,
+          promote, drift, refresh_fixtures or fetch_catalog. Together with
+          run_id it is the grain.
+      - name: started_at
+        description: When the stage began, in UTC.
+      - name: finished_at
+        description: When it stopped, whether it succeeded or raised.
+      - name: duration_s
+        description: Wall-clock seconds the stage took, from a monotonic clock rather than from the two timestamps.
+      - name: rows_in
+        description: >
+          What the stage read: objects listed for the backfill, games for
+          silver, models for gold, feature rows for train. NULL when a stage
+          does not count its input, which is not the same as zero.
+      - name: rows_out
+        description: >
+          What the stage produced at its own grain, whether that is rows
+          landed, games written or models built.
+      - name: rows_quarantined
+        description: Rows the stage refused. Zero for the stages that cannot quarantine anything.
+      - name: status
+        description: >
+          `ok` when the block completed, `failed` when it raised or when the
+          stage judged its own result a failure, such as dbt exiting non-zero.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ok", "failed"]
+      - name: error
+        description: >
+          The exception class and message on a failed run, NULL otherwise. It
+          never carries blob content: the pipeline's own exceptions report
+          paths, counts and reasons.
+      - name: extra_json
+        description: >
+          Whatever else the stage recorded, as a JSON object: per-partition
+          counts for the backfill, the reconciliation lines for silver, the
+          holdout numbers for train. JSON in one column rather than a struct,
+          because every stage puts different keys in it.
+      - name: git_commit
+        description: The commit the stage ran at, or NULL outside a checkout.
+      - name: hostname
+        description: The machine that ran it, which is how one bad runner is told from a bad stage.
+
+  - name: mart_pipeline_health
+    description: >
+      One row per stage: the last run's outcome, and the trend over the last ten
+      runs. The table an on-call view or a morning check reads. The future alert
+      is one predicate on it, `quarantine_rate_over_threshold`, which is the
+      quarantine rate over the window against the `quarantine_rate_alert`
+      project variable (5% today).
+    columns:
+      - name: stage
+        description: The stage this row is about. One row per stage that has ever run.
+        data_tests: [unique, not_null]
+      - name: last_run_id
+        description: The run identifier of the most recent run of this stage, for pulling its log lines.
+      - name: last_status
+        description: How the most recent run ended.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ok", "failed"]
+      - name: last_started_at
+        description: When the most recent run started, in UTC. A stage missing from a morning is a stale timestamp here.
+      - name: last_duration_s
+        description: How long the most recent run took, to be read against `mean_duration_s`.
+      - name: last_rows_in
+        description: What the most recent run read.
+      - name: last_rows_out
+        description: What the most recent run produced.
+      - name: last_rows_quarantined
+        description: What the most recent run refused.
+      - name: last_error
+        description: The error of the most recent run, NULL when it succeeded.
+      - name: last_git_commit
+        description: The commit the most recent run ran at.
+      - name: runs_considered
+        description: How many runs the window covers, at most ten. Fewer means the stage is new.
+      - name: failed_runs
+        description: Failed runs inside the window. A green last run with a non-zero count here is a flapping stage.
+      - name: mean_duration_s
+        description: Mean duration over the window, which is what makes `last_duration_s` readable.
+      - name: rows_in_window
+        description: Rows read over the window, the denominator of the quarantine rate.
+      - name: rows_quarantined_window
+        description: Rows refused over the window, the numerator.
+      - name: quarantine_rate
+        description: >
+          Rows quarantined over rows read across the window, not the mean of the
+          per-run rates: a run of three objects must not outvote a run of ten
+          thousand. Zero, not NULL, when the stage read nothing or quarantines
+          nothing by construction.
+        data_tests: [not_null]
+      - name: quarantine_rate_over_threshold
+        description: >
+          The alert predicate, true when `quarantine_rate` is at or above the
+          `quarantine_rate_alert` variable. Nothing pages on it yet; the
+          orchestrator is where that lands.
+        data_tests: [not_null]

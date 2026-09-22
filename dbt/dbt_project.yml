@@ -31,6 +31,11 @@ vars:
   # The share of games the computed cutoff aims to leave in the holdout. It can
   # only be approximated, because the boundary falls between two days.
   holdout_fraction: 0.25
+  # The quarantine rate at which a stage is worth looking at, over its last ten
+  # runs. `mart_pipeline_health` carries the comparison as a column rather than
+  # filtering on it, so the alert is one predicate away and the number stays
+  # visible for the stages that are under it.
+  quarantine_rate_alert: 0.05
 
 models:
   play_rough_pipeline:
@@ -40,6 +45,12 @@ models:
       +materialized: view
     marts:
       +materialized: table
+    ops:
+      # Views over the run-metrics Parquet: the table is a handful of rows per
+      # day and it has to reflect the stage that finished a second ago, so
+      # materializing it would only add a rebuild between a run and its metrics.
+      +materialized: view
+      +tags: ["ops"]
     ml:
       # Tables, and tagged so `dbt run --select tag:ml` rebuilds the training
       # data without rebuilding the marts. A feature table is read row by row

@@ -704,12 +704,109 @@ task downstream of `gold`. Each task is the stage's command-line entry point,
 so any other scheduler could call the same commands. Idempotent partitions make
 retries safe.
 
+The observability half of it is already in place: the DAG run exports
+`PRA_RUN_ID`, every task picks it up, and `mart_pipeline_health` is what
+`quality_gate` reads. See "Ops: logging and run metrics" above.
+
 ## 8. Publish back (planned)
 
 Gold marts and the model's per-archetype summaries are written as JSON under a
 prefix the application reads (in the same environment's bucket), so the web
 application can show community-level matchup and win-rate views without
 querying the warehouse. Only the public-safe subset (section 3) is published.
+
+## Ops: logging and run metrics
+
+Every stage writes the same two things: a structured log to standard error and
+one `run_metrics` row to the lake. Both come from `pipeline/observability.py`,
+which is the only module every other stage imports, and neither needs a server.
+
+**The log.** One JSON object per line, on standard error:
+
+```json
+{"ts": "2026-09-22T17:41:02.134612+00:00", "level": "INFO", "logger": "pipeline.observability",
+ "stage": "silver", "run_id": "smoke-1", "msg": "stage complete", "duration_s": 12.31,
+ "rows_in": 128, "rows_out": 128, "rows_quarantined": 0, "status": "ok"}
+```
+
+`ts`, `level`, `logger`, `stage`, `run_id` and `msg` are always there; anything
+passed as `extra=` is merged in beside them, and an exception adds `exc_type`,
+`exc_message` and `stack`. Set `PRA_LOG_FORMAT=console` (or run in a terminal,
+which is the default when standard error is a teletype) and the same records
+render as one compact line each, `HH:MM:SS LEVEL [stage run_id] msg key=value`.
+`PRA_LOG_FORMAT=json` forces the machine form. Standard library `logging` only:
+a `logging.Filter` puts the run identifier and the stage on every record,
+including the ones PySpark, MLflow and boto3 emit, so nothing has to be threaded
+through a call.
+
+Standard output is kept for the command's own result. A stage that used to print
+a summary block now calls `emit_summary`, which logs the summary as one record
+with its fields and writes the readable block to standard output, so
+`python -m pipeline.backfill 2>/dev/null` is still a table a person reads and
+`python -m pipeline.silver 2>&1 >/dev/null | jq` is still parseable.
+
+**The run identifier.** `PRA_RUN_ID` when it is set, which is how the
+orchestrator will give one whole DAG run a single identifier, and sixteen random
+hex characters otherwise. It is on every log line and in every `run_metrics`
+row, so "what did the 06:00 run do" is one filter on either.
+
+**The row.** `stage_run` wraps the body of each stage, times it, and writes
+exactly one Parquet file to `$PIPELINE_DATA_DIR/lake/run_metrics/`, named
+`<run id>-<stage>.parquet`:
+
+| column | meaning |
+|---|---|
+| `run_id`, `stage` | the grain |
+| `started_at`, `finished_at`, `duration_s` | when and how long |
+| `rows_in`, `rows_out`, `rows_quarantined` | what the stage read, wrote and refused |
+| `status`, `error` | `ok` or `failed`, and the exception class and message |
+| `extra_json` | whatever else the stage recorded, as JSON |
+| `git_commit`, `hostname` | which code, which machine |
+
+One file per run rather than one appended table, because two stages of the same
+run finish at unpredictable times and a writer that rewrites a shared file loses
+one of them. The schema is pinned (docs/schema.md section 11). A stage that
+raises still writes its row, with `status = "failed"`, before the exception
+continues; a stage whose bookkeeping fails logs a warning and reports its real
+result, because a run that did its work must not be marked broken by its own
+telemetry.
+
+Stage names, one per command: `bronze_backfill`, `silver`, `gold`, `train`,
+`promote`, `drift`, plus `refresh_fixtures` and `fetch_catalog` for the two
+maintenance scripts. `serve` is the exception: it is a long-running process with
+no run to close, so it configures logging at startup and logs one record per
+request (method, path, status, duration in milliseconds, loaded model version)
+from a middleware, and writes no `run_metrics` row.
+
+**Reading it back.** Two dbt models under `models/ops/`, both views over the
+Parquet so a stage that finished a second ago is in the next query:
+
+- `run_metrics`: every row, one per stage per run. Guarded against an empty
+  directory, so a fresh clone builds before it has ever run a stage.
+- `mart_pipeline_health`: one row per stage, carrying the last run's status,
+  duration and counts, and the trend over the last ten runs, including
+  `quarantine_rate` and the `quarantine_rate_over_threshold` flag.
+
+```sql
+-- which stage is throwing rows away
+select stage, last_status, last_duration_s, last_rows_in, last_rows_out,
+       quarantine_rate, quarantine_rate_over_threshold
+from mart_pipeline_health
+order by quarantine_rate desc;
+```
+
+The quarantine rate is rows quarantined over rows read across the window, not
+the mean of the per-run rates: a run that read three objects and rejected one is
+33%, and averaging that against a run of ten thousand would let a tiny run shout
+down a large one.
+
+**The alert that is not built yet.** `quarantine_rate_over_threshold` is true
+when a stage has quarantined more than 5% of what it read over its last ten runs
+(`quarantine_rate_alert` in `dbt/dbt_project.yml`). Nothing pages on it today.
+It belongs in stage 7: the Airflow DAG gets a `quality_gate` task after gold
+that reads this one column and fails the run, which is also where a failed
+stage's `run_metrics` row becomes a notification rather than a row nobody
+queried.
 
 ## Open items
 

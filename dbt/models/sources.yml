@@ -31,3 +31,20 @@ sources:
           already joined on by silver. See docs/schema.md section 8.4.
         meta:
           external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/silver/cards_seen/**/*.parquet', hive_partitioning = true)"
+
+  - name: ops
+    description: >
+      The pipeline's own telemetry, not the game data. One Parquet file per
+      stage per run, written by `pipeline.observability.stage_run` under
+      `$PIPELINE_DATA_DIR/lake/run_metrics/`. Read in place like the silver
+      sources, so a stage that finished a second ago is in the next query.
+    tables:
+      - name: run_metrics
+        description: >
+          One row per stage per run: when it started, how long it took, what
+          went in, what came out, what was quarantined and whether it finished.
+          Flat files rather than a partitioned directory, named
+          `<run id>-<stage>.parquet`, so `hive_partitioning` is off. See
+          docs/schema.md section 11.
+        meta:
+          external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/run_metrics/*.parquet', hive_partitioning = false)"

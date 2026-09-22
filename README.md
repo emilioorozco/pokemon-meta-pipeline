@@ -217,6 +217,25 @@ coverage. `scripts/fetch_catalog.py` downloads the
 card catalog silver joins against; the stage runs without it, with null catalog
 columns.
 
+Every stage logs the same way and records the same row. `pipeline/observability.py`
+installs a standard-library JSON logger on standard error (one object per line
+with `ts`, `level`, `logger`, `stage`, `run_id`, `msg` and whatever fields the
+call passed) and renders the same records as one readable line each in a
+terminal or under `PRA_LOG_FORMAT=console`. Standard output stays the command's
+own result, so a summary block is still a table a person reads while the log
+beside it stays parseable. Every stage of one run shares a `run_id`, from
+`PRA_RUN_ID` when a scheduler sets one, and closes by writing a single Parquet
+row to `data/lake/run_metrics/` with its duration, its rows in, out and
+quarantined, and `ok` or `failed`. Two dbt models read that back: `run_metrics`
+and `mart_pipeline_health`, one row per stage with the last run's outcome and
+the quarantine rate over the last ten. `python -m pipeline.serve` logs a record
+per request instead, because a service has no run to close.
+
+```bash
+PRA_RUN_ID=nightly-1 uv run python -m pipeline.backfill --source-dir tests/fixtures
+uv run python -c "import duckdb; duckdb.sql(\"select stage, last_status, last_duration_s, quarantine_rate from read_parquet('data/lake/run_metrics/*.parquet')\").show()"
+```
+
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
 disallowed, all four pytest runs with a 70% coverage floor on the combined
@@ -245,7 +264,9 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
       comparison, written to a report and logged as an MLflow run
 - [ ] LangChain agent: structured query language (SQL) over the marts and
       card-text retrieval, scored against a golden question set
-- [ ] Airflow directed acyclic graph (DAG) with structured logs and metrics
+- [x] Structured JSON logging with a shared run identifier, and a `run_metrics`
+      row per stage per run surfaced by two dbt models
+- [ ] Airflow directed acyclic graph (DAG) calling the stage commands in order
 - [ ] Publish marts and per-archetype predictions back to the application
 - [ ] Stretch: AWS Step Functions as the managed alternative to Airflow
 
@@ -335,6 +356,9 @@ dbt/               dbt project (DuckDB): sources, staging views, star schema,
                    marts, its own tests, and the committed profiles.yml
 dbt/models/ml/     the model's training data: scope rules, split cutoff,
                    features_turn
+dbt/models/ops/    the pipeline's own telemetry: run_metrics and
+                   mart_pipeline_health over the run-metrics Parquet
+data/lake/run_metrics/  one Parquet row per stage per run (gitignored)
 compose.yaml       local services: MLflow, the predict API and the consumer
 Dockerfile         the consumer as a container; compose.yaml runs it
 Dockerfile.serve   image for the predict service; carries no model, loads the alias

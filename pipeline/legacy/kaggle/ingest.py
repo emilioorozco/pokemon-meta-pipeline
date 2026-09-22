@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -30,6 +31,11 @@ import pyarrow.dataset as ds
 from pipeline.config import BRONZE_DIR
 from pipeline.legacy.kaggle import enrich
 from pipeline.legacy.kaggle.config import replay_batches, validate_source
+from pipeline.observability import configure_logging, emit_summary
+
+logger = logging.getLogger(__name__)
+
+STAGE = "legacy_kaggle_ingest"
 
 DECK_SIZE = 60
 
@@ -206,12 +212,16 @@ def main() -> int:
     parser.add_argument("--sample", type=int, default=None, help="first N games per batch")
     parser.add_argument("--no-fetch", action="store_true", help="skip the metadata API call")
     args = parser.parse_args()
+    configure_logging(STAGE)
 
     if missing := validate_source():
         sys.exit(f"missing source data: {missing}")
 
     files = replay_files(args.sample)
-    print(f"ingesting {len(files)} replays ({'sample' if args.sample else 'full corpus'})")
+    logger.info(
+        "ingesting replays",
+        extra={"files": len(files), "mode": "sample" if args.sample else "full corpus"},
+    )
 
     games, quarantined = [], []
     for batch, path in files:
@@ -222,7 +232,7 @@ def main() -> int:
 
     ids = [g["episode_id"] for g in games]
     if not args.no_fetch:
-        print("fetching episode metadata (cached ids skipped)...")
+        logger.info("fetching episode metadata (cached ids skipped)")
         enrich.fetch_missing(ids)
     meta = enrich.load_meta()
     n_meta = sum(1 for i in ids if i in meta)
@@ -238,15 +248,28 @@ def main() -> int:
     write_bronze("game_seats", seat_rows, SEATS_SCHEMA)
     write_bronze("game_events", event_rows, EVENTS_SCHEMA)
 
-    print(f"\nbronze written to {BRONZE_DIR}")
-    print(f"  games:       {len(game_rows):>7} rows")
-    print(f"  game_seats:  {len(seat_rows):>7} rows")
-    print(f"  game_events: {len(event_rows):>7} rows")
-    print(f"  metadata joined for {n_meta}/{len(games)} games")
+    lines = [
+        f"\nbronze written to {BRONZE_DIR}",
+        f"  games:       {len(game_rows):>7} rows",
+        f"  game_seats:  {len(seat_rows):>7} rows",
+        f"  game_events: {len(event_rows):>7} rows",
+        f"  metadata joined for {n_meta}/{len(games)} games",
+    ]
     if quarantined:
-        print(f"  QUARANTINED {len(quarantined)} games:")
-        for name, err in quarantined[:10]:
-            print(f"    {name}: {err}")
+        lines.append(f"  QUARANTINED {len(quarantined)} games:")
+        lines += [f"    {name}: {err}" for name, err in quarantined[:10]]
+    emit_summary(
+        logger,
+        "legacy ingest summary",
+        {
+            "games": len(game_rows),
+            "game_seats": len(seat_rows),
+            "game_events": len(event_rows),
+            "metadata_joined": n_meta,
+            "quarantined": len(quarantined),
+        },
+        text="\n".join(lines),
+    )
     return 1 if quarantined else 0
 
 

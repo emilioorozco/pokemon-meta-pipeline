@@ -83,9 +83,11 @@ from pyspark.sql.window import Window
 
 from pipeline.config import BRONZE_DIR, CATALOG_PATH, SILVER_DIR
 from pipeline.contract import ActionKind, SideStats
+from pipeline.observability import configure_logging, emit_summary, stage_run
 
 logger = logging.getLogger(__name__)
 
+STAGE: Final = "silver"
 APP_NAME: Final = "pra-silver"
 MASTER_VAR: Final = "PRA_SPARK_MASTER"
 DEFAULT_MASTER: Final = "local[*]"
@@ -150,10 +152,17 @@ class ReconciliationError(RuntimeError):
 
 @dataclass
 class SilverSummary:
-    """What one run produced: rows per table, and how long it took."""
+    """What one run produced: rows per table, the reconciliation lines, and how long it took.
+
+    `checks` holds one readable line per reconciliation check, filled in by
+    `reconcile`. They are carried on the summary rather than printed where they
+    are computed because `reconcile` is a library function and stdout belongs to
+    the command line; the command prints the block it is handed.
+    """
 
     games_in: int = 0
     rows: dict[str, int] = field(default_factory=dict)
+    checks: list[str] = field(default_factory=list)
     duration_s: float = 0.0
 
     def __str__(self) -> str:
@@ -162,6 +171,7 @@ class SilverSummary:
             [
                 f"games_in: {self.games_in}",
                 f"rows: {counts}",
+                *self.checks,
                 f"duration_s: {self.duration_s:.2f}",
             ]
         )
@@ -660,8 +670,13 @@ def reconcile(summary: SilverSummary, cards_seen: DataFrame) -> None:
     ]
     for label, expected, actual in checks:
         status = "ok" if expected == actual else "FAILED"
-        logger.info("reconciliation %s: %s (expected %d, got %d)", label, status, expected, actual)
-        print(f"reconciliation {label}: {status} (expected {expected}, got {actual})")
+        logger.info(
+            "reconciliation check",
+            extra={"check": label, "status": status, "expected": expected, "actual": actual},
+        )
+        summary.checks.append(
+            f"reconciliation {label}: {status} (expected {expected}, got {actual})"
+        )
         if expected != actual:
             failures.append(f"{label}: expected {expected}, got {actual}")
 
@@ -669,8 +684,13 @@ def reconcile(summary: SilverSummary, cards_seen: DataFrame) -> None:
         cards_seen.groupBy("game_id", "seat", "card_id").count().where(F.col("count") > 1).count()
     )
     status = "ok" if duplicates == 0 else "FAILED"
-    logger.info("reconciliation cards_seen grain: %s (%d duplicate key(s))", status, duplicates)
-    print(f"reconciliation cards_seen grain: {status} ({duplicates} duplicate key(s))")
+    logger.info(
+        "reconciliation check",
+        extra={"check": "cards_seen grain", "status": status, "duplicate_keys": duplicates},
+    )
+    summary.checks.append(
+        f"reconciliation cards_seen grain: {status} ({duplicates} duplicate key(s))"
+    )
     if duplicates:
         failures.append(f"cards_seen has {duplicates} duplicate (game_id, seat, card_id) key(s)")
 
@@ -839,7 +859,7 @@ def _as_int(value: Any) -> int | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the silver stage from the command line and print what it wrote."""
+    """Run the silver stage from the command line and report what it wrote."""
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.silver",
         description="Build the silver tables from bronze Parquet with PySpark.",
@@ -863,18 +883,41 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Spark master URL (default: ${MASTER_VAR} or {DEFAULT_MASTER})",
     )
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging(STAGE)
 
     spark = build_session(args.master)
     spark.sparkContext.setLogLevel("WARN")
     try:
-        summary = run_silver(spark, args.bronze_dir, args.silver_dir, args.catalog)
+        with stage_run(STAGE) as metrics:
+            try:
+                summary = run_silver(spark, args.bronze_dir, args.silver_dir, args.catalog)
+            except ReconciliationError as exc:
+                # Counted as a failed run: the tables are on disk, and a silver
+                # run whose invariants broke is not a run anything downstream
+                # should read as a success.
+                metrics.extra = {"failures": list(exc.failures)}
+                raise
+            metrics.rows_in = summary.games_in
+            metrics.rows_out = summary.rows.get("games", 0)
+            metrics.rows_quarantined = 0
+            metrics.extra = {"rows": summary.rows, "checks": summary.checks}
     except ReconciliationError as exc:
-        logger.error("reconciliation failed: %s", exc)
+        logger.error("reconciliation failed", extra={"failures": list(exc.failures)})
         return 1
     finally:
         spark.stop()
-    print(summary)
+
+    emit_summary(
+        logger,
+        "silver summary",
+        {
+            "games_in": summary.games_in,
+            "rows": summary.rows,
+            "checks": summary.checks,
+            "duration_s": round(summary.duration_s, 4),
+        },
+        text=str(summary),
+    )
     return 0
 
 

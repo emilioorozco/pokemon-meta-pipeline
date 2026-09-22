@@ -38,19 +38,25 @@ make the caller handle a metagame that moves every set release as an error.
 import argparse
 import contextlib
 import json
+import logging
 import os
-from collections.abc import Callable
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Protocol
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from pipeline.config import PRODUCTION_ALIAS, REGISTERED_MODEL_NAME, default_tracking_uri
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
+from pipeline.observability import configure_logging
 
+logger = logging.getLogger(__name__)
+
+STAGE: Final = "serve"
 CODES_ARTIFACT: Final = "archetype_codes.json"
 # Version tags that are numbers worth reporting on `/model`. The rest of the
 # tags are dates and decisions, which belong in the registry rather than in a
@@ -329,6 +335,45 @@ def create_app(loader: Loader | None = None) -> FastAPI:
     # out the registry is empty.
     holder.try_load()
 
+    @app.middleware("http")
+    async def log_requests(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """One record per call: what was asked, what came back, how long, and by which model.
+
+        A long-running service writes no `run_metrics` row, because there is no
+        run to close: the unit here is the request, and the request log is what
+        a latency or an error-rate panel is built from. `model_version` is on
+        every line so a shifted prediction distribution can be attributed to a
+        promotion rather than guessed at.
+        """
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception(
+                "request failed",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": 500,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "model_version": holder.current.version if holder.current else None,
+                },
+            )
+            raise
+        logger.info(
+            "request",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                "model_version": holder.current.version if holder.current else None,
+            },
+        )
+        return response
+
     @app.get("/health", response_model=HealthResponse, summary="Liveness and model state")
     def health() -> HealthResponse:
         return HealthResponse(status="ok", model_loaded=holder.current is not None)
@@ -384,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         help=f"registered model alias to load (default: {PRODUCTION_ALIAS})",
     )
     args = parser.parse_args(argv)
+    configure_logging(STAGE)
 
     import uvicorn
 

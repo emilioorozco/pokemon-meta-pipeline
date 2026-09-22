@@ -2,6 +2,7 @@
 and parsing indexes per-agent fields by seat."""
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def test_empty_or_missing_cache_has_no_ids(tmp_path: Path) -> None:
 
 
 def test_fetch_missing_skips_cached_ids_and_lands_raw_response(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     cache = tmp_path / "episode_meta"
     land_chunk(cache, 1)
@@ -59,9 +60,13 @@ def test_fetch_missing_skips_cached_ids_and_lands_raw_response(
     monkeypatch.setattr(enrich, "CHUNK_SIZE", 2)
     monkeypatch.setattr(enrich, "SLEEP_BETWEEN_CALLS_S", 0)
 
-    assert enrich.fetch_missing([1, 2, 3, 4], cache) == 3
+    with caplog.at_level(logging.WARNING, logger=enrich.__name__):
+        assert enrich.fetch_missing([1, 2, 3, 4], cache) == 3
     assert calls == [[2, 3], [4]]  # cached id 1 skipped, remainder chunked
-    assert "1 ids not returned" in capsys.readouterr().out
+    # The warning is a log record now, not a printed line: this is a library
+    # function, and stdout belongs to whichever command called it.
+    warned = [record for record in caplog.records if record.message == "ids not returned"]
+    assert [record.__dict__["missing"] for record in warned] == [1]
     assert enrich.cached_episode_ids(cache) == {1, 2, 4}
     assert sorted(p.name for p in cache.glob("chunk-*.json")) == [
         "chunk-1-1.json",
