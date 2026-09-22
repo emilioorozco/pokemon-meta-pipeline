@@ -1,0 +1,18 @@
+# What Prometheus scrapes locally: the predict service, and nothing else.
+#
+# Fifteen seconds is the interval the dashboard's `rate(...[5m])` windows assume;
+# a rate over a window shorter than four scrape intervals is mostly noise, which
+# is why the panels use five minutes rather than one.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: predict
+    # The compose service name, not localhost: inside this container, localhost
+    # is Prometheus. The default metrics path is `/metrics`, which is where
+    # `pipeline.telemetry` mounts the exposition.
+    static_configs:
+      - targets: ["predict:8000"]
+        labels:
+          service: pra-predict

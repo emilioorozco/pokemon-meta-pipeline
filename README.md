@@ -141,6 +141,17 @@ the commands below so the DAG holds no pipeline logic of its own. Both end with
 the run when a stage's last run failed or its quarantine rate is over the
 threshold, which is what turns a telemetry row into a red run.
 
+The serving stage is instrumented, which is the one place a run-per-stage row
+does not fit. Every request is an OpenTelemetry span with a `predict.inference`
+child around the model call, exported to a collector when one is configured and
+a no-op when there is not; `GET /metrics` is a Prometheus exposition of request
+rate and latency by route, inference latency and prediction counts by model
+version, and an agent tool-call counter stage 6 will start using.
+`docker compose --profile observability up -d predict grafana` adds the
+collector, Jaeger, Prometheus and a provisioned Grafana dashboard next to the
+service, and the default `docker compose up -d mlflow predict` is still the two
+containers it has always been.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
@@ -397,8 +408,10 @@ dbt/models/ml/     the model's training data: scope rules, split cutoff,
 dbt/models/ops/    the pipeline's own telemetry: run_metrics and
                    mart_pipeline_health over the run-metrics Parquet
 data/lake/run_metrics/  one Parquet row per stage per run (gitignored)
-compose.yaml       local services: MLflow, the predict API, the consumer and
-                   Airflow standalone
+orchestration/observability/  collector, Prometheus and Grafana configuration,
+                   and the provisioned predict dashboard
+compose.yaml       local services: MLflow, the predict API, the consumer,
+                   Airflow standalone, and the observability profile
 Dockerfile         the consumer as a container; compose.yaml runs it
 Dockerfile.serve   image for the predict service; carries no model, loads the alias
 Dockerfile.airflow Airflow plus the project's dependencies in a venv of their own

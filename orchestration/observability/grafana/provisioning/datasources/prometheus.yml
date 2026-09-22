@@ -1,0 +1,14 @@
+# Provisioned rather than clicked: a dashboard whose datasource was added by
+# hand is a dashboard that is blank on the next machine.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    # The dashboard JSON refers to this uid, so it must not be left to Grafana
+    # to generate one.
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

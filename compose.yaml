@@ -9,6 +9,12 @@
 # consumer, which is the one stage that waits on a queue instead of finishing;
 # and a scheduler that runs the stages in order on a clock instead of by hand.
 #
+# Plus one optional group, behind the `observability` profile: an OpenTelemetry
+# collector, Jaeger, Prometheus and Grafana, which trace and chart the predict
+# service. They are a profile because nothing else needs them, and four more
+# containers on every `docker compose up predict` is how a local stack stops
+# being started.
+#
 #   docker compose up -d mlflow
 #   export MLFLOW_TRACKING_URI=http://localhost:5000
 #   uv run python -m pipeline.train
@@ -22,6 +28,12 @@
 #   docker compose up -d airflow mlflow          # http://localhost:8080
 #   docker compose exec airflow airflow dags trigger play_rough_pipeline \
 #     --conf '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'
+#
+#   docker compose --profile observability up -d --build predict grafana
+#   open http://localhost:16686                  # Jaeger, traces
+#   open http://localhost:3000                   # Grafana, the predict dashboard
+#   open http://localhost:9090                   # Prometheus, the raw queries
+#   docker compose --profile observability down
 #
 # Everything it writes is under `data/mlflow/`, which is gitignored along with
 # the rest of `data/`, so bringing the stack down and deleting that directory
@@ -74,8 +86,123 @@ services:
       # The compose network name of the service above, not localhost: inside
       # this container, localhost is this container.
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # Where the spans go. Set here rather than in the image, because the
+      # collector is a local convenience and a service started without one has
+      # to keep working: `pipeline.telemetry` installs a no-op tracer when this
+      # is empty, and also when it names a host that does not resolve, which is
+      # what this address is when the observability profile is not enabled.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
+      # Demonstrations only. `PRA_SERVE_STUB_MODEL=1 docker compose up -d
+      # predict` answers `/predict` from a hand-written logistic instead of the
+      # registry, which is what makes the tracing and dashboard demo runnable on
+      # a laptop whose registry holds nothing promoted. It says `stub` in the
+      # response, in the log and on every metric label; it is never a model.
+      PRA_SERVE_STUB_MODEL: ${PRA_SERVE_STUB_MODEL:-}
     depends_on:
-      - mlflow
+      mlflow:
+        condition: service_started
+      # The collector, like the tracking server above, is waited for as a
+      # container and not as a ready process: an export to a collector that is
+      # still starting is a dropped batch of spans, which is the correct
+      # outcome and not a reason to hold the service down.
+      #
+      # `required: false` is what lets this service stay out of the
+      # observability profile. Without it, a dependency that is in a profile
+      # nobody enabled is an invalid project rather than an absent collector,
+      # and `docker compose up predict` would refuse to start at all.
+      otel-collector:
+        condition: service_started
+        required: false
+    restart: unless-stopped
+
+  # ------------------------------------------------------------ observability
+  #
+  # The four services below are one profile, because they are one decision: run
+  # them and the predict service is traced and charted, leave them out and it
+  # serves exactly as before. Without the profile, `docker compose up -d mlflow
+  # predict` is the two containers it has always been.
+  #
+  #   docker compose --profile observability up -d --build predict grafana
+  #   curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '...'
+  #   open http://localhost:16686    # Jaeger: one trace, with its inference span
+  #   open http://localhost:3000     # Grafana: Play Rough / Predict service
+  #   open http://localhost:9090     # Prometheus, for writing the query first
+  #   docker compose --profile observability down
+  #
+  # `predict` is deliberately not in the profile. It is the thing being
+  # observed, it runs on its own, and `depends_on: otel-collector` is what
+  # starts the collector alongside it once the profile is active.
+
+  # Where the spans land first. See orchestration/observability/otel-collector.yaml
+  # for why the service does not talk to Jaeger directly.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.137.0
+    container_name: pra-otel-collector
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./orchestration/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    # 4318 is not published to the host: the only exporter is the predict
+    # container, which reaches it over the compose network. A port on the
+    # laptop would be an open OTLP receiver for no reason.
+    depends_on:
+      - jaeger
+    restart: unless-stopped
+
+  # Trace storage and the trace user interface, in memory. Restarting it loses
+  # every trace, which is the right trade for a laptop: traces are for the
+  # request in front of you, and the long-lived record of what the service did
+  # is the metrics and the request log.
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    container_name: pra-jaeger
+    profiles: [observability]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+    restart: unless-stopped
+
+  # The metrics store. It scrapes `predict:8000/metrics` every fifteen seconds
+  # (orchestration/observability/prometheus.yml) and keeps nothing on the host,
+  # so `docker compose down` is also how the history is cleared.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: pra-prometheus
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./orchestration/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # The dashboard. Anonymous viewing is on and the login form is off, which is
+  # correct for a container bound to a laptop and would be indefensible
+  # anywhere else; the datasource and the dashboard are both provisioned from
+  # files, so the panels are in the repository rather than in a volume nobody
+  # backs up.
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: pra-grafana
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: light
+      # Straight into the one dashboard there is, rather than onto a home page
+      # with a link to it.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/predict.json
+    volumes:
+      - ./orchestration/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./orchestration/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
   # The event consumer, run the way it would run on a small box: one service,

@@ -3,7 +3,9 @@
 One FastAPI application with four endpoints. `/predict` answers the question
 the feature table was built to ask, "this side, this board, this far in, who
 wins?", `/health` says whether a model is loaded, `/model` says which one, and
-`/reload` picks up a promotion without a restart.
+`/reload` picks up a promotion without a restart. A fifth, `/metrics`, is the
+Prometheus exposition and belongs to the process rather than to the model; it
+is mounted by `pipeline.telemetry`, which also traces the requests.
 
 Four choices worth knowing before reading the code.
 
@@ -39,6 +41,7 @@ import argparse
 import contextlib
 import json
 import logging
+import math
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -48,16 +51,22 @@ from typing import Any, Final, Protocol
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
+from opentelemetry.sdk.trace.export import SpanExporter
 from pydantic import BaseModel, ConfigDict, Field
 
 from pipeline.config import PRODUCTION_ALIAS, REGISTERED_MODEL_NAME, default_tracking_uri
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
+from pipeline.telemetry import INFERENCE_SPAN, route_label, setup_metrics, setup_tracing
 
 logger = logging.getLogger(__name__)
 
 STAGE: Final = "serve"
 CODES_ARTIFACT: Final = "archetype_codes.json"
+# Demonstrations only: set it and the service answers from the hand-written
+# logistic in `StubPredictor` instead of the registry. See `stub_loader`.
+STUB_MODEL_VAR: Final = "PRA_SERVE_STUB_MODEL"
+STUB_VERSION: Final = "stub"
 # Version tags that are numbers worth reporting on `/model`. The rest of the
 # tags are dates and decisions, which belong in the registry rather than in a
 # health check.
@@ -303,6 +312,64 @@ def mlflow_loader(*, tracking_uri: str | None = None, alias: str = PRODUCTION_AL
     return load
 
 
+class StubPredictor:
+    """A hand-written logistic on the prize lead. Demonstrations only, never a model.
+
+    It exists because the observability stack has to be demonstrable on a laptop
+    whose registry holds nothing servable, and on this corpus that is the normal
+    state: `promote` refuses a candidate that does not beat the archetype
+    win-rate baseline, and on 66 feature rows nothing does. Without this, showing
+    a trace with an inference span in it would mean either a registry fixture
+    nobody maintains or bypassing the promotion gate by hand, and the second one
+    is much worse than an obviously fake predictor.
+
+    The shape is the one thing about it that is real: it is a `Predictor`, it
+    takes the design matrix the endpoint built and returns one number per row, so
+    the code path under the span, the histogram and the counter is the same code
+    path the LightGBM booster takes.
+    """
+
+    def predict(self, data: pd.DataFrame) -> list[float]:
+        """A logistic on the prize lead, so the answers vary with the board."""
+        return [1.0 / (1.0 + math.exp(-0.7 * float(lead))) for lead in data["prize_diff"]]
+
+
+def stub_loader() -> Loader:
+    """A loader that returns the stub above, for a demonstration with no registry.
+
+    Reached only through `PRA_SERVE_STUB_MODEL`, and it says so in the version,
+    the alias and a warning on startup: a `/predict` answered by this must be
+    impossible to mistake for one answered by a model, in the response body, in
+    the log and on the metric labels.
+
+    The archetype code map is empty on purpose. Nothing trained it, so every
+    archetype is one the model has never seen, and every reply names both of
+    them in `unknown_archetypes` rather than implying knowledge it does not have.
+    """
+
+    def load() -> LoadedModel:
+        logger.warning(
+            "serving a stub predictor, not a model",
+            extra={"reason": f"{STUB_MODEL_VAR} is set", "model_version": STUB_VERSION},
+        )
+        return LoadedModel(
+            predictor=StubPredictor(),
+            codes={column: {} for column in CATEGORICAL},
+            name=REGISTERED_MODEL_NAME,
+            version=STUB_VERSION,
+            alias=STUB_VERSION,
+            metrics={},
+            loaded_at=datetime.now(UTC),
+        )
+
+    return load
+
+
+def stub_requested() -> bool:
+    """Whether `PRA_SERVE_STUB_MODEL` asks for the stub rather than the registry."""
+    return os.environ.get(STUB_MODEL_VAR, "").strip().lower() in {"1", "true", "yes"}
+
+
 def describe(model: LoadedModel) -> ModelResponse:
     """The loaded model as the `/model` body."""
     return ModelResponse(
@@ -314,12 +381,20 @@ def describe(model: LoadedModel) -> ModelResponse:
     )
 
 
-def create_app(loader: Loader | None = None) -> FastAPI:
+def create_app(
+    loader: Loader | None = None,
+    *,
+    span_exporter: SpanExporter | None = None,
+) -> FastAPI:
     """The application, with its model loader injected.
 
     The loader is a plain callable returning a `LoadedModel`, so a test passes a
     stub and the command line passes `mlflow_loader()`. Nothing below this line
     knows that MLflow exists.
+
+    `span_exporter` is the same idea for traces: the telemetry tests pass an
+    in-memory exporter, and everything else leaves it out and lets
+    `OTEL_EXPORTER_OTLP_ENDPOINT` decide whether there is a collector at all.
     """
     holder = ModelHolder(loader or mlflow_loader())
     app = FastAPI(
@@ -330,10 +405,21 @@ def create_app(loader: Loader | None = None) -> FastAPI:
             f"`{PRODUCTION_ALIAS}` alias of the `{REGISTERED_MODEL_NAME}` registered model."
         ),
     )
+    tracer = setup_tracing(app, exporter=span_exporter)
+    metrics = setup_metrics(app)
+
+    def record_load() -> None:
+        """Put the loaded version on the `model_info` gauge, or clear it if none."""
+        if holder.current is None:
+            metrics.model_info.clear()
+            return
+        metrics.set_model_info(holder.current.name, holder.current.version, holder.current.alias)
+
     # At import rather than on first request: a service that loads lazily reports
     # healthy until someone asks it a question, which is the wrong time to find
     # out the registry is empty.
     holder.try_load()
+    record_load()
 
     @app.middleware("http")
     async def log_requests(
@@ -346,29 +432,39 @@ def create_app(loader: Loader | None = None) -> FastAPI:
         a latency or an error-rate panel is built from. `model_version` is on
         every line so a shifted prediction distribution can be attributed to a
         promotion rather than guessed at.
+
+        The same timing feeds the Prometheus counter and histogram, from here
+        rather than from a second middleware: two middlewares would time two
+        slightly different things and disagree about latency by however much
+        code sits between them, and the one that is wrong would be whichever a
+        reader was not looking at.
         """
         started = time.perf_counter()
         try:
             response = await call_next(request)
         except Exception:
+            elapsed = time.perf_counter() - started
+            metrics.observe_request(request.method, route_label(request), 500, elapsed)
             logger.exception(
                 "request failed",
                 extra={
                     "method": request.method,
                     "path": request.url.path,
                     "status": 500,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "duration_ms": round(elapsed * 1000, 3),
                     "model_version": holder.current.version if holder.current else None,
                 },
             )
             raise
+        elapsed = time.perf_counter() - started
+        metrics.observe_request(request.method, route_label(request), response.status_code, elapsed)
         logger.info(
             "request",
             extra={
                 "method": request.method,
                 "path": request.url.path,
                 "status": response.status_code,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                "duration_ms": round(elapsed * 1000, 3),
                 "model_version": holder.current.version if holder.current else None,
             },
         )
@@ -387,23 +483,37 @@ def create_app(loader: Loader | None = None) -> FastAPI:
         try:
             holder.load()
         except Exception as failure:
+            record_load()
             raise HTTPException(
                 status_code=503, detail=f"reload failed: {type(failure).__name__}: {failure}"
             ) from failure
+        record_load()
         return describe(holder.required())
 
     @app.post("/predict", response_model=PredictResponse, summary="Win probability for one turn")
     def predict(request: PredictRequest) -> PredictResponse:
         loaded = holder.required()
         payload = request.features()
+        unseen = unknown_archetypes(payload, loaded.codes)
         matrix = design_matrix(pd.DataFrame([payload]), loaded.codes)
+        # The span is around the model call and nothing else. A span covering
+        # the whole handler would answer "is /predict slow", which the HTTP span
+        # the instrumentation already emits answers; the question this one is
+        # for is whether the time is in the model or around it.
+        with tracer.start_as_current_span(INFERENCE_SPAN) as span:
+            span.set_attribute("model.version", loaded.version)
+            span.set_attribute("model.alias", loaded.alias)
+            span.set_attribute("features.unknown_archetypes", len(unseen))
+            with metrics.time_inference(loaded.version):
+                score = probability(loaded.predictor, matrix)
+        metrics.count_prediction(loaded.version, unknown=bool(unseen))
         return PredictResponse(
-            win_probability=probability(loaded.predictor, matrix),
+            win_probability=score,
             model_name=loaded.name,
             model_version=loaded.version,
             model_alias=loaded.alias,
             features_used=list(MODEL_FEATURES),
-            unknown_archetypes=unknown_archetypes(payload, loaded.codes),
+            unknown_archetypes=unseen,
         )
 
     return app
@@ -433,7 +543,12 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    app = create_app(mlflow_loader(tracking_uri=args.tracking_uri, alias=args.alias))
+    loader = (
+        stub_loader()
+        if stub_requested()
+        else mlflow_loader(tracking_uri=args.tracking_uri, alias=args.alias)
+    )
+    app = create_app(loader)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 

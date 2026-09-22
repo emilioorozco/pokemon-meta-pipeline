@@ -564,6 +564,11 @@ curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
 8000, `MLFLOW_TRACKING_URI` pointed at the `mlflow` service) for running it
 next to the tracking server. The image carries no model, on purpose.
 
+It is also the one stage that is traced and scraped rather than writing a
+`run_metrics` row: `GET /metrics` is a Prometheus exposition, every request is a
+span, and `docker compose --profile observability up -d predict grafana` puts
+Jaeger and a Grafana dashboard next to it. See the Ops section below.
+
 ### Drift
 
 A model is a claim about a distribution, and the claim expires quietly: the
@@ -879,7 +884,7 @@ prefix the application reads (in the same environment's bucket), so the web
 application can show community-level matchup and win-rate views without
 querying the warehouse. Only the public-safe subset (section 3) is published.
 
-## Ops: logging and run metrics
+## Ops: logging, run metrics, traces and dashboards
 
 Every stage writes the same two things: a structured log to standard error and
 one `run_metrics` row to the lake. Both come from `pipeline/observability.py`,
@@ -980,6 +985,100 @@ step of `run_all`, it reads this column and `last_status` and exits non-zero, so
 a failed stage's row becomes a red run rather than a row nobody queried. Nothing
 pages yet, because nothing is on call; the run going red is where a notifier
 would hang. See section 7.
+
+### Traces and metrics on the serving API
+
+Everything above is built for a batch stage, where the unit of work is a run
+that starts, does something and ends. The serving process has no run to close,
+so the same three questions need three different instruments, and it carries all
+of them. `pipeline/telemetry.py` is the module; `pipeline/observability.py`
+stays exactly as it is, for the stages.
+
+| pillar | where it is | what it answers | what it cannot |
+|---|---|---|---|
+| logs | JSON lines on standard error, plus `run_metrics` for the stages | what happened, in order, with the detail attached: this request, this body, this exception | aggregate. Counting anything means reading every line |
+| metrics | Prometheus, scraped off `GET /metrics` | how it is doing overall: rate, error ratio, the latency distribution | say anything about one request. The cost is fixed, and that is the trade |
+| traces | OpenTelemetry over OTLP to a collector, then Jaeger | where one particular request spent its time, span by span | tell you it is happening at all. A trace is found because a metric or a log sent you looking |
+
+The order matters as much as the table: a metric says the p95 moved, a trace
+says the time is in the model rather than around it, and the log line for that
+request says which model version and which archetypes. Each one hands off to the
+next, which is why all three carry the model version.
+
+**Traces.** The FastAPI instrumentation emits one span per request, and
+`/predict` opens a child span, `predict.inference`, around the model call and
+nothing else, with `model.version`, `model.alias` and
+`features.unknown_archetypes` on it. A span over the whole handler would just
+restate the HTTP span; the question worth a second span is whether the time is
+the model or the code around it, and that needs the two side by side.
+`/health` and `/metrics` are excluded, because a liveness probe and a scrape
+every fifteen seconds would be almost the entire trace store and neither has
+ever been worth reading.
+
+Exporting is optional and silent about it. `OTEL_EXPORTER_OTLP_ENDPOINT` names
+the collector; unset, or naming a host that does not resolve, the tracer
+provider is a genuine no-op and the service starts exactly as it did before. The
+resolve check is not decoration: left to the exporter, a service started without
+the collector logs a retry warning per batch for as long as it runs, which is a
+log full of the telemetry failing to leave.
+
+**Metrics.** Six families, on a registry the application owns rather than the
+process-global one, so two applications in one test process do not collide:
+
+| metric | labels | why |
+|---|---|---|
+| `http_requests_total` | `method`, `route`, `status` | rate and error ratio, per endpoint |
+| `http_request_duration_seconds` | `method`, `route` | the latency histogram a p95 is read from |
+| `model_inference_duration_seconds` | `model_version` | the model call alone, so a slow promotion is visible as a slow promotion |
+| `model_predictions_total` | `model_version`, `unknown_archetype` | how much of the traffic the model has never seen the decks for |
+| `model_info` | `name`, `version`, `alias` | always 1; which version is answering, cleared and reset on `/reload` |
+| `agent_tool_calls_total` | `tool` | nothing increments it yet. Stage 6 will |
+
+The labels are bounded deliberately. `route` is the matched template, `/predict`
+and not the request path, so a service that is scanned for `/wp-admin.php` gets
+one `unmatched` series instead of one per probe; `unknown_archetype` is a yes or
+no rather than the archetype name, which is unbounded by definition, because the
+name is already on the span and in the request log where an unbounded value
+costs nothing. The HTTP counter and histogram are observed by the request-log
+middleware that was already there, rather than by a second middleware: two of
+them would time two slightly different things and disagree about latency by
+whatever sits between them.
+
+**Running it.** Four containers behind a compose profile, so the default
+`docker compose up -d mlflow predict` is still two:
+
+```bash
+docker compose --profile observability up -d --build predict grafana
+curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '...'
+open http://localhost:16686    # Jaeger: the trace, with its inference span
+open http://localhost:3000     # Grafana: Play Rough / Predict service
+open http://localhost:9090     # Prometheus, for writing the query first
+docker compose --profile observability down
+```
+
+The collector (`orchestration/observability/otel-collector.yaml`) receives OTLP
+over HTTP on 4318 and fans out to a debug log and to Jaeger. It is a hop the
+service does not strictly need, and it is there for what it buys: the service
+knows one address and one protocol forever, and moving the traces to a hosted
+backend is three lines of collector configuration rather than a redeploy of the
+thing being traced. Prometheus scrapes `predict:8000/metrics` every fifteen
+seconds; Grafana has one provisioned dashboard, `Predict service`, with four
+panels, request rate by route, p95 latency by route, inference p95 by model
+version and predictions by version. Both the datasource and the dashboard are
+provisioned from files under `orchestration/observability/`, mounted read only,
+so the panels are in the repository rather than in a volume nobody backs up.
+
+**The demo stub.** `PRA_SERVE_STUB_MODEL=1` makes the service answer from a
+hand-written logistic on the prize lead instead of the registry. It exists for
+exactly one reason: the promotion gate refuses a candidate that does not beat
+the archetype win-rate baseline, on this corpus nothing does, and so the
+ordinary state of a local registry is that nothing holds the `production` alias
+and `/predict` is a 503. Demonstrating a trace with an inference span in it then
+means either a registry fixture nobody maintains or moving the alias by hand,
+and moving the alias by hand is much worse than an obviously fake predictor. It
+reports `stub` as its version and its alias, in the response body, in the log
+and on every metric label, and every archetype comes back in
+`unknown_archetypes`, because nothing trained it. It is never a model.
 
 ## Open items
 

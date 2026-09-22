@@ -250,6 +250,60 @@ def test_reload_that_fails_is_a_503_and_leaves_nothing_loaded() -> None:
         assert started.get("/health").json()["model_loaded"] is False
 
 
+def test_the_documented_contract_is_still_the_four_model_endpoints(client: TestClient) -> None:
+    """`/metrics` is mounted but stays out of the schema, and nothing else moved.
+
+    The telemetry endpoint is about the process, not about win probabilities, so
+    a caller reading `/openapi.json` to generate a client should not find it.
+    The four that are the contract have to still be there, which is the half of
+    this that would catch instrumentation replacing a route by accident.
+    """
+    paths = client.get("/openapi.json").json()["paths"]
+    assert set(paths) == {"/health", "/model", "/reload", "/predict"}
+    assert client.get("/metrics").status_code == 200
+
+
+def test_the_request_log_still_carries_the_method_path_and_model_version(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The log line survived the metrics moving into the same middleware."""
+    with caplog.at_level("INFO", logger="pipeline.serve"):
+        client.post("/predict", json=BODY)
+    record = next(entry for entry in caplog.records if entry.message == "request")
+    assert (record.method, record.path, record.status) == ("POST", "/predict", 200)  # type: ignore[attr-defined]
+    assert record.model_version == "1"  # type: ignore[attr-defined]
+    assert record.duration_ms >= 0  # type: ignore[attr-defined]
+
+
+def test_the_demo_stub_answers_and_never_pretends_to_be_a_model() -> None:
+    """`PRA_SERVE_STUB_MODEL` is for demonstrations, and has to look like one.
+
+    What is asserted is not the arithmetic, which is a logistic on the prize
+    lead and means nothing. It is that the version is `stub` everywhere a
+    version is reported, so a screenshot of a dashboard or a trace taken during
+    a demonstration cannot be mistaken for one of a promoted model, and that
+    every archetype comes back as unseen, because nothing trained it.
+    """
+    with TestClient(serve.create_app(serve.stub_loader())) as started:
+        body = started.post("/predict", json=BODY).json()
+        assert body["model_version"] == "stub"
+        assert body["model_alias"] == "stub"
+        assert sorted(body["unknown_archetypes"]) == ["name:alpha", "name:beta"]
+        # Behind by two prizes is under a half, ahead by two is over it.
+        behind = started.post("/predict", json={**BODY, "prize_diff": -2}).json()
+        ahead = started.post("/predict", json={**BODY, "prize_diff": 2}).json()
+        assert behind["win_probability"] < 0.5 < ahead["win_probability"]
+
+
+def test_the_stub_is_off_unless_it_is_asked_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(serve.STUB_MODEL_VAR, raising=False)
+    assert serve.stub_requested() is False
+    monkeypatch.setenv(serve.STUB_MODEL_VAR, "0")
+    assert serve.stub_requested() is False
+    monkeypatch.setenv(serve.STUB_MODEL_VAR, "1")
+    assert serve.stub_requested() is True
+
+
 def test_a_booster_shaped_model_is_read_the_other_way() -> None:
     """LightGBM returns one probability per row; scikit-learn returns a column per class."""
     with TestClient(serve.create_app(Registry(loaded(StubBooster(0.61), "5")))) as started:

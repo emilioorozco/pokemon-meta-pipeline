@@ -1,0 +1,15 @@
+# Where Grafana finds the dashboard JSON. The directory is mounted read only,
+# so the dashboard in the browser is the file in the repository and an edit made
+# in the user interface cannot silently become the version of record.
+apiVersion: 1
+
+providers:
+  - name: pra
+    orgId: 1
+    folder: Play Rough
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
