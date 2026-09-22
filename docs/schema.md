@@ -408,7 +408,94 @@ their tokens are not carried into silver even in pseudonymous form;
 `is_member` records the distinction, and a manual game's typed-in opponent name
 goes through the same rule.
 
-## 9. Quirks and the column that carries each
+## 9. Gold tables
+
+One DuckDB file, `$PIPELINE_DATA_DIR/warehouse/meta.duckdb`, built by
+`python -m pipeline.gold` from the dbt project in `dbt/`. The silver Parquet
+files are read in place through `read_parquet(...)` sources, so nothing is
+loaded and the warehouse can be deleted and rebuilt at any time. Staging models
+(`stg_games`, `stg_game_sides`, `stg_turns`, `stg_cards_seen`) are views over
+those sources and carry no columns of their own beyond two surrogate keys; the
+tables below are the ones a reader queries. Every column is described in
+`dbt/models/marts/schema.yml`, which is also what `dbt docs generate` renders.
+
+### 9.1 Grain and keys
+
+| Table | Grain | Key | Foreign keys |
+|---|---|---|---|
+| `fct_game_side` | one row per (game, seat), two per game | `game_side_key` = `game_id` + `-` + `seat` | `player_key`, `archetype_key`, `opponent_archetype_key`, `season_key`, `format_key`, `date_key` |
+| `dim_player` | one row per member token | `player_key` | none |
+| `dim_archetype` | one row per archetype | `archetype_key` | none |
+| `dim_season` | one row per season, plus `unknown` | `season_key` | none |
+| `dim_format` | one row per export variant, plus `unknown` | `format_key` | none |
+| `dim_card` | one row per card observed | `card_key` | none |
+| `dim_date` | one row per play date with a game | `date_key` (the date) | none |
+| `mart_matchups` | one row per ordered archetype pair | `matchup_key` | `archetype_key`, `opponent_archetype_key` |
+| `mart_archetype_weekly` | one row per (archetype, ISO week) | `archetype_week_key` | `archetype_key` |
+| `mart_cards_seen` | one row per (archetype, card) | `archetype_card_key` | `archetype_key`, `card_key` |
+| `mart_player_summary` | one row per member token | `player_key` | `player_key` |
+
+Surrogate keys are the natural key, not a hash: `archetype_key` is the shared
+archetype row's identifier when a game carries one and the canonical name
+lowercased and prefixed `name:` when it does not, `player_key` is silver's
+keyed token, `card_key` is silver's `card_id`, and `date_key` is the date
+itself. Nothing is gained by hashing a key that is already short, stable and
+readable, and a readable key makes a failing test legible.
+
+### 9.2 What the fact carries
+
+Identity and keys (`game_side_key`, `game_id`, `seat`, `is_uploader`, and the
+six foreign keys above), the outcome (`result_for_seat`, `is_win`, `is_loss`,
+`is_tie`, `went_first`), the measures (`turn_count`, `prizes_taken`,
+`knockouts`, `cards_drawn`, `energy_attached`, `damage_dealt`, `mulligans`,
+`turns_taken`, `decklist_complete`, `decklist_card_count`), and the flags the
+marts filter on (`has_full_decklists`, `export_variant`,
+`excluded_from_stats`).
+
+`player_key` is NULL for a stranger, which is the stranger rule (8.5) arriving
+in gold unchanged: there is no token to key on, so there is no row in
+`dim_player` and no way to follow that person across games. `archetype_key` and
+`opponent_archetype_key` are NULL when the game named no archetype for that
+seat; the marts drop those rows rather than bucketing them as "unknown
+archetype", because an unnamed deck is not a deck. `season_key` and
+`format_key` are never NULL: they point at the synthetic `unknown` row of their
+dimension instead, so an inner join loses nothing.
+
+Nothing is filtered out of the fact. `excluded_from_stats` rows are present and
+flagged, and every mart drops them, for the same reason silver keeps what
+bronze landed: a layer that has already dropped a row cannot count it.
+
+### 9.3 What the marts measure, and what they do not
+
+`win_rate`, everywhere it appears, is wins over wins plus losses. Ties and
+unresolved results are left out of the denominator rather than counted as half
+a win: a tie only happens on a hand-logged game and `unknown` means the seat
+could not be resolved, so neither is evidence. The rate is NULL when nothing
+was decided.
+
+`mart_matchups` is symmetric because of the grain, not because of a union. One
+game contributes one fact row per seat, each carrying its own archetype and the
+other seat's, so it is counted once as (A, B) and once as (B, A) and either
+lookup finds a row. A mirror, (A, A), is the exception worth knowing: both
+seats produce the same pair, so the row counts each mirror game twice and its
+wins equal its losses by definition.
+
+`mart_archetype_weekly` holds two counts that must not be confused. `games`
+counts seat rows, every appearance of the archetype on either side of the
+table. `week_games` counts games once each, from the uploader seats, because
+exactly one seat per game is the uploader. `share_of_week` is the first over
+the second, so it reads as the share of the week's games the archetype was one
+of the two decks in, and the column sums to roughly two across a week.
+
+`mart_cards_seen` is the one place where the limit in 8.4 becomes a number, so
+it is labelled twice. `seen_rate` is the share of games in which the card was
+observed being played or revealed, and it is not a deck inclusion rate: a stock
+export only reveals played cards. `inclusion_rate` sits beside it, over the
+seats that shared a full decklist in game, and it is still bounded by
+observation because silver exposes no row per decklist card. Both are lower
+bounds, `inclusion_rate` the tighter one, and nothing averages them together.
+
+## 10. Quirks and the column that carries each
 
 | Quirk | Where it lands |
 |---|---|

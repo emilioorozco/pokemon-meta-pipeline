@@ -1,0 +1,211 @@
+version: 2
+
+models:
+  - name: stg_games
+    description: >
+      One row per game, renamed and cast off silver.games. Views, not tables:
+      staging is a thin layer over Parquet and materializing it would copy the
+      lake into DuckDB for no gain.
+    columns:
+      - name: game_id
+        description: The game's identity, the first 16 hexadecimal characters of a hash over the normalized battle log.
+        data_tests: [unique, not_null]
+      - name: user_id
+        description: The uploading account's opaque identifier from the authentication provider. Not a handle, never displayed.
+      - name: play_date
+        description: The date the game was played, and the partition every silver table is written under.
+        data_tests: [not_null]
+      - name: played_at
+        description: The timestamp the game was played, in coordinated universal time (UTC).
+      - name: export_variant
+        description: The shape of the text the game was parsed from, one of stock, debug or manual.
+        data_tests: [not_null]
+      - name: upload_source
+        description: How the log reached the application, for example the overlay or a phone paste.
+      - name: turn_count
+        description: Number of turn segments in the log. Zero for a hand-logged game.
+      - name: end_reason
+        description: How the game ended, one of concede, opponent_concede, prizes, other or unknown.
+      - name: result
+        description: The uploader's result as the summary records it, one of win, loss, tie or unknown.
+      - name: winner_seat
+        description: Seat index of the winning handle, null when no win line was found.
+      - name: went_first_seat
+        description: Seat that went first, from the summary's flag read against the uploader's seat.
+      - name: first_player
+        description: Seat named in the header of the log's first turn, the independent second answer to the same question.
+      - name: my_side
+        description: Seat index of the uploader, null when the export did not let the parser resolve it.
+      - name: excluded_from_stats
+        description: The uploader asked for this game to be kept out of analytics. Read as false when absent, and dropped by every mart.
+        data_tests: [not_null]
+      - name: has_full_decklists
+        description: Both seats' complete decklists are in the blob, which only happens when the opponent shared theirs in game.
+        data_tests: [not_null]
+      - name: season_id
+        description: Competitive season the game was played in, present only when the debug client printed the season trailer.
+      - name: season_name
+        description: Display name of that season.
+      - name: ingested_at
+        description: When the bronze run that landed this game read it.
+
+  - name: stg_game_sides
+    description: >
+      Two rows per game, one per seat, renamed and cast off silver.game_sides,
+      plus the archetype and player surrogate keys the whole star schema is
+      built on. The stats list columns (pokemon played, cards played,
+      evolutions, attacks) are dropped here because nothing in gold aggregates
+      them.
+    columns:
+      - name: game_id
+        description: The game this seat belongs to.
+        data_tests: [not_null]
+      - name: play_date
+        description: The date the game was played.
+      - name: seat
+        description: Seat index within the game, 0 or 1.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: is_uploader
+        description: This seat belongs to the member who uploaded the game. Exactly one seat per game unless the parser could not resolve the uploader, in which case neither.
+      - name: player_key
+        description: >
+          The seat's keyed player token, or NULL for a stranger. Silver has
+          already applied the rule: a token that never holds an uploader seat
+          belongs to somebody who never uploaded and never consented, so it is
+          not carried into gold in any form (docs/data-handling.md).
+      - name: is_member
+        description: This seat's token holds an uploader seat somewhere in the corpus. False means the token was dropped.
+      - name: archetype_id
+        description: Identifier of the shared archetype row behind the label, when the game was linked to one.
+      - name: archetype_name
+        description: The canonical name for that archetype, resolved by silver through an alias map built from bronze so a rename upstream does not split one archetype in two.
+      - name: archetype_name_raw
+        description: The label this row actually arrived with, kept so a rename stays visible.
+      - name: archetype_source
+        description: Where the label came from, one of auto, user or manual.
+      - name: archetype_key
+        description: >
+          Surrogate key for the archetype: the shared row's identifier when the
+          game carries one, otherwise the canonical name lowercased and
+          prefixed with `name:`. NULL when the seat has no archetype at all.
+      - name: result_for_seat
+        description: This seat's result, one of win, loss, tie or unknown. Mirrored from the uploader's result for the other seat.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, loss, tie, unknown]
+      - name: went_first
+        description: This seat took the first turn.
+      - name: cards_drawn
+        description: Cards this seat drew, counted by the producer's own stats derivation. Null for a hand-logged game, which carries no counters.
+      - name: energy_attached
+        description: Energy cards this seat attached.
+      - name: damage_dealt
+        description: Total damage this seat dealt.
+      - name: knockouts
+        description: Opposing Pokemon this seat knocked out.
+      - name: prizes_taken
+        description: Prize cards this seat took.
+      - name: mulligans
+        description: Mulligans this seat had to take.
+      - name: turns_taken
+        description: Turns this seat took.
+      - name: decklist_source
+        description: Where this seat's decklist came from, when it shared one.
+      - name: decklist_complete
+        description: The shared list is a full 60-card list rather than a partial one.
+      - name: decklist_card_count
+        description: Cards in the shared list. NULL when this seat shared no list, which is how every downstream model tells the two populations apart.
+
+  - name: stg_turns
+    description: >
+      One row per turn segment, renamed and cast off silver.turns. No gold
+      model reads it yet; it is staged so the win-probability model's
+      turn-indexed features start from a typed view rather than a Parquet glob.
+    columns:
+      - name: game_id
+        description: The game this turn belongs to.
+        data_tests: [not_null]
+      - name: play_date
+        description: The date the game was played.
+      - name: turn_number
+        description: The turn's number as the log header printed it.
+      - name: seat
+        description: Seat that took the turn, null when the header named nobody.
+      - name: n_entries
+        description: Every action line in the segment, top-level entries and sub-entries alike. A kind with no counter of its own still lands here.
+      - name: n_draw
+        description: Draw actions, following the producer's definition (opening hand, draw, named draw, mulligan draw).
+      - name: n_attach
+        description: Energy attachments.
+      - name: n_attack
+        description: Attacks declared.
+      - name: n_play_pokemon
+        description: Pokemon played from hand.
+      - name: n_play_trainer
+        description: Trainer and stadium cards played.
+      - name: n_evolve
+        description: Evolutions.
+      - name: n_retreat
+        description: Retreats.
+      - name: n_knockout
+        description: Knockouts in this segment.
+      - name: n_prize_taken
+        description: Prize cards taken in this segment.
+      - name: concession
+        description: A concede line appears in this segment.
+
+  - name: stg_cards_seen
+    description: >
+      One row per (game, seat, card) observed, renamed and cast off
+      silver.cards_seen with the card catalog already joined on by silver.
+    columns:
+      - name: game_id
+        description: The game the card was seen in.
+        data_tests: [not_null]
+      - name: play_date
+        description: The date the game was played.
+      - name: seat
+        description: The seat that played or revealed the card.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: card_key
+        description: >
+          The card's identity as silver can resolve it: the reference's client
+          card identifier, else its base card identifier, else its lowercased
+          printed name. Never null, which is what makes (game, seat, card) a
+          grain.
+        data_tests: [not_null]
+      - name: base_card_id
+        description: The printing-independent card identifier, when the reference carried one.
+      - name: card_name
+        description: The card's name, preferring the catalog's spelling over the battle log's.
+      - name: observed_name
+        description: The name exactly as the battle log printed it.
+      - name: set_code
+        description: Set code from the reference, when it carried one.
+      - name: number
+        description: Collector number from the reference, when it carried one.
+      - name: count_seen
+        description: Copies of the card observed in that game, capped at four by the producer except for basic energy.
+      - name: in_decklist
+        description: The card matched that seat's shared decklist. NULL when the seat shared no list, which is the usual case.
+      - name: catalog_name
+        description: Card name from the card catalog, null when the catalog was not fetched before the silver run.
+      - name: catalog_set
+        description: Set from the card catalog.
+      - name: catalog_type
+        description: Card type from the catalog, for example Pokemon, Trainer or Energy.
+      - name: catalog_hp
+        description: Hit points from the catalog, for a Pokemon.
+      - name: catalog_reg
+        description: Regulation mark from the catalog, which is what decides whether a card is legal in the current format.

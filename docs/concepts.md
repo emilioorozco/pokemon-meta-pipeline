@@ -58,7 +58,7 @@ queries Parquet files in place. Our warehouse is `data/warehouse/meta.duckdb`.
 The classic warehouse design (also called dimensional modeling, from Kimball):
 
 - A fact table holds events or measurements at a fixed grain (what one row
-  means). Ours: `fact_game_seat`, one row per (game, seat) with the outcome and
+  means). Ours: `fct_game_side`, one row per (game, seat) with the outcome and
   the per-side counters. Facts are long and skinny: mostly foreign keys plus
   numbers.
 - Dimension tables hold descriptions you slice by: `dim_player`,

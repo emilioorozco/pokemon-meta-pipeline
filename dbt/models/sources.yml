@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      The four silver tables, Hive-partitioned Parquet written by
+      `python -m pipeline.silver` under `$PIPELINE_DATA_DIR/lake/silver/`.
+      Nothing is loaded: dbt-duckdb turns each `external_location` below into a
+      `read_parquet(...)` call, so the models query the files in place and a
+      rerun of silver is visible to the next `dbt run` with no copy step.
+      Silver filters nothing, so excluded and manual games are present here and
+      the marts are what drop them.
+    tables:
+      - name: games
+        description: One row per game. See docs/schema.md section 8.1.
+        meta:
+          external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/silver/games/**/*.parquet', hive_partitioning = true)"
+      - name: game_sides
+        description: >
+          Two rows per game, one per seat. The grain the gold fact table is
+          built on. See docs/schema.md section 8.2.
+        meta:
+          external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/silver/game_sides/**/*.parquet', hive_partitioning = true)"
+      - name: turns
+        description: One row per turn segment. See docs/schema.md section 8.3.
+        meta:
+          external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/silver/turns/**/*.parquet', hive_partitioning = true)"
+      - name: cards_seen
+        description: >
+          One row per (game, seat, card) observed, with the card catalog
+          already joined on by silver. See docs/schema.md section 8.4.
+        meta:
+          external_location: "read_parquet('{{ env_var('PIPELINE_DATA_DIR', 'data') }}/lake/silver/cards_seen/**/*.parquet', hive_partitioning = true)"

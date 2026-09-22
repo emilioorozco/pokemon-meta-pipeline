@@ -55,8 +55,8 @@ flowchart LR
   SRV --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ,SLV done
-  class SQS,GLD,SRV,AGT,AIR,PUB,DASH planned
+  class UP,API,S3,DDB,BF,BRZ,SLV,GLD done
+  class SQS,SRV,AGT,AIR,PUB,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -84,12 +84,21 @@ with PySpark and writes four tables (`games`, `game_sides`, `turns`,
 itself and non-member tokens dropped, then reconciles the row counts against
 bronze and exits non-zero if they do not add up.
 
+Gold is real. `python -m pipeline.gold` runs a dbt project on DuckDB over
+those silver files, read in place with no load step, and builds a star schema
+at the (game, seat) grain: `fct_game_side`, six dimensions and four marts
+(matchups, archetype by week, cards seen, player summary). It ends with
+`dbt test`, 67 key, relationship, accepted-value and singular tests, and exits
+non-zero if any of them fail.
+
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
 uv run python -m pipeline.silver                               # bronze -> silver, needs Java
+uv run python -m pipeline.gold                                 # silver -> gold, dbt on DuckDB
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
+uv run pytest -m dbt                                           # gold tests, silver then dbt
 ```
 
 `op run` is the 1Password command-line interface; it injects `HANDLE_HMAC_KEY`
@@ -104,16 +113,18 @@ Query the result with DuckDB, which reads the Parquet files in place:
 uv run python -c "import duckdb; duckdb.sql(\"select play_date, count(*) games from read_parquet('data/lake/bronze/**/*.parquet', hive_partitioning=true) group by 1 order by 1\").show()"
 ```
 
-The two test commands are one suite split by cost: the default run skips
-anything marked `spark`, and `-m spark` runs only those, each of which starts a
-Java Virtual Machine (JVM). CI runs both and gates on their combined coverage.
-`scripts/fetch_catalog.py` downloads the card catalog silver joins against; the
-stage runs without it, with null catalog columns.
+The three test commands are one suite split by cost: the default run skips
+anything marked `spark` or `dbt`, `-m spark` runs the silver tests, each of
+which starts a Java Virtual Machine (JVM), and `-m dbt` builds silver from the
+committed games and then runs the whole dbt project over it. CI runs all three
+and gates on their combined coverage. `scripts/fetch_catalog.py` downloads the
+card catalog silver joins against; the stage runs without it, with null catalog
+columns.
 
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
-disallowed, both pytest runs with a 70% coverage floor on the combined number,
-and the checked-in contract file tested against the reader.
+disallowed, all three pytest runs with a 70% coverage floor on the combined
+number, and the checked-in contract file tested against the reader.
 
 ## Roadmap
 
@@ -128,7 +139,7 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
 - [ ] Event-driven ingest: S3 notification to an Amazon Simple Queue Service
       (SQS) queue with a dead-letter queue, drained by a consumer
 - [x] Silver in PySpark: typed tables, cards exploded, archetypes resolved
-- [ ] Gold in dbt on DuckDB: star schema and marts, with dbt tests
+- [x] Gold in dbt on DuckDB: star schema and marts, with dbt tests
 - [ ] Win-probability model in MLflow, FastAPI serving, drift report
 - [ ] LangChain agent: structured query language (SQL) over the marts and
       card-text retrieval, scored against a golden question set
@@ -214,7 +225,8 @@ tests/fixtures/    committed anonymized stock games, no decklists
 docs/              concepts, discovery, schema, stage plan, decision records
 data/              local lake and warehouse output (gitignored)
 data/catalog/      card catalog fetched from the bucket, not committed
-dbt/               planned: dbt project (DuckDB), staging, star schema, marts
+dbt/               dbt project (DuckDB): sources, staging views, star schema,
+                   marts, its own tests, and the committed profiles.yml
 dags/              planned: Airflow DAG definitions
 ```
 

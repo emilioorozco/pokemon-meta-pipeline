@@ -14,7 +14,7 @@ S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
 [2 silver]  PySpark: typed, cards exploded, catalog + archetype aliases joined, features
         |
         v
-[3 gold]    dbt on DuckDB: fact_game_seat + dims, marts
+[3 gold]    dbt on DuckDB: fct_game_side + dims, marts
         |
         +--> [4 model]   MLflow-tracked win-probability model
         |         |
@@ -180,46 +180,130 @@ or `PRA_SPARK_MASTER`), the input and output paths becoming `s3a://`, and
 `spark.sql.shuffle.partitions`, which is 8 here because a laptop run with the
 default 200 spends more time on empty tasks than on work.
 
-## 3. Gold (planned, dbt on DuckDB)
+## 3. Gold (in progress, dbt on DuckDB)
 
-Input: silver Parquet, read in place by DuckDB.
+Input: the silver Parquet tables, read in place. There is no load step: the dbt
+sources are `read_parquet(...)` expressions pointed at
+`$PIPELINE_DATA_DIR/lake/silver/<table>/**/*.parquet`, so a silver rerun is
+visible to the next `dbt run` with nothing copied.
 
-Star schema at game-by-seat grain:
+Command: `python -m pipeline.gold` (`--target`, `--data-dir`). It runs
+`dbt deps` when the project has packages, then `dbt run`, then `dbt test`, all
+with `--project-dir dbt --profiles-dir dbt`, so orchestration has one command
+per stage. The same three commands can be run by hand:
 
-- `fact_game_seat`: one row per (game, seat): `game_key`, `seat`, `player_key`,
-  `archetype_key`, `opponent_archetype_key` (denormalized so a matchup is one
-  group-by), `season_key`, `play_date`, `is_winner`, `went_first`,
-  `turn_count`, the seven counters, `export_variant`, `has_full_decklists`.
-- `dim_player`: `player_key` from `user_id`; the handle hashes it has appeared
-  under; first and last seen dates. No handle text.
-- `dim_archetype`: canonical name, alias names it absorbed, flagship Pokemon.
-- `dim_season`: `season_id`, name, format when known, first and last game.
-- `dim_card`: from the catalog: id, base id, name, set, number, type, HP,
-  regulation mark, category (pokemon, trainer, energy).
-- `bridge_seat_card`: (game, seat, card, count, card_source) for card-level
-  marts.
+```bash
+uv run python -m pipeline.gold                                  # build and test
+uv run dbt run   --project-dir dbt --profiles-dir dbt           # build only
+uv run dbt test  --project-dir dbt --profiles-dir dbt           # test only
+uv run dbt docs generate --project-dir dbt --profiles-dir dbt   # lineage + catalog
+```
 
-Marts:
+The profile is committed at `dbt/profiles.yml` rather than left in `~/.dbt`, so
+a fresh clone builds with no setup. It writes one DuckDB file,
+`$PIPELINE_DATA_DIR/warehouse/meta.duckdb`, which holds no state worth keeping:
+deleting it and rerunning produces the same warehouse.
 
-- `mart_archetype_winrates`: games, wins, win rate, share of games, by
-  archetype and season, with a minimum-games floor.
-- `mart_matchup_matrix`: archetype by archetype: games, win rate, symmetric by
-  construction (wr(A, B) + wr(B, A) = 1 is a test).
-- `mart_cards_seen`: for each card and archetype: share of seats where the card
-  was seen, average copies seen, split by `card_source` so decklist-backed
-  numbers are never mixed with observed lower bounds.
+### Staging
 
-dbt tests: unique and not-null keys, relationships to dimensions, accepted
-values on enums, two rows per game, no excluded games, win rates in [0, 1].
+Four views, one per silver table (`stg_games`, `stg_game_sides`, `stg_turns`,
+`stg_cards_seen`): renames and casts, nothing else. Views rather than tables
+because materializing a rename layer would copy the lake into DuckDB for no
+gain. Two surrogate keys are derived here rather than in each model that wants
+them, so the dimension and the fact cannot drift apart: `player_key` (silver's
+token, already NULL for a stranger) and `archetype_key`.
 
-Only `stock`-variant games without full decklists feed anything that is
-published outside the environment; the filter is a dbt variable, not a manual
-step.
+### Star schema
+
+`fct_game_side` is the fact, at the (game, seat) grain, two rows per game. That
+grain is what makes every mart a group-by: a win rate is an average of
+`is_win`, a matchup is a group-by on two columns, a player's record is a
+group-by on `player_key`. The other seat's archetype is denormalized onto the
+row as `opponent_archetype_key`, so a matchup query never self-joins. Nothing
+is filtered out of the fact, `excluded_from_stats` included: the marts drop
+those rows, and a fact that had already dropped them could not answer how many
+there were.
+
+Six dimensions:
+
+- `dim_player`: one row per member token, with first and last seen and the
+  seats they hold. Strangers are absent by construction, not by a filter here,
+  because silver already wrote their token as NULL
+  ([data-handling.md](data-handling.md)).
+- `dim_archetype`: one row per archetype, keyed by the shared archetype row's
+  id when a game carries one and by the canonical name otherwise (prefixed
+  `name:`, so the two key spaces cannot collide). `aliases` keeps every raw
+  label the archetype has arrived under, so a rename stays visible.
+- `dim_season`: one row per season plus a synthetic `unknown`, because the
+  season trailer only exists in a debug export and most games have none.
+  Pointing them at `unknown` keeps them joinable.
+- `dim_format`: a placeholder, and the model says so. Nothing upstream records
+  the ruleset a game was played under, so the key is the export variant, which
+  is not a format at all. It is kept rather than dropped so the fact has a
+  stable `format_key` slot: adding a column to a fact later is a smaller change
+  than adding a dimension to a star schema.
+- `dim_card`: one row per card observed, with the catalog columns silver had
+  already joined on. Built from `cards_seen` rather than from the catalog file,
+  so gold does not fail when the optional catalog was never fetched.
+- `dim_date`: one row per play date, with International Organization for
+  Standardization (ISO) year, week, week start and month. Not a gap-free
+  calendar: nothing yet needs to show an empty day.
+
+### Marts
+
+- `mart_matchups`: archetype A against archetype B, one row per ordered pair.
+  `games`, `wins`, `losses`, `ties`, `win_rate` (wins over wins plus losses,
+  null when nothing was decided) and `min_games_met`, the `min_games` project
+  variable that defaults to 5. Symmetric by construction rather than by a
+  union: a game puts one row in the fact per seat and each carries both
+  archetypes, so the same game lands once as (A, B) and once as (B, A) and the
+  application can look up either direction. A mirror row counts each mirror
+  game twice, once per seat.
+- `mart_archetype_weekly`: one row per archetype per ISO week. `games` counts
+  seat rows, which is the right numerator for a win rate because a win belongs
+  to a seat. `week_games` counts games once each, taken from the uploader seats
+  because exactly one seat per game is the uploader. `share_of_week` divides
+  the two, so it reads as the share of the week's games the archetype was one
+  of the two decks in, and sums to roughly two across a week rather than one.
+- `mart_cards_seen`: one row per (archetype, card). `seen_rate` is the share of
+  games in which the card was observed being played or revealed. It is not a
+  deck inclusion rate: stock exports only reveal played cards. `inclusion_rate`
+  sits next to it, computed over the seats that shared a full decklist in game,
+  and it is still bounded by observation because silver carries no row per
+  decklist card. Both are lower bounds; the model description says which is
+  which and the two are never averaged together.
+- `mart_player_summary`: one row per member, their record and the archetype
+  they play most. Members only, again by construction.
+
+### Tests
+
+67 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+`unique` and `not_null` on every primary key, the fact's `game_side_key`, each
+dimension's key and each mart's grain key; `relationships` from every foreign
+key on the fact to its dimension, with the `player_key` one scoped to the
+non-null rows because a stranger has no key; `accepted_values` on `seat`
+(0 and 1, the seat numbering silver takes from the contract's `players`
+array), on `result_for_seat` and on `export_variant`. Two singular tests carry
+the invariants a generic test cannot state: `assert_two_sides_per_game`, which
+repeats silver's reconciliation on the other side of the join, and
+`assert_matchups_symmetric`, which checks that A vs B and B vs A exist as a
+pair, agree on games, and mirror wins against losses.
+
+`tests/test_gold.py` (marker `dbt`, skipped by the default `pytest` run) builds
+silver from the committed fixtures, runs the whole thing through `run_gold`,
+and asserts the numbers dbt cannot: two fact rows per fixture game, the matchup
+symmetry as an independent query, `seen_rate` inside its bounds, and
+`dim_player` exactly as large as the set of uploader tokens silver wrote.
+
+At 1000x: the models are ordinary SQL, so the change is the adapter. DuckDB
+over Parquet becomes a warehouse the same models compile against, the marts
+become incremental on `play_date`, and the fact stops being rebuilt in full.
+The grain and the tests do not change.
 
 ## 4. Win-probability model (planned, MLflow)
 
-Input: `fact_game_seat` plus the silver per-seat features. Target:
-`is_winner`. Baseline: logistic regression on archetype pair, went first and
+Input: `fct_game_side` plus the silver per-seat features. Target:
+`is_win`. Baseline: logistic regression on archetype pair, went first and
 season; then gradient boosting with the turn-indexed features. Every run is
 tracked in MLflow (parameters, metrics, the exact gold snapshot date), and the
 promoted model is registered with the training data's `play_date` range.

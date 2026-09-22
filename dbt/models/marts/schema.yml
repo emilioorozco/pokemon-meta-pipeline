@@ -1,0 +1,491 @@
+version: 2
+
+models:
+  # ------------------------------------------------------------------ fact --
+  - name: fct_game_side
+    description: >
+      The fact table, one row per (game, seat) and two rows per game. Every
+      question the marts answer is a group-by over this grain: a win rate is an
+      average of `is_win`, a matchup is a group-by on the two archetype keys,
+      and a player's record is a group-by on `player_key`. The opponent's
+      archetype is denormalized onto the row so a matchup never needs a
+      self-join. Nothing is filtered here, including games the uploader
+      excluded from statistics: the marts drop those, and a fact that had
+      already dropped them could not answer how many there were.
+    columns:
+      - name: game_side_key
+        description: Surrogate key, the game identifier and the seat index joined by a hyphen. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: game_id
+        description: The game this seat belongs to.
+        data_tests: [not_null]
+      - name: seat
+        description: >
+          Seat index within the game. Silver numbers seats 0 and 1, following
+          the contract's `players` array, so these are the accepted values
+          here too.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: is_uploader
+        description: This seat belongs to the member who uploaded the game. At most one seat per game, and neither when the parser could not resolve the uploader.
+      - name: player_key
+        description: >
+          Foreign key to dim_player, or NULL. A stranger, somebody who was
+          matched against a member and never uploaded anything, has no token in
+          silver and therefore no key here (docs/data-handling.md). The
+          relationship test below is scoped to the non-null rows for that
+          reason.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_player')
+                field: player_key
+              config:
+                where: "player_key is not null"
+      - name: archetype_key
+        description: Foreign key to dim_archetype for this seat's deck. NULL when the game named no archetype for the seat.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: opponent_archetype_key
+        description: Foreign key to dim_archetype for the other seat's deck, denormalized so a matchup is one group-by rather than a self-join.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: season_key
+        description: Foreign key to dim_season. Games with no season trailer point at the synthetic `unknown` row rather than carrying a null.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_season')
+                field: season_key
+      - name: format_key
+        description: Foreign key to dim_format. Derived from the export variant, which is a placeholder, see that model's description.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_format')
+                field: format_key
+      - name: date_key
+        description: Foreign key to dim_date, the date the game was played.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: result_for_seat
+        description: This seat's result. Mirrored from the uploader's result for the other seat, and `unknown` when no seat could be resolved.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [win, loss, tie, unknown]
+      - name: is_win
+        description: True when this seat won. Summing it is the win count.
+      - name: is_loss
+        description: True when this seat lost.
+      - name: is_tie
+        description: True when the game was a tie, which only happens on a hand-logged game.
+      - name: went_first
+        description: This seat took the first turn.
+      - name: turn_count
+        description: Turns in the whole game, carried from the game grain so a seat row is self-contained. Zero for a hand-logged game.
+      - name: prizes_taken
+        description: Prize cards this seat took. NULL for a hand-logged game, which carries no counters.
+      - name: knockouts
+        description: Opposing Pokemon this seat knocked out.
+      - name: cards_drawn
+        description: Cards this seat drew.
+      - name: energy_attached
+        description: Energy cards this seat attached.
+      - name: damage_dealt
+        description: Total damage this seat dealt.
+      - name: mulligans
+        description: Mulligans this seat had to take.
+      - name: turns_taken
+        description: Turns this seat took, which is roughly half the game's turn count.
+      - name: decklist_complete
+        description: This seat shared a full 60-card list in game.
+      - name: decklist_card_count
+        description: Cards in the list this seat shared. NULL when it shared none.
+      - name: has_full_decklists
+        description: Both seats of this game shared a complete list.
+      - name: export_variant
+        description: The shape of the text the game was parsed from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [stock, debug, manual]
+      - name: excluded_from_stats
+        description: The uploader asked for this game to be kept out of analytics. Every mart drops these rows; this table keeps them so the count is answerable.
+        data_tests: [not_null]
+
+  # ------------------------------------------------------------ dimensions --
+  - name: dim_player
+    description: >
+      One row per member, a player who uploaded at least one game and therefore
+      saw the in-app notice. Strangers are absent by construction: silver
+      writes their token as NULL, so there is nothing here to be a row
+      (docs/data-handling.md). The key is the keyed token itself, never a
+      handle.
+    columns:
+      - name: player_key
+        description: The member's keyed token, a hash-based message authentication code over their handle. The surrogate key and the grain.
+        data_tests: [unique, not_null]
+      - name: first_seen
+        description: Play date of their earliest game in the corpus.
+      - name: last_seen
+        description: Play date of their most recent game.
+      - name: games_played
+        description: Seats this token holds, counting the games where they were the opponent of another member as well as their own uploads.
+      - name: games_uploaded
+        description: Games they uploaded themselves.
+
+  - name: dim_archetype
+    description: >
+      One row per archetype. Keyed by the shared archetype row's identifier
+      when a game carries one and by the canonical name otherwise, so an
+      archetype the application has not yet given a row still gets a stable
+      key. The name is the canonical one silver resolved through the alias map
+      it builds from bronze, and `aliases` keeps every raw label the archetype
+      has arrived under so a rename upstream is visible here rather than
+      erased.
+    columns:
+      - name: archetype_key
+        description: Surrogate key, the shared archetype identifier or the lowercased canonical name prefixed with `name:`.
+        data_tests: [unique, not_null]
+      - name: archetype_name
+        description: The canonical display name. Single valued per key because silver has already collapsed the aliases onto it.
+      - name: is_name_keyed
+        description: True when the key is a name rather than a shared archetype identifier, which means the application has no archetype row for this deck yet.
+      - name: aliases
+        description: Every distinct raw label this archetype has appeared under, sorted and joined by a pipe character.
+      - name: first_seen
+        description: Play date of the earliest game this archetype appears in.
+      - name: last_seen
+        description: Play date of the most recent one.
+      - name: games_played
+        description: Seats this archetype has held across the corpus, before any exclusion filter.
+
+  - name: dim_season
+    description: >
+      One row per competitive season, plus a synthetic `unknown` row. A season
+      is only recorded when the debug client printed the season trailer, so
+      most games have none; pointing those at `unknown` keeps them joinable
+      instead of losing them to every inner join.
+    columns:
+      - name: season_key
+        description: The season identifier, or the literal `unknown`.
+        data_tests: [unique, not_null]
+      - name: season_name
+        description: Display name of the season.
+      - name: is_known
+        description: False on the synthetic row, true on a real season. The column exists so a query can exclude the placeholder without matching on a string.
+      - name: first_seen
+        description: Play date of the earliest game in this season.
+      - name: last_seen
+        description: Play date of the most recent one.
+      - name: games
+        description: Games in this season.
+
+  - name: dim_format
+    description: >
+      A placeholder dimension, kept honest by this description. There is no
+      format anywhere in the contract or in silver: the export never names the
+      ruleset a game was played under, so nothing upstream can be keyed on it.
+      The key is the export variant, which describes the shape of the text the
+      game was parsed from and is not a format at all, plus an `unknown` row.
+      The dimension is kept rather than dropped so the fact has a stable
+      `format_key` slot for the day the producer starts recording a real
+      format: adding a column to a fact is a smaller change than adding a
+      dimension to a star schema.
+    columns:
+      - name: format_key
+        description: The export variant (stock, debug or manual), or the literal `unknown`. Standing in for a real format key.
+        data_tests: [unique, not_null]
+      - name: format_name
+        description: Display label, prefixed so a reader cannot mistake it for a real format name.
+      - name: is_real_format
+        description: False on every row today. It becomes true when the producer starts recording a format and this dimension stops being a placeholder.
+
+  - name: dim_card
+    description: >
+      One row per card observed anywhere in the corpus, with the catalog
+      columns silver had already joined on. Built from the observed cards
+      rather than from the card catalog file, because the catalog is a large
+      export that is not committed and not always fetched, and a dimension that
+      failed without it would make the whole gold stage depend on an optional
+      file. A card nobody has played therefore has no row, which is the right
+      size for a dimension whose only readers are the facts.
+    columns:
+      - name: card_key
+        description: The card's identity as silver resolves it, the client card identifier, else the base card identifier, else the lowercased printed name.
+        data_tests: [unique, not_null]
+      - name: card_name
+        description: The card's name, preferring the catalog's spelling over the battle log's.
+      - name: base_card_id
+        description: The printing-independent identifier, when any reference carried one.
+      - name: set_code
+        description: Set code as a reference printed it.
+      - name: number
+        description: Collector number as a reference printed it.
+      - name: catalog_name
+        description: Name from the card catalog. NULL when the catalog was not fetched before the silver run.
+      - name: catalog_set
+        description: Set from the catalog.
+      - name: catalog_type
+        description: Card type from the catalog, for example Pokemon, Trainer or Energy.
+      - name: catalog_hp
+        description: Hit points from the catalog, for a Pokemon.
+      - name: catalog_reg
+        description: Regulation mark from the catalog, which is what decides current-format legality.
+      - name: in_catalog
+        description: The catalog knew this card's key. False means either the catalog is missing or the key is a printed name the catalog does not index.
+      - name: first_seen
+        description: Play date this card was first observed.
+      - name: last_seen
+        description: Play date it was most recently observed.
+
+  - name: dim_date
+    description: >
+      One row per play date that has at least one game, not a gap-free
+      calendar. International Organization for Standardization (ISO) week
+      numbering is used, so a week starts on a Monday and late December can
+      belong to week 1 of the next ISO year, which is why `iso_year` sits next
+      to `year`.
+    columns:
+      - name: date_key
+        description: The play date itself, used directly as the key so the fact needs no lookup to filter on a date range.
+        data_tests: [unique, not_null]
+      - name: play_date
+        description: The same date, named as the lake names it.
+      - name: iso_year
+        description: ISO week-numbering year, which can differ from the calendar year in the first and last days of a year.
+      - name: iso_week
+        description: ISO week number, 1 through 53.
+      - name: week_start
+        description: The Monday that starts this ISO week.
+      - name: year
+        description: Calendar year.
+      - name: month
+        description: Calendar month number, 1 through 12.
+      - name: month_name
+        description: Month name in English.
+      - name: iso_day_of_week
+        description: Day of the week, 1 for Monday through 7 for Sunday.
+      - name: day_name
+        description: Day name in English.
+
+  # ----------------------------------------------------------------- marts --
+  - name: mart_matchups
+    description: >
+      Archetype A against archetype B, one row per ordered pair, so the
+      application can look up either direction with a single equality. The
+      symmetry is a property of the grain rather than a union: a game puts one
+      row in the fact per seat, and each of those rows carries its own
+      archetype and the other seat's, so the same game is counted once as
+      (A, B) and once as (B, A). Games the uploader excluded from statistics
+      are dropped, and so are seats with no archetype on either side. A mirror
+      row, (A, A), counts each mirror game twice, once from each seat, and its
+      wins and losses are equal by definition.
+    columns:
+      - name: matchup_key
+        description: Surrogate key, the two archetype keys joined by ` vs `. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: archetype_key
+        description: The archetype the row is written from the point of view of.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: archetype_name
+        description: Its canonical display name.
+      - name: opponent_archetype_key
+        description: The archetype it was facing.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: opponent_archetype_name
+        description: The opponent archetype's canonical display name.
+      - name: is_mirror
+        description: The two keys are the same. A mirror row counts each game twice, once per seat.
+      - name: games
+        description: Games played in this matchup, counted from the seat that held `archetype_key`.
+      - name: wins
+        description: Games that seat won.
+      - name: losses
+        description: Games that seat lost.
+      - name: ties
+        description: Games that ended in a tie, which only happens on a hand-logged game.
+      - name: undecided
+        description: Games whose result could not be resolved, usually because the parser could not tell which seat the uploader held.
+      - name: win_rate
+        description: Wins divided by wins plus losses. NULL when nothing was decided. Ties and unresolved games are left out of the denominator rather than counted as half a win, because neither is evidence about the matchup.
+      - name: min_games_met
+        description: The matchup has at least `min_games` games, the project variable that defaults to 5. The mart flags thin cells rather than hiding them, so a reader can see how little data there is.
+      - name: first_played
+        description: Play date of the earliest game in this matchup.
+      - name: last_played
+        description: Play date of the most recent one.
+
+  - name: mart_archetype_weekly
+    description: >
+      One row per archetype per International Organization for Standardization
+      (ISO) week. Two different counts live here and they are named apart on
+      purpose. `games` counts seat rows, every appearance of the archetype on
+      either side of the table, which is the right numerator for a win rate
+      because a win belongs to a seat. `week_games` counts games once each,
+      taken from the uploader seats only: exactly one seat per game is the
+      uploader, so counting those rows counts each game exactly once without a
+      distinct over the whole fact. `share_of_week` divides the first by the
+      second, so it reads as the share of the week's games this archetype was
+      one of the two decks in, and the column sums to roughly two across a
+      week rather than one.
+    columns:
+      - name: archetype_week_key
+        description: Surrogate key, the archetype key with the ISO year and week. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: archetype_key
+        description: The archetype.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: archetype_name
+        description: Its canonical display name.
+      - name: iso_year
+        description: ISO week-numbering year.
+      - name: iso_week
+        description: ISO week number.
+      - name: week_start
+        description: The Monday that starts the week.
+      - name: games
+        description: Seats this archetype held that week, on either side of the table.
+      - name: wins
+        description: Those seats that won.
+      - name: losses
+        description: Those seats that lost.
+      - name: ties
+        description: Those seats that tied.
+      - name: win_rate
+        description: Wins divided by wins plus losses, NULL when nothing was decided.
+      - name: week_games
+        description: Games played that week, counted once each from the uploader seats.
+      - name: share_of_week
+        description: Seats this archetype held that week divided by the week's games. Reads as how often it was one of the two decks; sums to about two across a week because every game seats two decks.
+      - name: min_games_met
+        description: The archetype has at least `min_games` seats that week.
+
+  - name: mart_cards_seen
+    description: >
+      One row per (archetype, card). seen_rate is the share of games in which
+      the card was observed being played or revealed. It is not a deck
+      inclusion rate: stock exports only reveal played cards. The two rates are
+      kept side by side and labelled for exactly that reason. `inclusion_rate`
+      is computed over the subset of seats that shared a full decklist in game,
+      which is the only subset where the question has an answer, and it is
+      still an observation: silver carries no row per decklist card, so a card
+      counts toward it only when it was both observed and matched to the shared
+      list. Both numbers are lower bounds, `inclusion_rate` a tighter one.
+    columns:
+      - name: archetype_card_key
+        description: Surrogate key, the archetype key and the card key joined by a pipe character. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: archetype_key
+        description: The archetype whose seats the rates are computed over.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: archetype_name
+        description: Its canonical display name.
+      - name: card_key
+        description: The card.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_card')
+                field: card_key
+      - name: card_name
+        description: The card's name, preferring the catalog's spelling.
+      - name: catalog_type
+        description: Card type from the catalog, null when the catalog was not fetched.
+      - name: games
+        description: Seats this archetype held, the denominator of seen_rate.
+      - name: games_with_card
+        description: Those seats where the card was observed at least once.
+      - name: seen_rate
+        description: games_with_card divided by games. The share of games in which the card was observed being played or revealed, which is a lower bound on how often it was in the deck.
+      - name: decklist_games
+        description: Seats this archetype held where the player shared a full decklist in game, the denominator of inclusion_rate.
+      - name: decklist_games_with_card
+        description: Those decklist-backed seats where the card was observed and matched to the shared list.
+      - name: inclusion_rate
+        description: decklist_games_with_card divided by decklist_games, NULL when the archetype has no decklist-backed games. Still bounded by observation, because silver exposes no row per decklist card.
+      - name: avg_copies_seen
+        description: Average copies observed in the games where the card was seen at all. The producer caps observed counts at four except for basic energy.
+      - name: max_copies_seen
+        description: The most copies observed in any one game.
+
+  - name: mart_player_summary
+    description: >
+      One row per member: their record and the archetype they play most.
+      Members only, and not because of a filter written here: a stranger's
+      token is already NULL in silver, so there is no row to summarize
+      (docs/data-handling.md). Every number is about somebody who uploaded at
+      least one game and saw the notice. Games the uploader excluded from
+      statistics are dropped.
+    columns:
+      - name: player_key
+        description: The member's keyed token. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_player')
+                field: player_key
+      - name: games
+        description: Seats this member held, counting games where they were another member's opponent.
+      - name: games_uploaded
+        description: Games they uploaded themselves.
+      - name: wins
+        description: Seats they won.
+      - name: losses
+        description: Seats they lost.
+      - name: ties
+        description: Seats that tied.
+      - name: win_rate
+        description: Wins divided by wins plus losses, NULL when nothing was decided.
+      - name: favourite_archetype_key
+        description: The archetype they have the most seats with, ties broken by key so a rebuild is stable. NULL when none of their games named an archetype.
+      - name: favourite_archetype_name
+        description: That archetype's canonical display name.
+      - name: favourite_archetype_games
+        description: Seats they held with it.
+      - name: first_seen
+        description: Play date of their earliest game.
+      - name: last_seen
+        description: Play date of their most recent one.
