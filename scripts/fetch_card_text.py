@@ -36,6 +36,13 @@ wrong card.
 backoff on a timeout, a 429 or a 5xx, one listing request per set rather than
 one per card, and a `--limit` for trying the thing out without walking the
 whole catalog.
+
+**Only the format that matters.** The catalog lists every printing the client
+knows, some 25,000 back to 2011, and the games this pipeline sees are Standard
+format, where a card is legal by its regulation mark. So the fetch keeps only
+the printings whose mark is in `STANDARD_REGULATION_MARKS` (a few thousand)
+unless `--reg` says otherwise; `--reg all` walks everything. A retriever full
+of cards nobody can play would rank them beside the ones people do.
 """
 
 import argparse
@@ -53,7 +60,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
 
-from pipeline.config import CARD_TEXT_PATH, CATALOG_PATH, REPO_ROOT
+from pipeline.config import (
+    CARD_TEXT_PATH,
+    CATALOG_PATH,
+    REPO_ROOT,
+    STANDARD_REGULATION_MARKS,
+)
 from pipeline.observability import configure_logging, emit_summary, stage_run
 
 logger = logging.getLogger(__name__)
@@ -117,6 +129,7 @@ class CatalogEntry:
     name: str
     set_code: str
     number: str
+    reg: str = ""
 
 
 def read_catalog(path: Path) -> list[CatalogEntry]:
@@ -137,9 +150,24 @@ def read_catalog(path: Path) -> list[CatalogEntry]:
                 name=str(value.get("name") or "").strip(),
                 set_code=str(value.get("set") or "").strip(),
                 number=str(value.get("number") or "").strip(),
+                reg=str(value.get("reg") or "").strip().upper(),
             )
         )
     return entries
+
+
+def in_format(entries: Iterable[CatalogEntry], marks: Iterable[str]) -> list[CatalogEntry]:
+    """The entries whose regulation mark is one of `marks`; every entry when `marks` is empty.
+
+    An entry with no mark at all is kept only when nothing is being filtered:
+    the committed fixture catalog carries none, and a real printing without one
+    predates regulation marks entirely, which puts it outside any format that
+    uses them.
+    """
+    wanted = {mark.strip().upper() for mark in marks if mark.strip()}
+    if not wanted:
+        return list(entries)
+    return [entry for entry in entries if entry.reg in wanted]
 
 
 def normalize_number(number: str) -> str:
@@ -355,7 +383,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--limit", type=int, default=0, metavar="N", help="stop after N cards; 0 means every one"
     )
+    parser.add_argument(
+        "--reg",
+        default=",".join(STANDARD_REGULATION_MARKS),
+        metavar="MARKS",
+        help=(
+            "comma-separated regulation marks to keep, or `all` "
+            f"(default: the Standard format, {','.join(STANDARD_REGULATION_MARKS)})"
+        ),
+    )
     args = parser.parse_args(argv)
+    marks: list[str] = [] if args.reg.strip().lower() == "all" else args.reg.split(",")
     configure_logging(STAGE)
 
     catalog_path: Path = args.catalog or (
@@ -366,7 +404,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     with stage_run(STAGE) as metrics:
-        entries = read_catalog(catalog_path)
+        catalog_entries = read_catalog(catalog_path)
+        entries = in_format(catalog_entries, marks)
+        logger.info(
+            "catalog filtered to the format",
+            extra={"marks": marks or "all", "kept": len(entries), "of": len(catalog_entries)},
+        )
         sets = resolve_sets({entry.set_code for entry in entries})
         index = SetIndex.build(sorted(set(sets.values())))
         matched: list[str] = []
@@ -387,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics.rows_quarantined = unmatched
         metrics.extra = {
             "catalog": str(catalog_path),
+            "regulation_marks": marks or "all",
             "sets_resolved": len(sets),
             "unmatched": unmatched,
             "out": str(args.out),

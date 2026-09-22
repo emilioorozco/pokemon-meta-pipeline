@@ -796,7 +796,11 @@ and is not deterministic. No test in this repository needs a provider.
 [TCGdex](https://tcgdex.net), a free, open, community-maintained card database
 with a public REST API, and writes `data/catalog/card_text.jsonl`, one JSON
 object per card: name, set, number, types, hit points, stage, abilities,
-attacks, rules text, retreat cost, regulation mark and a `source_url`. The
+attacks, rules text, retreat cost, regulation mark and a `source_url`. Only
+the Standard format is fetched: printings whose regulation mark is in
+`STANDARD_REGULATION_MARKS` (`pipeline/config.py`, bumped at each rotation),
+a few thousand cards rather than the 25,000 printings the catalog lists;
+`--reg all` or `--reg G,H` changes that. Within the format, the
 local catalog decides what is fetched: its set codes are resolved against
 TCGdex's set list, and a catalog entry finds its card by (set, collector
 number) first, by name among the listed sets second, and by an exact-name query
@@ -907,7 +911,7 @@ phrase, since the right answer is to say the number is an observation.
 
 The prompt can be replaced wholesale by pointing
 `PRA_AGENT_SYSTEM_PROMPT_FILE` at a file, which exists so the claim that the
-five rules matter can be run as an experiment:
+seven rules matter can be run as an experiment:
 `--prompt-override evals/broken_prompt.txt` swaps in the same job description
 with the schema and the rules cut out, and the score falls. Each run is logged
 to MLflow in the `agent-evals` experiment with the sha256 of the prompt that

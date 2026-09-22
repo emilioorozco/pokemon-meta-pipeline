@@ -36,6 +36,12 @@ CATALOG_PATH = PIPELINE_DATA_DIR / "catalog" / "cards.json"
 # about cards rather than anything derived from a game.
 CARD_TEXT_PATH = PIPELINE_DATA_DIR / "catalog" / "card_text.jsonl"
 CARD_INDEX_DIR = PIPELINE_DATA_DIR / "catalog" / "card_index"
+# The regulation marks legal in the Standard format, which is the format this
+# corpus is about: the card-text fetch keeps only printings carrying one of
+# these, so the retriever holds a few thousand cards a player can actually meet
+# rather than every printing since 2011. Rotation retires the oldest mark each
+# spring; this tuple is the one place to bump when it does.
+STANDARD_REGULATION_MARKS: tuple[str, ...] = ("H", "I", "J")
 WAREHOUSE_PATH = PIPELINE_DATA_DIR / "warehouse" / "meta.duckdb"
 # Where training runs and the model registry live when nothing says otherwise.
 MLRUNS_DIR = PIPELINE_DATA_DIR / "mlruns"
