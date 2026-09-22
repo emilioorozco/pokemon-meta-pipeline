@@ -1,11 +1,12 @@
-# Local services the pipeline can talk to, neither of them required to run it.
+# Local services the pipeline can talk to, none of them required to run it.
 #
 # Every batch stage works with no container at all: the lake is Parquet on disk,
 # the warehouse is a DuckDB file, and the model stage falls back to a plain
 # directory of runs and registered versions under `data/mlruns`. This file is
-# for the two things a directory cannot be: the MLflow user interface with a
+# for the three things a directory cannot be: the MLflow user interface with a
 # real database behind it, so runs can be compared in a browser and the registry
-# is shared, and a long-running process that answers `POST /predict`.
+# is shared, a long-running process that answers `POST /predict`, and the event
+# consumer, which is the one stage that waits on a queue instead of finishing.
 #
 #   docker compose up -d mlflow
 #   export MLFLOW_TRACKING_URI=http://localhost:5000
@@ -13,10 +14,11 @@
 #   uv run python -m pipeline.promote
 #   docker compose up -d predict
 #   curl localhost:8000/health
+#   docker compose up -d consumer
+#   docker compose logs -f consumer
 #
-# Everything it writes is under `data/mlflow/`, which is gitignored along with
-# the rest of `data/`, so bringing the stack down and deleting that directory
-# leaves no state behind.
+# Everything it writes is under `data/`, which is gitignored, so bringing the
+# stack down and deleting that directory leaves no state behind.
 services:
   mlflow:
     image: ghcr.io/mlflow/mlflow
@@ -57,4 +59,21 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
     depends_on:
       - mlflow
+    restart: unless-stopped
+
+  # The event consumer, run the way it would run on a small box: one service,
+  # one queue, restarted if it dies. The image's entrypoint is
+  # `python -m pipeline.consume`, so this service is that command in a container
+  # with the lake mounted from the host.
+  consumer:
+    build: .
+    # The same .env a local run uses: PRA_BUCKET, PRA_PREFIX, PRA_QUEUE_URL,
+    # AWS_REGION, credentials, and HANDLE_HMAC_KEY. It is gitignored and never
+    # committed; `op run` writes nothing, so the key is pasted in here or the
+    # container is started from a shell that has it.
+    env_file: .env
+    # The lake lives on the host, so stopping the container loses nothing and
+    # a backfill and the consumer write the same directory.
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped

@@ -96,6 +96,61 @@ becomes an S3 inventory report, the loop becomes a Spark job reading the same
 JSON, and the logic (validate, anonymize, flatten, partitioned write) does not
 change.
 
+### 1b. Event path (in progress)
+
+Command: `python -m pipeline.consume` (`--once`, `--max-messages N`,
+`--wait-seconds N`, `--bronze-dir`, `--quarantine-dir`), or the `consumer`
+service in `compose.yaml`, which is the same command in a container with the
+lake mounted from the host. The queue itself is not deployed yet: the bucket
+notification on `parsed/` for `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`,
+the `parsed-games` queue and its dead-letter queue at three deliveries are a
+separate ticket. The consumer reads `PRA_QUEUE_URL`, which nothing else does.
+
+What a message turns into:
+
+- A record is acted on when it names the configured bucket, its key is under
+  the prefix and ends in `.json`, and its `eventName` starts with
+  `ObjectCreated` or `ObjectRemoved`. Keys arrive URL-encoded and are decoded
+  first.
+- A created object goes through the backfill's own `process_object`: the same
+  decode, contract check, anonymization, re-validation and quarantine reasons.
+  There is no second implementation of any of it.
+- A removed object is taken out of bronze. The blob is gone, so its play date
+  cannot be read off it; the partition holding it is found by scanning the
+  `source_key` column of the partition files. A key bronze never landed is a
+  no-op, counted as ignored.
+- Anything else is counted as ignored and acknowledged: the S3 test event sent
+  when a notification is configured, a key outside the prefix, another event
+  type.
+
+When a message is deleted, which is a deliberate deviation from "leave it on
+any failure": the message is deleted when every record in it was handled, and a
+blob quarantined for a reason that belongs to the blob (`invalid_json`,
+`contract_violation`, `v1_blob`, `handle_leak_check_failed`) counts as handled.
+A bad blob fails identically on every redelivery, so keeping the message would
+replay one failure three times and then bury the evidence in the dead-letter
+queue; the quarantine pair on disk is the record instead. The message is left,
+and left only, for what a retry can fix: an S3 error, a write failure, a body
+that is not an S3 event at all. Those are redelivered and land in the
+dead-letter queue after three attempts. The backfill's `write_failed`
+quarantine has no counterpart here, because a queue already has the retry that
+a batch run does not.
+
+How one game is written: bronze partitions by play date and the backfill
+replaces a partition whole, which for a single game would delete the rest of
+its day. So an event writes with an upsert: read the partition, drop any row
+with the same `game_id`, append the new row, write the partition back through
+the same atomic replace. A delete is the same rewrite without the row, and a
+partition left with no rows is removed. Applying the same message twice
+therefore changes nothing, which is what an at-least-once queue requires.
+
+At scale both the rewrite and the scan are wrong: a partition of a million rows
+cannot be rewritten per event, and the delete lookup cannot walk every file.
+The rewrite becomes an append-only file per event plus a compaction step, or a
+table format (Apache Iceberg, Delta Lake) that does row-level upserts and
+deletes; the lookup becomes a `game_id -> play_date` index written beside the
+partitions. Neither changes the contract, the routing or the quarantine.
+
 ## 2. Silver (in progress, PySpark)
 
 Input: the bronze Parquet tables and, optionally, the card catalog

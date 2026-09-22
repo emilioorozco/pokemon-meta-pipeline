@@ -49,12 +49,22 @@ never reaches the lake either way.
 
 Nothing here logs a handle or any blob content: the logs carry keys, reasons and
 counts, and the validator summaries carry paths and messages only.
+
+What the event consumer (`pipeline.consume`) shares with this module: the
+per-object routing is `process_object`, and the write is `land_records`, so an
+object that arrives by S3 event is validated, anonymized, leak-checked and
+landed by exactly the code a backfill would have run over it. The consumer
+differs in two places only, both of which it argues for in its own docstring:
+it writes one game at a time (`merge=True`, so the day's other games survive)
+and it does not quarantine a failed write, because a queue already has a
+retry and a dead-letter queue for that.
 """
 
 import argparse
 import json
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import islice
@@ -64,7 +74,13 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from pipeline.anonymize import anonymize, assert_no_handles, handles_in
-from pipeline.bronze import BronzeLeakError, BronzeRecord, play_date_for, write_partitions
+from pipeline.bronze import (
+    BronzeLeakError,
+    BronzeRecord,
+    play_date_for,
+    upsert_records,
+    write_partitions,
+)
 from pipeline.config import BRONZE_DIR, QUARANTINE_DIR
 from pipeline.contract import ContractError, ParsedBlobV2, parse_blob
 from pipeline.quarantine import (
@@ -116,8 +132,8 @@ class BackfillSummary:
 
 
 @dataclass(frozen=True)
-class _Pending:
-    """A validated, anonymized game waiting for the end-of-run write.
+class Prepared:
+    """A validated, anonymized game waiting to be written.
 
     `handles` are its pre-anonymization handles, kept for the leak check, and
     `raw` is the body as read, kept in case the record has to be quarantined
@@ -129,7 +145,23 @@ class _Pending:
     raw: bytes
 
 
-class _Quarantiner:
+@dataclass(frozen=True)
+class Outcome:
+    """Where one object came out of `process_object`.
+
+    Exactly one of `prepared` and `reason` is set: the game is ready to be
+    written, or it was quarantined and `reason` is the code it was filed under.
+    `full_decklists` is the summary flag of a prepared game, which is counted
+    and never routed on.
+    """
+
+    key: str
+    prepared: Prepared | None = None
+    reason: str | None = None
+    full_decklists: bool = False
+
+
+class Quarantiner:
     """Counts every rejection and writes it, unless the run is a dry run."""
 
     def __init__(self, directory: Path, when: datetime, *, dry_run: bool) -> None:
@@ -146,11 +178,12 @@ class _Quarantiner:
         detail: str,
         *,
         contract_version_seen: Any = None,
-    ) -> None:
+    ) -> str:
+        """Record one rejection and return its reason, so a caller can report it."""
         self.counts[reason] = self.counts.get(reason, 0) + 1
         if self.dry_run:
             logger.warning("would quarantine %s as %s: %s", source_key, reason, detail)
-            return
+            return reason
         write_quarantine(
             self.directory,
             source_key,
@@ -160,6 +193,7 @@ class _Quarantiner:
             self.when,
             contract_version_seen=contract_version_seen,
         )
+        return reason
 
 
 def run_backfill(
@@ -185,23 +219,18 @@ def run_backfill(
     started = time.monotonic()
     when = now or datetime.now(UTC)
     reading = source if source is not None else _s3_source(settings, s3)
-    rejects = _Quarantiner(quarantine_dir, when, dry_run=dry_run)
+    rejects = Quarantiner(quarantine_dir, when, dry_run=dry_run)
     summary = BackfillSummary()
-    pending: list[_Pending] = []
+    pending: list[Prepared] = []
 
     logger.info("listing %s", reading.label)
     for obj in islice(reading.list(), limit):
         summary.read += 1
-        blob = reading.get(obj.key)
-        validated = _validate(blob, rejects)
-        if validated is None:
+        outcome = process_object(reading, obj.key, settings, rejects, listed=obj)
+        if outcome.prepared is None:
             continue
-        model, data = validated
-        prepared = _prepare(data, blob, obj, settings, rejects)
-        if prepared is None:
-            continue
-        pending.append(prepared)
-        if model.summary.has_full_decklists:
+        pending.append(outcome.prepared)
+        if outcome.full_decklists:
             summary.full_decklists_landed += 1
 
     logger.info(
@@ -218,10 +247,40 @@ def run_backfill(
     return summary
 
 
-def _validate(
-    blob: SourceBlob, rejects: _Quarantiner
-) -> tuple[ParsedBlobV2, dict[str, Any]] | None:
-    """The blob as a v2 model plus the dict it decoded from, or None after recording why not.
+def process_object(
+    source: Source,
+    key: str,
+    settings: Settings,
+    rejects: Quarantiner,
+    *,
+    listed: SourceObject | None = None,
+) -> Outcome:
+    """Read one object and route it: ready to write, or quarantined with a reason.
+
+    The whole per-object path in one call (read, decode, contract, anonymize,
+    re-validate), so the backfill's walk and the event consumer's queue are two
+    ways of choosing keys and one way of handling them. `listed` is the listing
+    entry when the caller has one, for the `source_last_modified` lineage column;
+    a consumer that was handed a single key does not, and the column is then
+    null, which is honest: nothing listed that object.
+
+    Reading is the caller's risk: an S3 error is raised, not caught, because a
+    batch and a queue answer it differently.
+    """
+    blob = source.get(key)
+    obj = listed if listed is not None else SourceObject(key=key, size=len(blob.body))
+    validated = _validate(blob, rejects)
+    if isinstance(validated, str):
+        return Outcome(key=key, reason=validated)
+    model, data = validated
+    prepared = _prepare(data, blob, obj, settings, rejects)
+    if isinstance(prepared, str):
+        return Outcome(key=key, reason=prepared)
+    return Outcome(key=key, prepared=prepared, full_decklists=model.summary.has_full_decklists)
+
+
+def _validate(blob: SourceBlob, rejects: Quarantiner) -> tuple[ParsedBlobV2, dict[str, Any]] | str:
+    """The blob as a v2 model plus the dict it decoded from, or the reason it was rejected.
 
     Both come back because the model answers the routing and counting questions
     while the dict is what gets anonymized: rewriting the dict the producer sent,
@@ -232,22 +291,19 @@ def _validate(
         data = blob.decode()
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         # These messages report a position and an expected token, never content.
-        rejects.add(blob.key, blob.body, INVALID_JSON, f"{type(exc).__name__}: {exc}")
-        return None
+        return rejects.add(blob.key, blob.body, INVALID_JSON, f"{type(exc).__name__}: {exc}")
     try:
         parsed = parse_blob(data)
     except ContractError as exc:
-        rejects.add(
+        return rejects.add(
             blob.key,
             blob.body,
             CONTRACT_VIOLATION,
             exc.summary(),
             contract_version_seen=exc.schema_version_seen,
         )
-        return None
     if not isinstance(parsed, ParsedBlobV2):
-        rejects.add(blob.key, blob.body, V1_BLOB, V1_HINT)
-        return None
+        return rejects.add(blob.key, blob.body, V1_BLOB, V1_HINT)
     return parsed, data
 
 
@@ -256,9 +312,9 @@ def _prepare(
     blob: SourceBlob,
     obj: SourceObject,
     settings: Settings,
-    rejects: _Quarantiner,
-) -> _Pending | None:
-    """Anonymize a valid v2 blob and re-validate it, or record why it cannot be landed.
+    rejects: Quarantiner,
+) -> Prepared | str:
+    """Anonymize a valid v2 blob and re-validate it, or return why it cannot be landed.
 
     Re-validating after the rewrite is what proves the anonymizer changed the
     blob's strings and not its shape; a rewrite that broke the contract would
@@ -270,22 +326,45 @@ def _prepare(
         clean = ParsedBlobV2.model_validate(anonymized)
     except ValidationError as exc:
         detail = AFTER_ANONYMIZATION + ContractError(exc).summary()
-        rejects.add(obj.key, blob.body, CONTRACT_VIOLATION, detail)
-        return None
+        return rejects.add(obj.key, blob.body, CONTRACT_VIOLATION, detail)
     record = BronzeRecord(
         blob=clean,
         source_key=obj.key,
         source_version_id=blob.version_id,
         source_last_modified=obj.last_modified,
     )
-    return _Pending(record=record, handles=handles, raw=blob.body)
+    return Prepared(record=record, handles=handles, raw=blob.body)
+
+
+def land_records(
+    pending: Sequence[Prepared],
+    bronze_dir: Path,
+    when: datetime,
+    real_handles: set[str],
+    *,
+    merge: bool = False,
+) -> dict[str, int]:
+    """Write prepared games to bronze and return the rows landed per play date.
+
+    Nothing is caught here: a leak raises `BronzeLeakError` and a filesystem
+    error raises `OSError`, because the two callers answer them differently (the
+    backfill quarantines, the consumer leaves the message on the queue).
+
+    `merge` picks the write. The default replaces each touched partition whole,
+    which is right for a caller holding every game of the day and is what makes
+    a re-run drop games deleted upstream. `merge=True` keeps the games already in
+    the partition, which is what a caller holding one game needs: a lone event
+    must not empty the rest of its day.
+    """
+    write = upsert_records if merge else write_partitions
+    return write([item.record for item in pending], bronze_dir, when, real_handles=real_handles)
 
 
 def _land(
-    pending: list[_Pending],
+    pending: list[Prepared],
     bronze_dir: Path,
     when: datetime,
-    rejects: _Quarantiner,
+    rejects: Quarantiner,
     *,
     dry_run: bool,
 ) -> dict[str, int]:
@@ -299,9 +378,7 @@ def _land(
         return _partition_counts(clean)
 
     try:
-        return write_partitions(
-            [item.record for item in pending], bronze_dir, when, real_handles=real_handles
-        )
+        return land_records(pending, bronze_dir, when, real_handles)
     except BronzeLeakError:
         logger.warning("leak check failed for the batch; re-checking one game at a time")
     except OSError as exc:
@@ -315,16 +392,14 @@ def _land(
     clean = _quarantine_leaks(pending, real_handles, rejects)
     if not clean:
         return {}
-    return write_partitions(
-        [item.record for item in clean], bronze_dir, when, real_handles=real_handles
-    )
+    return land_records(clean, bronze_dir, when, real_handles)
 
 
 def _quarantine_leaks(
-    pending: list[_Pending], real_handles: set[str], rejects: _Quarantiner
-) -> list[_Pending]:
+    pending: list[Prepared], real_handles: set[str], rejects: Quarantiner
+) -> list[Prepared]:
     """Split the batch, recording each leaking record; returns the records that are clean."""
-    clean: list[_Pending] = []
+    clean: list[Prepared] = []
     for item in pending:
         paths = assert_no_handles(item.record.blob.model_dump(mode="json"), real_handles)
         if not paths:
@@ -336,7 +411,7 @@ def _quarantine_leaks(
     return clean
 
 
-def _partition_counts(pending: list[_Pending]) -> dict[str, int]:
+def _partition_counts(pending: list[Prepared]) -> dict[str, int]:
     """Rows per play date, without writing: what a dry run would have landed."""
     counts: dict[str, int] = {}
     for item in pending:

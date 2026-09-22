@@ -1,4 +1,4 @@
-"""Source-side settings for the bronze backfill: which bucket, which prefix, which key.
+"""Source-side settings for bronze ingest: which bucket, which prefix, which queue, which key.
 
 Separate from `config`, which holds only the output locations the whole pipeline
 shares. Everything here is about reading the application's private bucket, so it
@@ -32,6 +32,7 @@ BUCKET_VAR: Final = "PRA_BUCKET"
 PREFIX_VAR: Final = "PRA_PREFIX"
 REGION_VAR: Final = "AWS_REGION"
 KEY_VAR: Final = "HANDLE_HMAC_KEY"
+QUEUE_VAR: Final = "PRA_QUEUE_URL"
 
 
 class SettingsError(RuntimeError):
@@ -48,15 +49,16 @@ class SettingsError(RuntimeError):
 
 @dataclass(frozen=True)
 class Settings:
-    """Where the parsed blobs are and what anonymizes them."""
+    """Where the parsed blobs are, which queue announces them, and what anonymizes them."""
 
     bucket: str
     hmac_key: bytes = field(repr=False)
     prefix: str = DEFAULT_PREFIX
     region: str = DEFAULT_REGION
+    queue_url: str = ""
 
     @classmethod
-    def from_env(cls, *, require_bucket: bool = True) -> "Settings":
+    def from_env(cls, *, require_bucket: bool = True, require_queue: bool = False) -> "Settings":
         """Read the source settings, naming every missing variable at once.
 
         `require_bucket` is false only when the run reads a local directory
@@ -64,10 +66,20 @@ class Settings:
         one would make a run that never touches AWS depend on AWS configuration.
         The anonymization key is required either way, because a local run writes
         the same bronze rows as any other and they are anonymized the same way.
+
+        `require_queue` is true only for the event consumer
+        (`python -m pipeline.consume`), the one command that reads the queue. The
+        backfill runs without it, so a machine that only ever backfills is not
+        asked for a queue that may not exist yet.
         """
         bucket = os.environ.get(BUCKET_VAR, "").strip()
         key = os.environ.get(KEY_VAR, "")
-        required = [(BUCKET_VAR, bucket), (KEY_VAR, key)] if require_bucket else [(KEY_VAR, key)]
+        queue_url = os.environ.get(QUEUE_VAR, "").strip()
+        required = [(KEY_VAR, key)]
+        if require_bucket:
+            required.insert(0, (BUCKET_VAR, bucket))
+        if require_queue:
+            required.append((QUEUE_VAR, queue_url))
         missing = [name for name, value in required if not value]
         if missing:
             raise SettingsError(missing)
@@ -76,4 +88,5 @@ class Settings:
             hmac_key=key.encode("utf-8"),
             prefix=os.environ.get(PREFIX_VAR) or DEFAULT_PREFIX,
             region=os.environ.get(REGION_VAR) or DEFAULT_REGION,
+            queue_url=queue_url,
         )
