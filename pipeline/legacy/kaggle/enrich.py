@@ -11,6 +11,7 @@ LAKE_DIR/raw/episode_meta/ before anything parses it, and ids found in the cache
 are never re-fetched. Land the whole response — you can't re-ask a dead
 competition for fields you dropped.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,8 @@ def _fetch_chunk(ids: list[int]) -> dict:
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read())
+        payload: dict = json.loads(resp.read())
+        return payload
 
 
 def fetch_missing(episode_ids: list[int], cache_dir: Path = META_CACHE_DIR) -> int:

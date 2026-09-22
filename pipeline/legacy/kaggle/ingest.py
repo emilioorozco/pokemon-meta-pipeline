@@ -2,7 +2,7 @@
 
 Reads each episode replay, extracts the analytically useful core (~1% of the
 bytes: ids, teams, outcome, both decklists, per-turn engine events), joins the
-recovered episode metadata from pipeline.enrich, and writes three bronze tables
+recovered episode metadata from pipeline.legacy.kaggle.enrich, and writes three bronze tables
 partitioned by play_date:
 
   bronze/games        one row per game
@@ -13,9 +13,10 @@ Games failing basic quality checks (missing decks, no winner, not DONE) are
 quarantined: reported and skipped, never silently written.
 
 Usage:
-  python -m pipeline.ingest --sample 20   # first N games per batch
-  python -m pipeline.ingest               # full corpus
+  python -m pipeline.legacy.kaggle.ingest --sample 20   # first N games per batch
+  python -m pipeline.legacy.kaggle.ingest               # full corpus
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,14 +27,15 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.dataset as ds
 
-from pipeline.config import LAKE_DIR, REPLAY_BATCHES, validate_source
-from pipeline import enrich
+from pipeline.config import BRONZE_DIR
+from pipeline.legacy.kaggle import enrich
+from pipeline.legacy.kaggle.config import replay_batches, validate_source
 
-BRONZE_DIR = LAKE_DIR / "bronze"
 DECK_SIZE = 60
 
 
 # --------------------------------------------------------------------------- extract
+
 
 def extract_game(replay: dict, batch: str) -> dict:
     """Pull the useful core out of one replay dict. Raises ValueError on
@@ -124,54 +126,53 @@ def to_rows(game: dict, meta: dict | None) -> tuple[dict, list[dict], list[dict]
             }
         )
     event_rows = [
-        {"episode_id": game["episode_id"], "play_date": play_date, **e}
-        for e in game["events"]
+        {"episode_id": game["episode_id"], "play_date": play_date, **e} for e in game["events"]
     ]
     return game_row, seat_rows, event_rows
 
 
 # --------------------------------------------------------------------------- write
 
-GAMES_SCHEMA = pa.schema(
-    [
-        ("episode_id", pa.int64()),
-        ("batch", pa.string()),
-        ("n_steps", pa.int16()),
-        ("first_player", pa.int8()),
-        ("played_at", pa.timestamp("us", tz="UTC")),
-        ("ended_at", pa.timestamp("us", tz="UTC")),
-        ("play_date", pa.string()),
-    ]
+
+def _schema(*fields: tuple[str, pa.DataType]) -> pa.Schema:
+    # Typed wrapper: lets mypy check each (name, type) pair instead of joining the list to object.
+    return pa.schema(list(fields))
+
+
+GAMES_SCHEMA = _schema(
+    ("episode_id", pa.int64()),
+    ("batch", pa.string()),
+    ("n_steps", pa.int16()),
+    ("first_player", pa.int8()),
+    ("played_at", pa.timestamp("us", tz="UTC")),
+    ("ended_at", pa.timestamp("us", tz="UTC")),
+    ("play_date", pa.string()),
 )
-SEATS_SCHEMA = pa.schema(
-    [
-        ("episode_id", pa.int64()),
-        ("seat", pa.int8()),
-        ("team_name", pa.string()),
-        ("team_id", pa.int64()),
-        ("submission_id", pa.int64()),
-        ("rating_before", pa.float64()),
-        ("rating_after", pa.float64()),
-        ("reward", pa.int8()),
-        ("is_winner", pa.bool_()),
-        ("went_first", pa.bool_()),
-        ("deck", pa.list_(pa.int32(), DECK_SIZE)),
-        ("play_date", pa.string()),
-    ]
+SEATS_SCHEMA = _schema(
+    ("episode_id", pa.int64()),
+    ("seat", pa.int8()),
+    ("team_name", pa.string()),
+    ("team_id", pa.int64()),
+    ("submission_id", pa.int64()),
+    ("rating_before", pa.float64()),
+    ("rating_after", pa.float64()),
+    ("reward", pa.int8()),
+    ("is_winner", pa.bool_()),
+    ("went_first", pa.bool_()),
+    ("deck", pa.list_(pa.int32(), DECK_SIZE)),
+    ("play_date", pa.string()),
 )
-EVENTS_SCHEMA = pa.schema(
-    [
-        ("episode_id", pa.int64()),
-        ("play_date", pa.string()),
-        ("step_idx", pa.int16()),
-        ("event_idx", pa.int16()),
-        ("player_index", pa.int8()),
-        ("event_type", pa.int16()),
-        ("card_id", pa.int32()),
-        ("serial", pa.int32()),
-        ("from_area", pa.int8()),
-        ("to_area", pa.int8()),
-    ]
+EVENTS_SCHEMA = _schema(
+    ("episode_id", pa.int64()),
+    ("play_date", pa.string()),
+    ("step_idx", pa.int16()),
+    ("event_idx", pa.int16()),
+    ("player_index", pa.int8()),
+    ("event_type", pa.int16()),
+    ("card_id", pa.int32()),
+    ("serial", pa.int32()),
+    ("from_area", pa.int8()),
+    ("to_area", pa.int8()),
 )
 
 
@@ -189,9 +190,10 @@ def write_bronze(name: str, rows: list[dict], schema: pa.Schema) -> None:
 
 # --------------------------------------------------------------------------- main
 
+
 def replay_files(sample_per_batch: int | None) -> list[tuple[str, Path]]:
     files = []
-    for batch, folder in REPLAY_BATCHES.items():
+    for batch, folder in replay_batches().items():
         batch_files = sorted(folder.glob("episode-*-replay.json"))
         if sample_per_batch:
             batch_files = batch_files[:sample_per_batch]
@@ -209,8 +211,7 @@ def main() -> int:
         sys.exit(f"missing source data: {missing}")
 
     files = replay_files(args.sample)
-    print(f"ingesting {len(files)} replays "
-          f"({'sample' if args.sample else 'full corpus'})")
+    print(f"ingesting {len(files)} replays ({'sample' if args.sample else 'full corpus'})")
 
     games, quarantined = [], []
     for batch, path in files:
