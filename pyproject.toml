@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.0",
     "pyarrow>=16",
+    "pydantic>=2.7",
     "python-dotenv>=1.0",
 ]
 
@@ -21,6 +22,8 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "pyarrow-stubs>=17",
+    "jsonschema>=4.21",
+    "types-jsonschema>=4.21",
 ]
 
 [build-system]
@@ -51,6 +54,7 @@ known-first-party = ["pipeline"]
 [tool.mypy]
 python_version = "3.11"
 files = ["pipeline", "tests"]
+plugins = ["pydantic.mypy"]
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
