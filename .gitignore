@@ -29,3 +29,6 @@ airflow_home/
 
 # build metadata
 *.egg-info/
+
+# local logs
+*.log
