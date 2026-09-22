@@ -30,6 +30,12 @@ RUN_METRICS_DIR = LAKE_DIR / "run_metrics"
 # scripts/fetch_catalog.py. It is reference data, not lake output, but it is
 # large and not ours to redistribute, so it lives under the gitignored data dir.
 CATALOG_PATH = PIPELINE_DATA_DIR / "catalog" / "cards.json"
+# The retriever's corpus and its index. `scripts/fetch_card_text.py` writes the
+# first from a public card API, `python -m pipeline.card_index build` writes the
+# second from it. Both sit beside the catalog because both are reference data
+# about cards rather than anything derived from a game.
+CARD_TEXT_PATH = PIPELINE_DATA_DIR / "catalog" / "card_text.jsonl"
+CARD_INDEX_DIR = PIPELINE_DATA_DIR / "catalog" / "card_index"
 WAREHOUSE_PATH = PIPELINE_DATA_DIR / "warehouse" / "meta.duckdb"
 # Where training runs and the model registry live when nothing says otherwise.
 MLRUNS_DIR = PIPELINE_DATA_DIR / "mlruns"

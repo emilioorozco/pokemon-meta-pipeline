@@ -250,16 +250,16 @@ def test_reload_that_fails_is_a_503_and_leaves_nothing_loaded() -> None:
         assert started.get("/health").json()["model_loaded"] is False
 
 
-def test_the_documented_contract_is_still_the_four_model_endpoints(client: TestClient) -> None:
+def test_the_documented_contract_is_still_the_five_endpoints(client: TestClient) -> None:
     """`/metrics` is mounted but stays out of the schema, and nothing else moved.
 
     The telemetry endpoint is about the process, not about win probabilities, so
     a caller reading `/openapi.json` to generate a client should not find it.
-    The four that are the contract have to still be there, which is the half of
+    The five that are the contract have to still be there, which is the half of
     this that would catch instrumentation replacing a route by accident.
     """
     paths = client.get("/openapi.json").json()["paths"]
-    assert set(paths) == {"/health", "/model", "/reload", "/predict"}
+    assert set(paths) == {"/health", "/model", "/reload", "/predict", "/ask"}
     assert client.get("/metrics").status_code == 200
 
 
@@ -308,3 +308,86 @@ def test_a_booster_shaped_model_is_read_the_other_way() -> None:
     """LightGBM returns one probability per row; scikit-learn returns a column per class."""
     with TestClient(serve.create_app(Registry(loaded(StubBooster(0.61), "5")))) as started:
         assert started.post("/predict", json=BODY).json()["win_probability"] == pytest.approx(0.61)
+
+
+# ------------------------------------------------------------------ /ask --
+#
+# The route, its body and its failure mode, with a stub agent rather than a
+# real one: `tests/test_agent.py` drives the real loop with a scripted chat
+# model against a real warehouse, and the question here is only whether the
+# endpoint is wired to it. That keeps this module free of LangChain, which is
+# the same reason it is free of MLflow.
+
+
+class StubAgent:
+    """An agent that answers from a script and records what it was asked."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.asked: list[str] = []
+
+    def ask(self, question: str) -> "StubAgent":
+        self.asked.append(question)
+        return self
+
+    def as_dict(self) -> dict[str, Any]:
+        return self.payload
+
+
+ANSWER: Final[dict[str, Any]] = {
+    "answer": "Alpha wins 58% of 12 games against Beta.",
+    "tool_calls": [
+        {"tool": "query_marts", "input_summary": "select ... from mart_matchups", "rows": 1}
+    ],
+    "model": "scripted-fake",
+    "usage": {"input_tokens": 120, "output_tokens": 40},
+}
+
+
+def test_ask_returns_the_answer_and_what_the_agent_read(registry: Registry) -> None:
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "how does Alpha do against Beta"}).json()
+
+    assert body == ANSWER
+    assert agent.asked == ["how does Alpha do against Beta"]
+
+
+def test_ask_refuses_an_empty_question(registry: Registry) -> None:
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))
+    with TestClient(app) as started:
+        assert started.post("/ask", json={"question": ""}).status_code == 422
+        assert started.post("/ask", json={}).status_code == 422
+
+
+def test_an_agent_that_cannot_be_built_is_a_503_that_says_why(registry: Registry) -> None:
+    """A missing provider key must not stop `/predict` from working.
+
+    The agent is built on the first question rather than at startup, so a
+    service with no key serves predictions and refuses only the route that
+    needs one.
+    """
+
+    def broken() -> serve.AskAgent:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    with TestClient(serve.create_app(registry, agent_factory=broken)) as started:
+        assert started.post("/predict", json=BODY).status_code == 200
+        refused = started.post("/ask", json={"question": "anything"})
+        assert refused.status_code == 503
+        assert "ANTHROPIC_API_KEY" in refused.json()["detail"]
+
+
+def test_the_agent_is_built_once_and_reused(registry: Registry) -> None:
+    builds = 0
+
+    def factory() -> serve.AskAgent:
+        nonlocal builds
+        builds += 1
+        return StubAgent(ANSWER)
+
+    with TestClient(serve.create_app(registry, agent_factory=factory)) as started:
+        started.post("/ask", json={"question": "one"})
+        started.post("/ask", json={"question": "two"})
+    assert builds == 1

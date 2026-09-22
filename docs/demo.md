@@ -261,8 +261,17 @@ detail.
   everywhere a version is reported. Demonstrations only; it is never a model.
   What it proves: the three pillars are wired, and the question "why is the p95
   up" can be followed from a dashboard to a span rather than guessed at.
-- **Agent question**: not yet. Placeholder for asking the agent a matchup
-  question and watching it write the mart query.
+- **Agent question**: `op run --env-file=.env.op -- uv run python -m
+  pipeline.agent "how does Dragapult ex do against Gholdengo ex"`. It prints
+  the answer, then one line per tool call with the query it ran and how many
+  rows came back, so the number in the answer can be traced to the query that
+  produced it. Ask it a question about a player to see the other half: the
+  agent has no table keyed by a person, and it says so rather than guessing.
+  `uv run python -m pipeline.card_index query "bench damage" -k 5` shows the
+  retriever on its own, with no provider key involved at all. What it proves:
+  the agent reads the same marts the dashboard would, it cites the sample size
+  because the corpus is small enough that a bare percentage would be
+  misleading, and the tables it cannot read are a list a reviewer can check.
 - **Airflow DAG**: runs today, and out of the timed sequence because the image
   takes a few minutes to build the first time. `docker compose build airflow`,
   `docker compose up -d airflow mlflow`, then

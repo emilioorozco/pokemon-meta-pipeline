@@ -126,6 +126,24 @@ def silver_from_fixtures(
     return root
 
 
+@pytest.fixture(scope="session")
+def gold_from_fixtures(silver_from_fixtures: Path) -> Path:
+    """One real `dbt run` plus `dbt test` over the fixture silver, once per session.
+
+    Returns the warehouse file the gold tests read and the agent tests query
+    through the SQL tool. Session scoped because a dbt build is the most
+    expensive thing in the suite and two modules need the same one; the exit
+    code is asserted here so a failed build is a setup error rather than a
+    dozen confusing assertion failures spread over two files.
+    """
+    from pipeline.gold import run_gold
+
+    assert run_gold(data_dir=silver_from_fixtures) == 0
+    warehouse = silver_from_fixtures / "warehouse" / "meta.duckdb"
+    assert warehouse.is_file(), warehouse
+    return warehouse
+
+
 @pytest.fixture
 def scratch_bronze(bronze_from_fixtures: Path, tmp_path: Path) -> Path:
     """A writable copy of the fixture bronze, for a test that adds a partition of its own."""

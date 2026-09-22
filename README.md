@@ -58,8 +58,8 @@ flowchart LR
   MDL -- "version and alias" --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,SQS,BRZ,SLV,GLD,MDL,SRV,AIR,PUB done
-  class AGT,DASH planned
+  class UP,API,S3,DDB,BF,SQS,BRZ,SLV,GLD,MDL,SRV,AGT,AIR,PUB done
+  class DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -156,12 +156,48 @@ without an account that can write. On the production warehouse that is 180
 matchup rows, 109 weekly rows, 80 archetype rows and the meta row, from 289
 mart rows and 128 games.
 
+The agent is real, and it is a gate with a language model behind it rather than
+the other way round. `python -m pipeline.agent "how does Dragapult ex do
+against Gholdengo ex"` runs a LangChain tool-calling loop over Anthropic's
+`claude-haiku-4-5-20251001` with two tools. `query_marts` runs one read-only
+SELECT against the DuckDB warehouse: every statement passes `validate_sql`
+first, a pure function that refuses anything that is not a single `SELECT` or
+`WITH`, anything naming a table off a seven-table allowlist, and every way
+DuckDB has of reading a file, and that names the rule it broke so the model can
+write a better query. `dim_player` and `fct_game_side` are off that list on
+purpose, so there is no question the agent can be asked that reaches a raw log
+line or a handle. A missing `LIMIT` becomes 50, a large one is cut to 200, and
+the connection is read-only with a five-second timeout. `lookup_cards` searches
+the printed text of about 25,000 cards, embedded locally with
+`sentence-transformers` and searched with a numpy cosine over a Parquet of
+vectors, which at this size is exact, instant and needs no index to tune. The
+system prompt is generated from `dbt/models/marts/schema.yml` at import, so it
+cannot drift from the models, and the rules in it are the ones this corpus
+needs: cite the `games` count, say when `min_games_met` is false, and never
+report `seen_rate` as a deck inclusion rate. `POST /ask` is the same loop on the
+serving application, returning the answer next to every tool call it made.
+
+```bash
+uv run python scripts/fetch_card_text.py                    # card text from TCGdex
+uv run python -m pipeline.card_index build                  # embed it locally
+uv run python -m pipeline.card_index query "bench damage"   # the retriever alone
+op run --env-file=.env.op -- uv run python -m pipeline.agent \
+  "how does Dragapult ex do against Gholdengo ex"
+curl -s -X POST localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"question": "which archetype has the best record this month"}'
+```
+
+Every test of it runs against a scripted fake chat model: the loop, the tool,
+the SQL validation and the DuckDB query underneath are all real, and the only
+thing the fake replaces is the decision about which SQL to write. Nothing in
+the suite needs a provider key.
+
 The serving stage is instrumented, which is the one place a run-per-stage row
 does not fit. Every request is an OpenTelemetry span with a `predict.inference`
 child around the model call, exported to a collector when one is configured and
 a no-op when there is not; `GET /metrics` is a Prometheus exposition of request
 rate and latency by route, inference latency and prediction counts by model
-version, and an agent tool-call counter stage 6 will start using.
+version, and an agent tool-call counter with one series per tool.
 `docker compose --profile observability up -d predict grafana` adds the
 collector, Jaeger, Prometheus and a provisioned Grafana dashboard next to the
 service, and the default `docker compose up -d mlflow predict` is still the two
@@ -183,7 +219,7 @@ uv run python -m pipeline.run_all --source-dir tests/fixtures  # every stage abo
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
 uv run pytest -m dbt                                           # gold tests, silver then dbt
-uv run pytest -m ml                                            # model, promotion and drift, no JVM
+uv run pytest -m ml                                            # model, promotion, drift and the embedder
 ```
 
 `promote` prints one line and exits 0 whether or not it promoted, because a
@@ -210,8 +246,8 @@ curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
 ```
 
 `GET /health` says whether a model is loaded, `GET /model` says which version
-and how it scored, `POST /reload` picks up a promotion without a restart, and
-`/docs` is the generated schema. An archetype the model never trained on is
+and how it scored, `POST /reload` picks up a promotion without a restart,
+`POST /ask` is the agent, and `/docs` is the generated schema. An archetype the model never trained on is
 answered and named in `unknown_archetypes` rather than refused, and a service
 that starts before anything is promoted stays up and reports
 `model_loaded: false`.
@@ -326,8 +362,11 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
 - [x] FastAPI serving of whichever version holds the `production` alias
 - [x] Drift report: population stability index per feature and an archetype-mix
       comparison, written to a report and logged as an MLflow run
-- [ ] LangChain agent: structured query language (SQL) over the marts and
-      card-text retrieval, scored against a golden question set
+- [x] LangChain agent: structured query language (SQL) over the marts, with a
+      validated allowlist in front of a read-only DuckDB connection
+- [x] Card-text retriever: printed card text from a public database, embedded
+      locally and searched by cosine, as the agent's second tool
+- [ ] A golden question set for the agent, scored in continuous integration
 - [x] Structured JSON logging with a shared run identifier, and a `run_metrics`
       row per stage per run surfaced by two dbt models
 - [x] Airflow directed acyclic graph (DAG) calling the stage commands in order,
@@ -419,7 +458,10 @@ tests/             unit, contract and data-quality tests
 tests/fixtures/    committed anonymized stock games, no decklists
 docs/              concepts, discovery, schema, stage plan, decision records
 data/              local lake and warehouse output (gitignored)
-data/catalog/      card catalog fetched from the bucket, not committed
+data/catalog/      card catalog fetched from the bucket, the card text fetched
+                   from TCGdex and the retriever's index; none of it committed
+tests/card_text.jsonl   twelve invented-but-plausible cards, so the retriever
+                   tests are deterministic and need no network
 dbt/               dbt project (DuckDB): sources, staging views, star schema,
                    marts, its own tests, and the committed profiles.yml
 dbt/models/ml/     the model's training data: scope rules, split cutoff,

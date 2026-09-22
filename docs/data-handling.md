@@ -104,6 +104,13 @@ an archetype name.
 Fixtures committed to the repository are anonymized stock-export games only,
 with no opponent decklist in any of them.
 
+The agent can never see player identity: `dim_player`, `fct_game_side` and
+every silver and staging table are off its SQL tool's allowlist, so nothing it
+can query carries a handle or a raw log line, the one player-keyed table it can
+read (`mart_player_summary`) holds only irreversible tokens, and the tool
+refuses the rest by name rather than relying on the model not to ask
+(docs/stages.md section 6).
+
 ## Deletion requests
 
 A member asks an admin to delete a game or all of their games. The admin
