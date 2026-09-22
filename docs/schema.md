@@ -182,6 +182,11 @@ blobs are written; a v1 blob has no play date, so it is quarantined for an
 upstream re-parse rather than landed, and there is no S3-last-modified fallback
 in the table.
 
+Every v2 game lands, whatever it carries. A game a modified client exported with
+both complete decklists is written like any other, both decklist columns
+included: `summary.hasFullDecklists` is informational, not a filter
+([data-handling.md](data-handling.md)).
+
 The Parquet schema is pinned from the contract models, not inferred from the
 batch being written. Inference would type `summary.elo` as a struct in a batch
 that has one and as null in a batch that does not, and a reader spanning both
@@ -211,7 +216,7 @@ partitions would see two incompatible schemas.
 | `stats_by_player` | list<struct<handle, stats>> | no | `statsByPlayer` |
 | `unparsed_lines` | list<string> | no | `unparsedLines` |
 | `extras` | list<struct<tag, lines>> | no | `extras` |
-| `my_decklist`, `opponent_decklist` | struct per section 6 | yes | blob |
+| `my_decklist`, `opponent_decklist` | struct per section 6 | yes | blob; null when the blob carried no such list |
 
 Two conversions the Parquet types force:
 

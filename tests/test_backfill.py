@@ -1,4 +1,4 @@
-"""Backfill against a moto S3 bucket: what lands, what is quarantined, what is skipped.
+"""Backfill against a moto S3 bucket: what lands, what is quarantined, what is counted.
 
 moto serves a real boto3 client against an in-process fake, so the listing, the
 pagination and the version ids are exercised without an AWS account and without
@@ -27,6 +27,7 @@ from pipeline.bronze import read_smoke
 from pipeline.contract import (
     CardRef,
     Decklist,
+    DecklistSource,
     Entry,
     GameSummary,
     ParsedBlobV1,
@@ -53,6 +54,7 @@ FULL_DECKLISTS = "parsed/user-1/game-3.json"
 V1 = "parsed/user-1/game-4.json"
 BROKEN_CONTRACT = "parsed/user-1/game-5.json"
 NOT_JSON = "parsed/user-1/game-6.json"
+PASTED_OPPONENT_LIST = "parsed/user-1/game-7.json"
 NOT_A_BLOB = "parsed/user-1/notes.txt"
 
 
@@ -97,6 +99,15 @@ def segments() -> list[Segment]:
     ]
 
 
+def decklist(source: str) -> Decklist:
+    return Decklist(
+        cards=[CardRef(card_id="sv1-1", name="Pikachu", set="SV1", number="1", count=4)],
+        card_count=60,
+        complete=True,
+        source=DecklistSource(source),
+    )
+
+
 def blob_v2(game_id: str, played_at: str, *, full_decklists: bool = False) -> dict[str, Any]:
     """A valid v2 blob as it arrives on the wire: camelCase, optional keys absent."""
     summary = GameSummary(
@@ -116,12 +127,6 @@ def blob_v2(game_id: str, played_at: str, *, full_decklists: bool = False) -> di
         stats=RoleStats(me=side_stats(), opponent=side_stats(knockouts=1)),
         has_full_decklists=full_decklists,
     )
-    decklist = Decklist(
-        cards=[CardRef(card_id="sv1-1", name="Pikachu", set="SV1", number="1", count=4)],
-        card_count=60,
-        complete=True,
-        source="debug",
-    )
     blob = ParsedBlobV2(
         schema_version=2,
         summary=summary,
@@ -129,10 +134,20 @@ def blob_v2(game_id: str, played_at: str, *, full_decklists: bool = False) -> di
         stats_by_player={ME: side_stats(), OPPONENT: side_stats(knockouts=1)},
         unparsed_lines=[f"{ME} did something no pattern matched"],
         extras={"Note": [f"a trailer line naming {OPPONENT}"]},
-        my_decklist=decklist if full_decklists else None,
-        opponent_decklist=decklist if full_decklists else None,
+        my_decklist=decklist("debug") if full_decklists else None,
+        opponent_decklist=decklist("debug") if full_decklists else None,
     )
     return blob.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def blob_with_pasted_opponent_list() -> dict[str, Any]:
+    """A stock game whose uploader pasted the opponent's list, so `hasFullDecklists` is false."""
+    blob = blob_v2("game-7", "2026-09-03T15:00:00.000Z")
+    blob["summary"]["opponentDecklistSource"] = DecklistSource.PASTE.value
+    blob["opponentDecklist"] = decklist("paste").model_dump(
+        mode="json", by_alias=True, exclude_none=True
+    )
+    return blob
 
 
 def blob_v1() -> dict[str, Any]:
@@ -209,12 +224,20 @@ def comparable(summary: BackfillSummary) -> BackfillSummary:
     return replace(summary, duration_s=0.0)
 
 
-def parquet_text(bronze_dir: Path) -> str:
-    """Every value in every written row, as one JSON string, for leak assertions."""
+def landed_rows(bronze_dir: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for path in sorted(bronze_dir.rglob("*.parquet")):
         rows += pq.read_table(path).to_pylist()
-    return json.dumps(rows, default=str)
+    return rows
+
+
+def row_for(bronze_dir: Path, game_id: str) -> dict[str, Any]:
+    return next(row for row in landed_rows(bronze_dir) if row["game_id"] == game_id)
+
+
+def parquet_text(bronze_dir: Path) -> str:
+    """Every value in every written row, as one JSON string, for leak assertions."""
+    return json.dumps(landed_rows(bronze_dir), default=str)
 
 
 def sidecar(quarantine_dir: Path, reason: str, source_key: str) -> dict[str, Any]:
@@ -236,11 +259,46 @@ def test_a_run_routes_every_object(s3: Any, settings: Settings, lake: tuple[Path
 
     summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
 
-    assert (summary.read, summary.landed, summary.skipped_full_decklists) == (6, 2, 1)
+    assert (summary.read, summary.landed, summary.full_decklists_landed) == (6, 3, 1)
     assert summary.quarantined == {"contract_violation": 1, "invalid_json": 1, "v1_blob": 1}
-    assert summary.partitions == {"2026-09-01": 1, "2026-09-02": 1}
-    assert read_smoke(bronze_dir) == [("2026-09-01", 1), ("2026-09-02", 1)]
+    assert summary.partitions == {"2026-09-01": 1, "2026-09-02": 2}
+    assert read_smoke(bronze_dir) == [("2026-09-01", 1), ("2026-09-02", 2)]
     assert summary.duration_s >= 0
+
+
+def test_a_full_decklist_game_lands_with_both_lists(
+    s3: Any, settings: Settings, lake: tuple[Path, Path]
+) -> None:
+    """The modified client's game is ingested like any other; the flag only counts it."""
+    bronze_dir, quarantine_dir = lake
+
+    summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
+
+    assert summary.full_decklists_landed == 1
+    row = row_for(bronze_dir, "game-3")
+    assert row["summary"]["has_full_decklists"] is True
+    assert row["my_decklist"]["card_count"] == 60
+    assert row["opponent_decklist"]["card_count"] == 60
+    assert row["opponent_decklist"]["cards"][0]["name"] == "Pikachu"
+
+
+def test_a_pasted_opponent_list_lands_and_is_not_counted(
+    s3: Any, settings: Settings, lake: tuple[Path, Path]
+) -> None:
+    """`full_decklists_landed` follows the summary flag, not the presence of a list."""
+    bronze_dir, quarantine_dir = lake
+    s3.put_object(
+        Bucket=BUCKET, Key=PASTED_OPPONENT_LIST, Body=_json(blob_with_pasted_opponent_list())
+    )
+
+    summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
+
+    assert (summary.read, summary.landed, summary.full_decklists_landed) == (7, 4, 1)
+    row = row_for(bronze_dir, "game-7")
+    assert row["summary"]["has_full_decklists"] is False
+    assert row["summary"]["opponent_decklist_source"] == "paste"
+    assert row["opponent_decklist"]["source"] == "paste"
+    assert row["my_decklist"] is None
 
 
 def test_the_landed_rows_carry_their_source_version_and_no_handle(
@@ -250,15 +308,11 @@ def test_the_landed_rows_carry_their_source_version_and_no_handle(
 
     run_backfill(settings, s3, bronze_dir, lake[1], now=NOW)
 
-    rows = [
-        row
-        for path in sorted(bronze_dir.rglob("*.parquet"))
-        for row in pq.read_table(path).to_pylist()
-    ]
-    assert sorted(row["game_id"] for row in rows) == ["game-1", "game-2"]
+    rows = landed_rows(bronze_dir)
+    assert sorted(row["game_id"] for row in rows) == ["game-1", "game-2", "game-3"]
     assert all(row["source_version_id"] for row in rows)
     assert all(row["source_last_modified"] is not None for row in rows)
-    assert {row["source_key"] for row in rows} == {VALID_ONE, VALID_TWO}
+    assert {row["source_key"] for row in rows} == {VALID_ONE, VALID_TWO, FULL_DECKLISTS}
 
     written = parquet_text(bronze_dir)
     assert ME not in written
@@ -311,7 +365,7 @@ def test_running_twice_lands_the_same_rows(
     second = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
 
     assert comparable(first) == comparable(second)
-    assert read_smoke(bronze_dir) == [("2026-09-01", 1), ("2026-09-02", 1)]
+    assert read_smoke(bronze_dir) == [("2026-09-01", 1), ("2026-09-02", 2)]
     assert len(sorted(bronze_dir.rglob("*.parquet"))) == 2
 
 
@@ -350,7 +404,7 @@ def test_a_surviving_handle_quarantines_the_game_instead_of_landing_it(
 
     assert summary.landed == 0
     assert summary.partitions == {}
-    assert summary.quarantined["handle_leak_check_failed"] == 2
+    assert summary.quarantined["handle_leak_check_failed"] == 3
     assert read_smoke(bronze_dir) == []
     leaked = quarantine_dir / "handle_leak_check_failed"
     assert sorted(path.name for path in leaked.glob("*.json")) == [
@@ -358,6 +412,8 @@ def test_a_surviving_handle_quarantines_the_game_instead_of_landing_it(
         "parsed__user-1__game-1.meta.json",
         "parsed__user-1__game-2.json",
         "parsed__user-1__game-2.meta.json",
+        "parsed__user-1__game-3.json",
+        "parsed__user-1__game-3.meta.json",
     ]
     detail = sidecar(quarantine_dir, "handle_leak_check_failed", VALID_ONE)["detail"]
     assert "path(s) still hold a handle" in detail
@@ -380,10 +436,10 @@ def test_one_leaking_game_does_not_stop_the_others(
 
     summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
 
-    assert summary.landed == 1
-    assert summary.partitions == {"2026-09-02": 1}
+    assert summary.landed == 2
+    assert summary.partitions == {"2026-09-02": 2}
     assert summary.quarantined["handle_leak_check_failed"] == 1
-    assert read_smoke(bronze_dir) == [("2026-09-02", 1)]
+    assert read_smoke(bronze_dir) == [("2026-09-02", 2)]
     assert ME not in parquet_text(bronze_dir)
 
 
@@ -400,7 +456,7 @@ def test_an_anonymizer_that_breaks_the_contract_is_a_contract_violation(
     summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
 
     assert summary.landed == 0
-    assert summary.quarantined["contract_violation"] == 3
+    assert summary.quarantined["contract_violation"] == 4
     detail = sidecar(quarantine_dir, "contract_violation", VALID_ONE)["detail"]
     assert detail.startswith("after anonymization: ")
 
@@ -418,7 +474,7 @@ def test_a_failed_write_quarantines_the_batch_rather_than_losing_it(
     summary = run_backfill(settings, s3, bronze_dir, quarantine_dir, now=NOW)
 
     assert summary.landed == 0
-    assert summary.quarantined["write_failed"] == 2
+    assert summary.quarantined["write_failed"] == 3
     assert sidecar(quarantine_dir, "write_failed", VALID_ONE)["detail"] == "OSError"
 
 
@@ -441,12 +497,13 @@ def test_the_summary_prints_one_line_per_field(
         "read",
         "landed",
         "quarantined",
-        "skipped_full_decklists",
+        "full_decklists_landed",
         "partitions",
         "duration_s",
     ]
     assert "invalid_json=1" in lines[2]
-    assert lines[4] == "partitions: 2026-09-01=1 2026-09-02=1"
+    assert lines[3] == "full_decklists_landed: 1"
+    assert lines[4] == "partitions: 2026-09-01=1 2026-09-02=2"
     assert str(BackfillSummary()).splitlines()[2] == "quarantined: none"
 
 

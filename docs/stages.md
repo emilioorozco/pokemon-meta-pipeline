@@ -52,10 +52,11 @@ Steps per object:
    object's S3 last-modified time, which is the upload time and not the play
    time. Rather than guess a partition, quarantine `v1_blob` with a hint to
    re-parse it upstream to v2. Such a blob is not anonymized and not written.
-4. Games whose summary sets `hasFullDecklists` come from a modified client and
-   carry both complete decklists. They are out of scope
-   ([data-handling.md](data-handling.md)), so they are counted as skipped and
-   not quarantined: quarantine means "look at this", and these need no look.
+4. Every valid v2 game lands, blob untouched, including the ones a modified
+   client exported with both complete decklists. An opponent's list is in the
+   blob only because the opponent shared it in-game
+   ([data-handling.md](data-handling.md)), so `hasFullDecklists` is
+   informational: the run counts those games and routes nothing on the flag.
 5. `play_date` is `summary.playedAt`, so `play_date_source` is always
    `summary` while only v2 blobs are written.
 6. Collect handles: `summary.players`, `winner`, `opponentName`,
@@ -78,10 +79,10 @@ unrewritable handle costs its own game, not the run.
 
 Output: bronze partitioned by `play_date`, each touched partition deleted and
 rewritten in full (idempotent); quarantined objects kept as received with a
-handle-free sidecar. The run prints read, landed, quarantined by reason,
-skipped and the rows per partition. Quality checks that fail the task: exactly
-two seat rows per game, at most one `is_winner` per game, no raw handle in any
-string column.
+handle-free sidecar. The run prints read, landed, quarantined by reason, how
+many landed games carry full decklists, and the rows per partition. Quality
+checks that fail the task: exactly two seat rows per game, at most one
+`is_winner` per game, no raw handle in any string column.
 
 Why this shape: the blob is already parsed, so bronze is a contract check and
 a flatten, not a parser. Keeping bronze close to the source names means a

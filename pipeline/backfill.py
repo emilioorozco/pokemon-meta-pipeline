@@ -16,7 +16,6 @@ Routing, per object:
 - not UTF-8 JSON              -> quarantine `invalid_json`
 - fails the contract          -> quarantine `contract_violation`
 - v1 (no `schemaVersion`)     -> quarantine `v1_blob`, not anonymized, not written
-- `summary.hasFullDecklists`  -> skipped, not quarantined
 - otherwise                   -> anonymized, re-validated, landed in bronze
 
 Why v1 blobs are quarantined rather than upgraded here: a v1 blob has no
@@ -26,10 +25,11 @@ game was played. Guessing that would put games in the wrong partition and the
 partition is what a re-run replaces. The producer can re-parse them to v2, which
 is a one-command admin job upstream, so this stage names the key and waits.
 
-Why full-decklist games are skipped rather than quarantined: those come from a
-modified client and carry both complete decklists. They are not broken, they are
-out of scope (docs/data-handling.md), and quarantine means "look at this", which
-would make the quarantine directory mostly noise.
+Every game lands, blob untouched, including the ones a modified client exported
+with both decklists. An opponent's list is only in a blob because the opponent
+chose to share it in-game, so it is consented data and bronze keeps it
+(docs/data-handling.md); `summary.hasFullDecklists` is counted on the way past
+and is informational, not a route.
 
 Why the leak check does not sink the batch: `write_partitions` refuses the whole
 batch when a single handle survives anonymization, which is the right default for
@@ -90,7 +90,7 @@ class BackfillSummary:
     read: int = 0
     landed: int = 0
     quarantined: dict[str, int] = field(default_factory=dict)
-    skipped_full_decklists: int = 0
+    full_decklists_landed: int = 0
     partitions: dict[str, int] = field(default_factory=dict)
     duration_s: float = 0.0
 
@@ -100,7 +100,7 @@ class BackfillSummary:
                 f"read: {self.read}",
                 f"landed: {self.landed}",
                 f"quarantined: {_counts(self.quarantined)}",
-                f"skipped_full_decklists: {self.skipped_full_decklists}",
+                f"full_decklists_landed: {self.full_decklists_landed}",
                 f"partitions: {_counts(self.partitions)}",
                 f"duration_s: {self.duration_s:.2f}",
             ]
@@ -187,20 +187,19 @@ def run_backfill(
         if validated is None:
             continue
         model, data = validated
-        if model.summary.has_full_decklists:
-            summary.skipped_full_decklists += 1
-            logger.info("skipped %s: the game carries full decklists", obj.key)
-            continue
         prepared = _prepare(data, blob, obj, settings, rejects)
-        if prepared is not None:
-            pending.append(prepared)
+        if prepared is None:
+            continue
+        pending.append(prepared)
+        if model.summary.has_full_decklists:
+            summary.full_decklists_landed += 1
 
     logger.info(
-        "read %d object(s): %d ready, %d skipped, %d quarantined",
+        "read %d object(s): %d ready, %d quarantined, %d with full decklists",
         summary.read,
         len(pending),
-        summary.skipped_full_decklists,
         sum(rejects.counts.values()),
+        summary.full_decklists_landed,
     )
     summary.partitions = _land(pending, bronze_dir, when, rejects, dry_run=dry_run)
     summary.landed = sum(summary.partitions.values())
@@ -214,10 +213,10 @@ def _validate(
 ) -> tuple[ParsedBlobV2, dict[str, Any]] | None:
     """The blob as a v2 model plus the dict it decoded from, or None after recording why not.
 
-    Both come back because the model answers the routing questions while the dict
-    is what gets anonymized: rewriting the dict the producer sent, rather than a
-    re-dump of the model, keeps the keys and the optional-key choices exactly as
-    they arrived.
+    Both come back because the model answers the routing and counting questions
+    while the dict is what gets anonymized: rewriting the dict the producer sent,
+    rather than a re-dump of the model, keeps the keys and the optional-key
+    choices exactly as they arrived.
     """
     try:
         data = blob.decode()

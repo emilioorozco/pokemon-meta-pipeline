@@ -19,9 +19,10 @@ stores the raw log text exactly as exported (`raw/`), a parsed JSON blob with
 segments, entries and per-side counters (`parsed/`), and a summary row
 (players, winner, archetypes, play date) in its database. Player handles
 appear in all three, as structured fields and inside free text such as segment
-titles and entry text. Games from a modified client can also carry both full
-decklists; the summary marks those with `hasFullDecklists`. See
-[discovery.md](discovery.md) for the full shape.
+titles and entry text. A game can also carry a decklist: the uploader's own, and
+the opponent's when the opponent chose to share their list in-game, which the
+export then prints. The summary marks games that carry both complete lists with
+`hasFullDecklists`. See [discovery.md](discovery.md) for the full shape.
 
 ## What the pipeline reads
 
@@ -77,13 +78,16 @@ back to the application, exported files, screenshots) and demos.
 
 - Raw log text. The pipeline does not read it, so it cannot leak it.
 - Real handles. Only tokens leave bronze; the leak check enforces this.
-- Full decklists. Only games from a modified client carry them; the
-  `hasFullDecklists` flag marks those games and they are excluded from every
-  public artifact.
+- Full decklists. No decklist appears in a public artifact. Inside the lake
+  they are kept: an opponent's list reaches a blob only because the opponent
+  chose to share it in-game, so it is consented data, and bronze stores it
+  along with the uploader's own list. Every game is ingested, and
+  `hasFullDecklists` counts those games rather than filtering them.
 - Anything from the `dev` environment, which holds test data.
 - The HMAC key.
 
-Fixtures committed to the repository are anonymized stock-export games only.
+Fixtures committed to the repository are anonymized stock-export games only,
+with no opponent decklist in any of them.
 
 ## Deletion requests
 
