@@ -38,6 +38,7 @@ EXPECTED_TASKS: Final = {
     "drift",
     "build_card_index",
     "quality_gate",
+    "publish",
 }
 
 # The chain the ticket specifies, plus the one branch.
@@ -50,6 +51,7 @@ EXPECTED_EDGES: Final = {
     ("train", "promote"),
     ("promote", "drift"),
     ("drift", "quality_gate"),
+    ("quality_gate", "publish"),
     ("dbt_test", "build_card_index"),
 }
 

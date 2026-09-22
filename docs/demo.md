@@ -268,16 +268,24 @@ detail.
   `docker compose up -d airflow mlflow`, then
   `docker compose exec airflow airflow dags trigger play_rough_pipeline --conf
   '{"source_dir": "tests/fixtures", "ingest_mode": "backfill"}'` and watch the
-  ten tasks go green in the browser at http://localhost:8080 (admin/admin).
+  eleven tasks go green in the browser at http://localhost:8080 (admin/admin).
   `docker compose down` when finished. The quick version, with no Docker at
   all, is `uv run python -m pipeline.run_all --source-dir tests/fixtures
-  --data-dir /tmp/demo`, which runs the same eight stages in about twenty
+  --data-dir /tmp/demo`, which runs the same nine stages in about twenty
   seconds and prints a table of what ran and how long each took. What it
   proves: every stage is a command, one run identifier ties all of their
   `run_metrics` rows together, and the last task reads those rows back and is
   allowed to fail the run.
+- **Publish**: runs today, and out of the timed sequence because it writes to
+  an account. `uv run python -m pipeline.publish --dry-run` builds every item
+  the application's DynamoDB table would receive and prints the counts, one
+  sample per kind and the meta row, without needing credentials that can write;
+  with `PRA_INSIGHTS_TABLE` set it writes them, then deletes the rows of the
+  previous run. What it proves: the warehouse is not the end of the line, the
+  refresh is atomic enough to read through, and every row on the application's
+  side names the run that produced it.
 - **Dashboard**: not yet. Placeholder for the published archetype and matchup
-  views.
+  views, which read the table the publish step writes.
 
 ## Rehearsal log
 

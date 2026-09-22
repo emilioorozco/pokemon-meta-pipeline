@@ -25,7 +25,7 @@ line of one invocation carry the same identifier. That is the whole point of
 the identifier, and a runner that let each stage invent its own would quietly
 undo it.
 
-Three stages are skipped rather than run, each with a logged reason:
+Stages are skipped rather than dropped, each with a logged reason:
 
 - `backfill`, when `PRA_INGEST_MODE=consumer`. The event-driven consumer is
   then the live ingest and bronze is already being written, so a backfill would
@@ -39,6 +39,10 @@ Three stages are skipped rather than run, each with a logged reason:
 - `build_card_index`, until `pipeline.card_index` exists. The retriever index
   is a later ticket. The step is listed rather than left out so the shape of
   the finished pipeline is visible in the one place that runs it.
+- `publish`, when `PRA_INSIGHTS_TABLE` is unset. A clone with no table named
+  has nowhere to publish to, which is the normal state of a reviewer's laptop
+  and of every test in this repository; naming the variable in the reason is
+  what turns "it did not publish" into "set this".
 """
 
 import argparse
@@ -65,6 +69,7 @@ from pipeline.observability import (
     emit_summary,
     stage_run,
 )
+from pipeline.settings import INSIGHTS_TABLE_VAR
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +87,11 @@ STATUS_SKIPPED: Final = "skipped"
 class Stage:
     """One step of the run: what to call it, what to run, and when not to.
 
-    `needs_features` is the only conditional the runner understands beyond the
-    two named flags, because it is the only one the stages share: three
-    commands read `features_turn` and all three have nothing to do when it is
-    empty.
+    Every conditional here is one a stage would make for itself if it were
+    started, so the flags save a process start rather than deciding anything the
+    command would not: three commands read `features_turn` and have nothing to
+    do when it is empty, and the publish has nowhere to write when no table is
+    named.
     """
 
     name: str
@@ -98,6 +104,8 @@ class Stage:
     #: Skipped when its module is not importable, which is how an unbuilt
     #: stage stays visible in the list instead of being absent from it.
     optional_module: bool = False
+    #: Skipped when no insights table is named, because there is nowhere to write.
+    needs_insights_table: bool = False
 
 
 # The order is the dependency order, and it is the DAG's order flattened: the
@@ -118,6 +126,11 @@ STAGES: Final[tuple[Stage, ...]] = (
     Stage(name="drift", module="pipeline.drift", needs_features=True),
     Stage(name="build_card_index", module=CARD_INDEX_MODULE, optional_module=True),
     Stage(name="quality_gate", module="pipeline.quality_gate"),
+    # After the gate, not before it: publishing numbers the gate was about to
+    # refuse would put a known-bad matchup matrix in front of every reader of
+    # the application, and the runner stops at the first failure, so a red gate
+    # is also the thing that stops this.
+    Stage(name="publish", module="pipeline.publish", needs_insights_table=True),
 )
 STAGE_NAMES: Final[tuple[str, ...]] = tuple(stage.name for stage in STAGES)
 
@@ -233,6 +246,8 @@ def skip_reason(stage: Stage, *, skipped: Sequence[str], features: int | None) -
         return f"{stage.module} is not implemented yet"
     if stage.needs_features and features == 0:
         return f"{FEATURE_TABLE} holds no rows"
+    if stage.needs_insights_table and not os.environ.get(INSIGHTS_TABLE_VAR, "").strip():
+        return f"{INSIGHTS_TABLE_VAR} is unset: there is no table to publish to"
     return None
 
 

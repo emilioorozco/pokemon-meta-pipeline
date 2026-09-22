@@ -28,7 +28,7 @@ S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
         |        (`python -m pipeline.run_all` is the same list with no scheduler)
         |
         v
-[8 publish]  results written back to the application (S3 prefix it reads)
+[8 publish]  marts written back into the application's DynamoDB table
 ```
 
 Status legend: done, in progress, planned.
@@ -877,12 +877,140 @@ when bronze has new partitions is a better shape than one that starts at 06:00
 and finds nothing. AWS Step Functions remains the managed alternative (stage
 list, stretch).
 
-## 8. Publish back (planned)
+## 8. Publish (in progress)
 
-Gold marts and the model's per-archetype summaries are written as JSON under a
-prefix the application reads (in the same environment's bucket), so the web
-application can show community-level matchup and win-rate views without
-querying the warehouse. Only the public-safe subset (section 3) is published.
+Input: the marts in `$PIPELINE_DATA_DIR/warehouse/meta.duckdb`. Output: rows in
+the application's DynamoDB table, named by `PRA_INSIGHTS_TABLE`
+(`pra-<stage>-insights`, one per deployment stage). This is the stage that closes the
+loop: everything before it lands in a DuckDB file on whichever machine ran the
+pipeline, and the application cannot read that, so the last step copies the
+public-safe marts into the store it already reads on every request.
+
+Command: `python -m pipeline.publish` (`--warehouse`, `--table`, `--dry-run`,
+`--tracking-uri`). It is the last task of the DAG, after `quality_gate` rather
+than before it: a run whose gate refused must not put its numbers in front of
+the application's readers, and a failed task stops what follows it. The runner
+and the DAG both skip it with a logged reason when `PRA_INSIGHTS_TABLE` is
+unset, which is the normal state of a clone.
+
+### The contract
+
+One table, keys `pk` (S) and `sk` (S), four partition-key families over it.
+Attribute names are camelCase, because the application is TypeScript and reads
+these rows straight into its models; the warehouse's snake_case stops here.
+
+| pk | sk | attributes |
+| --- | --- | --- |
+| `MATCHUP` | `<archetypeKey>#<opponentArchetypeKey>` | `archetypeKey`, `archetypeName`, `opponentArchetypeKey`, `opponentArchetypeName`, `games`, `wins`, `losses`, `ties`, `winRate`, `minGamesMet`, `runId`, `publishedAt` |
+| `WEEKLY#<archetypeKey>` | `<isoYear>-W<isoWeek>` | `archetypeKey`, `archetypeName`, `isoYear`, `isoWeek`, `weekStart`, `games`, `wins`, `losses`, `ties`, `winRate`, `shareOfWeek`, `runId`, `publishedAt` |
+| `ARCHETYPE` | `<archetypeKey>` | `archetypeKey`, `archetypeName`, `games`, `wins`, `losses`, `winRate`, `runId`, `publishedAt` |
+| `META` | `LATEST` | `runId`, `publishedAt`, `modelName`, `modelVersion`, `modelAlias`, `gamesTotal`, `matchupRows`, `weeklyRows`, `archetypeRows`, `sourceCommit`, `minGames` |
+
+Four things about the values are worth stating rather than discovering.
+
+**Numbers are `Decimal`.** DynamoDB has one numeric type and boto3 refuses a
+float outright rather than rounding one silently, so every count and every rate
+is converted through `str()` on the way in.
+
+**Rates are percentages, 0 to 100, rounded to two places.** `winRate` and
+`shareOfWeek` are `55.56`, not `0.5556`. The marts hold fractions, because a
+division produces one; the application's wire format is percentages, and this
+boundary is where the scaling happens so that it happens once.
+
+**A rate that does not exist is left out.** A matchup with no decided game has
+no win rate, and the attribute is absent rather than null, so
+`attribute_exists(winRate)` is a filter the application can use. The same goes
+for `shareOfWeek`, for `modelVersion` and `modelAlias` when nothing holds the
+`production` alias, for `sourceCommit` outside a checkout, and for `minGames`
+when the dbt project cannot be read.
+
+**The ISO week is zero padded.** `2026-W09`, not `2026-W9`, because without the
+padding week 9 sorts after week 10 and a `between` over a range of weeks
+silently returns the wrong set.
+
+The archetype family is aggregated here, over the `mart_matchups` rows for the
+archetype, rather than read from a mart of its own. Summing them counts every
+seat the archetype held against a known opponent, mirrors included once per
+seat, so an archetype total and the matchup cells under it agree.
+`mart_archetype_weekly` would have given a different number (it keeps seats
+whose opponent archetype is unknown) and `dim_archetype.games_played` a third
+one (it counts before the `excluded_from_stats` filter). `gamesTotal` in `META`
+is a fourth question, deliberately: distinct games in `fct_game_side` that are
+not excluded, which is what "built from 128 games" means on a page.
+
+### Refresh semantics
+
+A publish is a refresh, not a merge. Every row is written with the new `runId`,
+in `BatchWriteItem` chunks of 25 with the unprocessed items resent under a
+back-off, then `META`, and only then are the rows whose `runId` is an older one
+deleted. That ordering is the point: at no moment is the table missing a row it
+had before, so a reader mid-publish sees the old row or the new one and never a
+gap. Deleting first would have shown an empty matchup matrix for as long as the
+write took.
+
+The sweep queries each of `MATCHUP`, `ARCHETYPE` and `META`, and for the weekly
+family it queries the archetype partitions it just published plus any others
+found by a `Scan` filtered on `begins_with(pk, "WEEKLY#")`. The Scan is there
+for exactly the case deletion exists for, an archetype that has dropped out of
+the corpus and would otherwise keep its partition for ever.
+
+**The scale caveat.** That Scan reads the whole table. It is bounded by the
+table's size, which at a few thousand rows is nothing and at a few million
+would be both slow and expensive. The replacement when that day comes is a
+global secondary index on `runId`: query it for the previous run's rows and
+delete those, instead of scanning for all of them and comparing.
+
+### Permissions
+
+The code names no profile and no role: it is boto3's default credential chain,
+the same as every other stage that talks to AWS. What changed for this stage is
+on the other side of that chain, in the application's account. The role this
+pipeline assumes was read-only, and now carries write (`PutItem`, `DeleteItem`,
+`BatchWriteItem`, `Query`, `Scan`) on this one table and on nothing else. The
+S3 bucket it reads is still read-only, and no other table in the account is
+reachable.
+
+### How the application reads it
+
+Every access pattern is a query on the key, and none of them is a scan:
+
+- the matchup matrix, or one row of it: `Query pk = "MATCHUP"`, optionally with
+  `begins_with(sk, "<archetypeKey>#")` for one archetype's row of the matrix;
+- one archetype over time: `Query pk = "WEEKLY#<archetypeKey>"`, with
+  `sk between "2026-W01" and "2026-W12"` for a range of weeks;
+- the leaderboard: `Query pk = "ARCHETYPE"`;
+- the freshness banner, and the model version behind any prediction shown
+  beside these numbers: `GetItem pk = "META", sk = "LATEST"`.
+
+`publishedAt` and `runId` are on every row, so a page can say when the numbers
+are from, and a row that looks wrong can be traced back to the run that wrote
+it, in this repository's `run_metrics` and in the Airflow UI, by one identifier.
+
+### What a run looks like
+
+```
+publish to pra-<stage>-insights under run 5890ea06ffab4256 at 2026-09-22T20:52:54Z
+
+kind       items
+matchup      180
+weekly       109
+archetype     80
+meta           1
+
+read 289 mart row(s), wrote 370 item(s), deleted 370 stale row(s)
+```
+
+`--dry-run` builds every item, prints those counts, one sample item per kind and
+the meta row, and writes nothing. It is the way to see what a publish would do
+against a warehouse without an account that can write, and it is what the
+`run_metrics` row of a dry run reports as `rows_out = 0`.
+
+### Not published
+
+Only the public-safe subset, which is the marts above. Nothing per player
+reaches this stage: `mart_player_summary` is not read, no token, handle or user
+id is in any item, and the only free text in the table is an archetype name.
+See [data-handling.md](data-handling.md).
 
 ## Ops: logging, run metrics, traces and dashboards
 
@@ -1095,6 +1223,9 @@ and on every metric label, and every archetype comes back in
 - Archetype tombstones: the alias map is derived from bronze, which handles a
   rename but not a merge of two archetype ids into one. A `mergedInto` export
   from the application is still the only way to collapse those.
+- Publish sweep: the stale-row sweep finds orphaned weekly partitions with a
+  `Scan`, which is bounded by the table and fine at this size. A global
+  secondary index on `runId` replaces it when the table stops being small.
 
 ## History
 

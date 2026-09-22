@@ -84,7 +84,12 @@ its training data no longer match.
 ## What is never published
 
 "Published" means the public repository, any public artifact (marts written
-back to the application, exported files, screenshots) and demos.
+back to the application, exported files, screenshots) and demos. One stage does
+it automatically, `python -m pipeline.publish`, and what it may read is part of
+the policy rather than a detail of the code: `mart_matchups` and
+`mart_archetype_weekly` only, never `mart_player_summary`, so no item it writes
+carries a token, a handle or a user id, and the only free text in any of them is
+an archetype name.
 
 - Raw log text. The pipeline does not read it, so it cannot leak it.
 - Real handles. Only tokens leave bronze; the leak check enforces this.

@@ -45,6 +45,17 @@ def fake_commands(monkeypatch: pytest.MonkeyPatch, failing: str | None = None) -
     return ran
 
 
+@pytest.fixture(autouse=True)
+def no_insights_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No table by default, whatever the developer's environment says.
+
+    A machine with `PRA_INSIGHTS_TABLE` set would otherwise have these tests
+    run the real publish stage against it, and the skip is part of what the
+    ordering tests assert. The one test that wants the stage sets it back.
+    """
+    monkeypatch.delenv("PRA_INSIGHTS_TABLE", raising=False)
+
+
 def metric_rows(data_dir: Path) -> list[dict[str, Any]]:
     """Every `run_metrics` row under a data directory, whichever stage wrote it."""
     return [
@@ -77,6 +88,7 @@ def test_the_stage_list_is_the_dependency_order() -> None:
         "drift",
         "build_card_index",
         "quality_gate",
+        "publish",
     )
 
 
@@ -110,6 +122,7 @@ def test_skip_leaves_the_named_stages_out_with_a_reason(
     assert skipped["silver"] == "skipped by --skip"
     assert "not implemented yet" in skipped["build_card_index"]
     assert "features_turn" in skipped["train"]
+    assert "PRA_INSIGHTS_TABLE" in skipped["publish"]
 
 
 def test_stop_after_runs_no_further(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,6 +164,18 @@ def test_an_unknown_stage_name_is_refused(tmp_path: Path, monkeypatch: pytest.Mo
     with pytest.raises(SystemExit) as raised:
         run(monkeypatch, tmp_path, ["--skip", "nonsense"])
     assert raised.value.code == 2
+
+
+def test_a_named_insights_table_is_what_lets_the_publish_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last stage is a skip on a clone and a step on a configured machine."""
+    ran = fake_commands(monkeypatch)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+
+    assert run(monkeypatch, tmp_path, ["--skip", "silver,gold"]) == 0
+
+    assert ran[-1] == "publish"
 
 
 def test_the_source_directory_only_reaches_the_stage_that_reads_blobs() -> None:

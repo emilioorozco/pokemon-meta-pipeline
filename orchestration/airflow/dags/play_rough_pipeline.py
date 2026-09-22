@@ -33,7 +33,9 @@ logged no-op rather than a second pass over the same bucket.
 **The graph.** Linear, because the data is: bronze feeds silver feeds the
 warehouse feeds the model. The one branch is `build_card_index`, which needs the
 warehouse and nothing after it, so it runs beside the model stages instead of
-delaying them. `quality_gate` is last because it judges every row the run wrote.
+delaying them. `quality_gate` judges every row the run wrote, and `publish` is
+after it rather than before: a run whose gate refused must not put its numbers
+in front of the application's readers, and a failed task stops what follows it.
 """
 
 from __future__ import annotations
@@ -74,6 +76,10 @@ TASK_ENV = {
     "PRA_LOG_FORMAT": "json",
     "AWS_REGION": os.environ.get("AWS_REGION", ""),
     "AWS_PROFILE": os.environ.get("AWS_PROFILE", ""),
+    # The application's insights table. Empty means the publish task has
+    # nowhere to write, which it says and exits 2 for, so an environment that
+    # has not been given one fails loudly rather than publishing nothing.
+    "PRA_INSIGHTS_TABLE": os.environ.get("PRA_INSIGHTS_TABLE", ""),
 }
 
 DEFAULT_ARGS = {
@@ -225,6 +231,16 @@ with DAG(
         append_env=True,
     )
 
+    # The only task that writes anything outside this repository's own data
+    # directory: it puts the marts into the application's DynamoDB table, under
+    # this run's identifier, and deletes the rows of the run before it.
+    publish = BashOperator(
+        task_id="publish",
+        bash_command=stage("publish"),
+        env=TASK_ENV,
+        append_env=True,
+    )
+
     (
         backfill
         >> spark_silver
@@ -235,5 +251,6 @@ with DAG(
         >> promote
         >> drift
         >> quality_gate
+        >> publish
     )
     dbt_test >> build_card_index
