@@ -102,7 +102,8 @@ def test_anonymizing_a_fixture_again_only_maps_tokens(path: Path) -> None:
         lambda match: renames[match.group(0)],
         json.dumps(out, sort_keys=True),
     )
-    assert restored == json.dumps(blob, sort_keys=True)
+    # Compare objects, not strings: new tokens sort differently as statsByPlayer keys.
+    assert json.loads(restored) == blob
 
 
 def test_every_fixture_lands_in_bronze(tmp_path: Path) -> None:
