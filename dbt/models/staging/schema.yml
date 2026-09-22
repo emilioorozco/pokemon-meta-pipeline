@@ -87,7 +87,10 @@ models:
       - name: archetype_name_raw
         description: The label this row actually arrived with, kept so a rename stays visible.
       - name: archetype_source
-        description: Where the label came from, one of auto, user or manual.
+        description: >
+          Where the label came from, one of auto, user or manual. NULL on an
+          uploader seat that has no archetype, which is most of them: the deck
+          name is never read as one.
       - name: archetype_key
         description: >
           Surrogate key for the archetype: the shared row's identifier when the
@@ -122,6 +125,16 @@ models:
         description: The shared list is a full 60-card list rather than a partial one.
       - name: decklist_card_count
         description: Cards in the shared list. NULL when this seat shared no list, which is how every downstream model tells the two populations apart.
+      - name: deck_name
+        description: >
+          The uploader's own name for the deck they brought, NULL on the
+          opponent seat. It is a nickname typed into the game client, most
+          often the client's default, so it belongs to player-level views and
+          is never used as an archetype label.
+      - name: deck_id
+        description: >
+          Identifier of the uploader's deck record, NULL on the opponent seat.
+          A handle on the player's own list, not an archetype.
 
   - name: stg_turns
     description: >

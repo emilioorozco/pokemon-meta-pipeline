@@ -40,5 +40,10 @@ select
     cast(stats_turns_taken as integer) as turns_taken,
     decklist_source,
     decklist_complete,
-    cast(decklist_card_count as integer) as decklist_card_count
+    cast(decklist_card_count as integer) as decklist_card_count,
+    -- The uploader's own deck record, passed through for player-level views.
+    -- It is a nickname typed into the game client, not an archetype, and no
+    -- archetype column above reads it.
+    deck_name,
+    deck_id
 from {{ source('silver', 'game_sides') }}

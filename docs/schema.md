@@ -329,13 +329,25 @@ Two rows per game, seat 0 and seat 1. The grain gold's fact table is built on.
 | `went_first` | boolean | yes | `went_first_seat == seat` |
 | `stats_*` | int or list of string | yes | one column per `SideStats` field (section 5), matched to the seat by handle; null for a manual game |
 | `decklist_source`, `decklist_complete`, `decklist_card_count` | string, boolean, int | yes | the seat's decklist (section 6), null when it shared none |
+| `deck_name` | string | yes | `summary.deckName`, else `myDeckMeta.deckName`; uploader seat only, null on the other |
+| `deck_id` | string | yes | `summary.deckId`; uploader seat only, null on the other |
 
-The uploader's archetype comes from `myArchetype`, and when no shared archetype
-row is linked, from the deck record the upload was attached to (`deckName`, then
-`myDeckMeta.deckName`); the opponent's comes from `opponentArchetype`. A manual
-game with no archetype row for the opponent falls back to the name the uploader
-typed, which bronze has already replaced with a token, so the stranger rule in
-8.5 applies to it like any other token.
+The uploader's archetype comes from `myArchetype` and from nothing else; the
+opponent's comes from `opponentArchetype`. A manual game with no archetype row
+for the opponent falls back to the name the uploader typed, which bronze has
+already replaced with a token, so the stranger rule in 8.5 applies to it like
+any other token.
+
+`deck_name` and `deck_id` are the uploader's own deck record, kept for
+player-level views and never used as an archetype label. A deck name is a
+nickname typed into the game client: on the current corpus it is the client's
+default, `New Deck 54`, on 61 of 128 games and a joke or a shorthand on most of
+the rest, so reading one as an archetype would fill the matchup mart with labels
+that name no deck. The consequence is visible in the data rather than hidden:
+an uploaded game carries an uploader archetype only when the application derived
+one or the user set one, so most uploader seats have `archetype_name` and
+`archetype_source` null and the marts, which drop seats with no archetype, leave
+them out.
 
 ### 8.3 `turns`
 

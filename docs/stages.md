@@ -121,8 +121,10 @@ Bronze is one nested row per game. Silver is the grain change, four tables under
   `player_token`, `is_member`, the archetype columns (`archetype_id`,
   `archetype_name`, `archetype_name_raw`, `archetype_source`),
   `result_for_seat`, `went_first`, one `stats_*` column per `SideStats` counter,
-  and the seat's decklist facts (`decklist_source`, `decklist_complete`,
-  `decklist_card_count`). This is the grain the gold fact table is built on.
+  the seat's decklist facts (`decklist_source`, `decklist_complete`,
+  `decklist_card_count`) and, on the uploader seat only, that player's own deck
+  record (`deck_name`, `deck_id`). This is the grain the gold fact table is
+  built on.
 - `turns`: one row per turn segment. `turn_number`, `seat`, `n_entries` and nine
   counters by action kind (`n_draw`, `n_attach`, `n_attack`, `n_play_pokemon`,
   `n_play_trainer`, `n_evolve`, `n_retreat`, `n_knockout`, `n_prize_taken`),
@@ -143,6 +145,9 @@ most recently ingested game gives it, and every other game carrying that id
 inherits it. The label the row actually arrived with is kept as
 `archetype_name_raw`, so the rename is visible rather than erased. Ties inside a
 run break on play date and then game id, so the map is the same on every rerun.
+Deck names are the uploader's own nicknames and are never used as archetype
+labels; uploaded games get an uploader archetype only when the application
+derived or the user set one.
 
 **Strangers.** `member_tokens` is the set of player tokens that hold an uploader
 seat somewhere in bronze. Every other token belongs to somebody who was matched
@@ -350,6 +355,9 @@ querying the warehouse. Only the public-safe subset (section 3) is published.
 - v1 backfill: v1 blobs are quarantined, not landed, because they carry no play
   date. An upstream admin re-parse rewrites them as v2 and the next run picks
   them up with no code change here.
+- Uploader archetypes: the application derives the opponent archetype from the
+  log but not the uploader's own. Until it does, most uploader seats have no
+  archetype and are excluded from the marts (upstream ticket).
 - Archetype tombstones: the alias map is derived from bronze, which handles a
   rename but not a merge of two archetype ids into one. A `mergedInto` export
   from the application is still the only way to collapse those.

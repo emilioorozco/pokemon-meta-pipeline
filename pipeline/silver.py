@@ -11,8 +11,9 @@ The four tables, all partitioned by `play_date`:
   lifted out of the struct, with `winner_seat`, `went_first_seat`,
   `coin_toss_winner_seat` and `first_player` resolved from handles to seats.
 - `game_sides`: two rows per game, one per seat, carrying that seat's player
-  token, archetype, per-side counters and decklist facts. This is the grain
-  gold's fact table is built on.
+  token, archetype, per-side counters and decklist facts, plus the uploader's
+  own deck record on the uploader seat. This is the grain gold's fact table is
+  built on.
 - `turns`: one row per turn segment, with the action counters that need no
   `fields_json` parsing.
 - `cards_seen`: one row per (game, seat, card), left joined to the card catalog.
@@ -27,8 +28,16 @@ to the same arguments, and `spark.sql.shuffle.partitions` (8 here, right for a
 laptop and far too low for a real cluster) is raised. The transforms, the
 schemas and the reconciliation are the same.
 
-Three shapes of the real data drive decisions here, and each is worth stating
+Four shapes of the real data drive decisions here, and each is worth stating
 because the obvious implementation gets them wrong:
+
+- A deck name is not an archetype. `summary.deckName` is whatever the player
+  typed into the game client, and on the real corpus it is the client's default
+  ("New Deck 54") on about half the games and a joke or a shorthand on most of
+  the rest. So it is carried as `game_sides.deck_name`, a player-level fact on
+  the uploader seat, and never coalesced into `archetype_name_raw`. An uploaded
+  game gets an uploader archetype only when the application derived one or the
+  user set one, which today is rare, so most uploader seats have none.
 
 - `observedCards` never carries a `cardId`. Both the stock and the debug export
   derive it from the battle log, which prints card names, while `cardId` only
@@ -218,6 +227,8 @@ SILVER_SCHEMAS: Final[dict[str, T.StructType]] = {
             T.StructField("decklist_source", _STR, True),
             T.StructField("decklist_complete", _BOOL, True),
             T.StructField("decklist_card_count", _INT, True),
+            T.StructField("deck_name", _STR, True),
+            T.StructField("deck_id", _STR, True),
         ]
     ),
     "turns": T.StructType(
@@ -471,6 +482,8 @@ def build_game_sides(bronze: DataFrame, aliases: DataFrame, members: DataFrame) 
         decklist["source"].alias("decklist_source"),
         decklist["complete"].alias("decklist_complete"),
         decklist["card_count"].alias("decklist_card_count"),
+        _deck_name(summary, is_uploader).alias("deck_name"),
+        F.when(is_uploader, summary["deck_id"]).alias("deck_id"),
     )
 
     resolved = sides.join(F.broadcast(aliases), on="archetype_id", how="left").join(
@@ -768,15 +781,18 @@ def _archetype_name_raw(
 ) -> Column:
     """The label this row carries, before the alias map has its say.
 
-    An uploaded game names the uploader's side through the deck record it was
-    linked to, so the deck name stands in when no shared archetype row does. A
-    manual game with no archetype row for the opponent falls back to the name
-    the uploader typed, which bronze has already turned into a token, so the
-    stranger rule applies to it like any other token.
+    The uploader's side is labelled by `myArchetype` and by nothing else. The
+    deck record the upload was linked to is not a fallback: `deckName` is a
+    nickname typed into the game client, so most of the corpus carries the
+    client's default ("New Deck 54") or a private joke, and reading those as
+    archetypes floods every matchup with labels that name no deck. An uploaded
+    game therefore has an uploader archetype only when the application derived
+    one or the user set one, and otherwise none at all. A manual game with no
+    archetype row for the opponent falls back to the name the uploader typed,
+    which bronze has already turned into a token, so the stranger rule applies
+    to it like any other token.
     """
-    uploader = F.coalesce(
-        summary["my_archetype"], summary["deck_name"], summary["my_deck_meta"]["deck_name"]
-    )
+    uploader = summary["my_archetype"]
     opponent = F.coalesce(
         summary["opponent_archetype"],
         F.when(manual & summary["opponent_archetype_id"].isNull(), token),
@@ -785,17 +801,33 @@ def _archetype_name_raw(
 
 
 def _archetype_source(summary: Column, is_uploader: Column, manual: Column) -> Column:
-    """Where the label came from: `auto` derived, `user` pinned, `manual` typed in."""
+    """Where the label came from: `auto` derived, `user` pinned, `manual` typed in.
+
+    Null on an uploader seat that has no archetype, which is most of them: the
+    deck name is not a source because it is not a label (see
+    `_archetype_name_raw`).
+    """
     uploader = F.when(manual, F.lit("manual")).otherwise(
         F.when(
-            F.coalesce(
-                summary["my_archetype_id"], summary["my_archetype"], summary["deck_name"]
-            ).isNotNull(),
+            F.coalesce(summary["my_archetype_id"], summary["my_archetype"]).isNotNull(),
             F.lit("user"),
         )
     )
     opponent = F.coalesce(summary["opponent_archetype_source"], F.when(manual, F.lit("manual")))
     return F.when(is_uploader, uploader).otherwise(opponent)
+
+
+def _deck_name(summary: Column, is_uploader: Column) -> Column:
+    """The uploader's own name for the deck they brought, null on the other seat.
+
+    A player-level fact and never an archetype: these are nicknames typed into
+    the game client, mostly its default ("New Deck 54"). The opponent seat has
+    no deck record to read, so it stays null rather than borrowing the
+    uploader's.
+    """
+    return F.when(
+        is_uploader, F.coalesce(summary["deck_name"], summary["my_deck_meta"]["deck_name"])
+    )
 
 
 def _as_int(value: Any) -> int | None:

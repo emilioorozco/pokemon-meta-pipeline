@@ -440,6 +440,37 @@ def test_a_manual_game_without_an_archetype_row_falls_back_to_the_typed_name(
     assert sides[1]["player_token"] is None
 
 
+def test_a_deck_name_is_carried_as_a_deck_name_and_never_as_an_archetype(
+    spark: "SparkSession", tmp_path: Path
+) -> None:
+    """The client's default deck nickname labels the deck record, not the archetype."""
+    bronze_dir = tmp_path / "bronze"
+    write_bronze(
+        bronze_dir,
+        [
+            blob(
+                "1111000000000001",
+                "2026-08-09T12:00:00.000Z",
+                deck_name="New Deck 54",
+                deck_id="deck-54",
+            )
+        ],
+        EARLIER,
+    )
+
+    sides = sorted(sides_of(spark, bronze_dir).collect(), key=lambda row: row.seat)
+
+    assert sides[0]["is_uploader"] is True
+    assert sides[0]["archetype_name"] is None
+    assert sides[0]["archetype_name_raw"] is None
+    assert sides[0]["archetype_source"] is None
+    assert sides[0]["deck_name"] == "New Deck 54"
+    assert sides[0]["deck_id"] == "deck-54"
+    # The other seat has no deck record of its own to read.
+    assert sides[1]["deck_name"] is None
+    assert sides[1]["deck_id"] is None
+
+
 def test_the_games_row_resolves_handles_to_seats(spark: "SparkSession", tmp_path: Path) -> None:
     bronze_dir = tmp_path / "bronze"
     write_bronze(
