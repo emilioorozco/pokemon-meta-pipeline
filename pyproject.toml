@@ -56,7 +56,7 @@ known-first-party = ["pipeline"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["pipeline", "tests"]
+files = ["pipeline", "tests", "scripts"]
 plugins = ["pydantic.mypy"]
 disallow_untyped_defs = true
 warn_return_any = true
