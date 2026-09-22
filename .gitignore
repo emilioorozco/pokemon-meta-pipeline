@@ -23,3 +23,6 @@ airflow_home/
 
 # os
 .DS_Store
+
+# build metadata
+*.egg-info/

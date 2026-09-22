@@ -26,8 +26,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.dataset as ds
 
-from pipeline.config import LAKE_DIR, REPLAY_BATCHES, validate_source
 from pipeline import enrich
+from pipeline.config import LAKE_DIR, replay_batches, validate_source
 
 BRONZE_DIR = LAKE_DIR / "bronze"
 DECK_SIZE = 60
@@ -191,7 +191,7 @@ def write_bronze(name: str, rows: list[dict], schema: pa.Schema) -> None:
 
 def replay_files(sample_per_batch: int | None) -> list[tuple[str, Path]]:
     files = []
-    for batch, folder in REPLAY_BATCHES.items():
+    for batch, folder in replay_batches().items():
         batch_files = sorted(folder.glob("episode-*-replay.json"))
         if sample_per_batch:
             batch_files = batch_files[:sample_per_batch]

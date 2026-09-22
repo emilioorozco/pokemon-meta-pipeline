@@ -1,5 +1,7 @@
 """Unit tests for the ingest transforms, on a minimal synthetic replay that
 mirrors the real Kaggle episode structure (see docs in the source repo)."""
+from datetime import UTC
+
 import pytest
 
 from pipeline.ingest import DECK_SIZE, extract_game, to_rows
@@ -75,12 +77,12 @@ def test_to_rows_grain_and_winner():
 
 
 def test_to_rows_joins_metadata():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     g = extract_game(make_replay(), batch="corpus")
     meta = {
-        "played_at": datetime(2026, 7, 3, 6, 8, 10, tzinfo=timezone.utc),
-        "ended_at": datetime(2026, 7, 3, 6, 10, 16, tzinfo=timezone.utc),
+        "played_at": datetime(2026, 7, 3, 6, 8, 10, tzinfo=UTC),
+        "ended_at": datetime(2026, 7, 3, 6, 10, 16, tzinfo=UTC),
         "submission_id": [111, 222],
         "team_id": [16376649, 16393241],
         "rating_before": [1019.9, 1080.7],
