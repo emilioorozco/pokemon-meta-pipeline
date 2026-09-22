@@ -2,53 +2,63 @@
 
 ![CI](https://github.com/emilioorozco/pokemon-meta-pipeline/actions/workflows/ci.yml/badge.svg)
 
-A batch data-engineering pipeline that turns a corpus of Pokémon TCG AI-battle
-replays (from the Kaggle "Pokémon TCG AI Battle" competition, now finished) into a
-metagame analytics warehouse: archetype win rates, card inclusion rates, and a
-matchup win-rate matrix.
+The analytics data platform for Play Rough Analytics, a web application where
+players upload Pokemon Trading Card Game (TCG) Live battle logs. The application
+parses each log into a per-game JSON blob and stores it in Amazon Simple Storage
+Service (S3). This pipeline reads those blobs, anonymizes player handles, and
+builds a metagame warehouse: archetype win rates, matchup matrix, cards seen,
+plus a win-probability model and an agent that answers questions over the marts.
+Results are published back to the application.
 
-## Architecture
+## Stages
 
 ```
-source corpus (external, read-only)          this repo
-┌──────────────────────────────┐   ┌─────────────────────────────────────────┐
-│ replay JSONs (~1,240 games)  │   │ 1. ingest  → partitioned Parquet lake   │
-│ EN_Card_Data.csv             │──▶│ 2. PySpark → game/deck/event tables     │
-│ (path via SOURCE_DATA_DIR)   │   │ 3. dbt+DuckDB → star schema + marts     │
-└──────────────────────────────┘   │ 4. Airflow → orchestrates 1–3           │
-                                   └─────────────────────────────────────────┘
+S3 parsed/{userId}/{gameId}.json
+  -> bronze   validate, anonymize, flatten to Parquet (Python)
+  -> silver   typed tables, cards exploded, archetypes resolved (PySpark)
+  -> gold     star schema and marts (dbt on DuckDB)
+  -> model    win-probability model tracked in MLflow, served by FastAPI
+  -> agent    LangChain agent over the gold marts and card text
+  -> airflow  DAG (directed acyclic graph) running bronze, silver, gold, retrain
+  -> publish  marts written back to a prefix the application reads
 ```
 
-- **Lake**: partitioned Parquet under `data/lake/` (gitignored)
-- **Warehouse**: DuckDB at `data/warehouse/meta.duckdb` (gitignored)
-- **Cloud**: optional flag-gated S3 output paths — never a hard dependency
+Each stage is one command and one DAG task; inputs and outputs are files or
+tables, and every partition write is idempotent. Details and status per stage
+are in [docs/stages.md](docs/stages.md); what the source contains and why the
+schema looks the way it does is in [docs/discovery.md](docs/discovery.md).
 
 ## Source data
 
-The raw corpus is **not** in this repo. Point the pipeline at it:
-
-```bash
-cp .env.example .env   # then edit SOURCE_DATA_DIR
-```
-
-Expected layout under `SOURCE_DATA_DIR`:
+The source is the application's private S3 bucket. Nothing in it is committed
+here. Configure access through environment variables (see `.env.example`):
 
 ```
-data/replays/corpus/episode-*.json    # Kaggle episode replays, batch 1
-data/replays/corpus2/episode-*.json   # batch 2
-data/EN_Card_Data.csv                 # card reference data
+PRA_BUCKET        S3 bucket that holds parsed/{userId}/{gameId}.json
+PRA_PREFIX        key prefix to read, default parsed/
+AWS_REGION        bucket region, default us-west-2
+AWS_PROFILE       optional named AWS profile
+HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
+PIPELINE_DATA_DIR where the lake and warehouse are written, default ./data
 ```
 
 ## Layout
 
 ```
-pipeline/   Python package: ingest + Spark jobs + shared config
-dbt/        dbt project (DuckDB) — staging models, star schema, marts
-dags/       Airflow DAG definitions
-tests/      unit tests for transforms + data-quality checks
-data/       local lake + warehouse output (gitignored)
+pipeline/          Python package: bronze ingest, Spark jobs, shared config
+pipeline/legacy/   deprecated first source (Kaggle corpus), kept for reference
+dbt/               dbt project (DuckDB): staging, star schema, marts
+dags/              Airflow DAG definitions
+tests/             unit tests for transforms and data-quality checks
+docs/              concepts, discovery, schema, stage plan, decision records
+data/              local lake and warehouse output (gitignored)
 ```
 
 ## Status
 
-Scaffold + discovery done. Stage 1 (ingest) in progress.
+Stage 0 done: repo, CI, docs. Bronze ingest from S3 in progress. Everything
+else planned; see [docs/stages.md](docs/stages.md).
+
+The original stage 1, built against a finished Kaggle competition's replay
+corpus, is deprecated and lives under `pipeline/legacy/kaggle/`. It is not part
+of any stage; see [docs/adr/0001-deprecate-kaggle-source.md](docs/adr/0001-deprecate-kaggle-source.md).

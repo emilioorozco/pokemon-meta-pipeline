@@ -1,5 +1,7 @@
-"""SOURCE_DATA_DIR is required, but only when the source is actually used."""
+"""Output locations: repo-relative by default, PIPELINE_DATA_DIR overrides the root."""
 
+import importlib
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -7,23 +9,32 @@ import pytest
 from pipeline import config
 
 
-def test_unset_source_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SOURCE_DATA_DIR", raising=False)
-    with pytest.raises(config.SourceNotConfigured, match="SOURCE_DATA_DIR is not set"):
-        config.source_data_dir()
-    problems = config.validate_source()
-    assert len(problems) == 1
-    assert problems[0].startswith("SOURCE_DATA_DIR is not set")
+@pytest.fixture
+def reloaded_config(tmp_path: Path) -> Iterator[Path]:
+    """Re-import config with PIPELINE_DATA_DIR set, and restore the module afterwards."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("PIPELINE_DATA_DIR", str(tmp_path))
+        importlib.reload(config)
+        yield tmp_path
+    # env is restored once the context exits; re-import so later tests see the defaults
+    importlib.reload(config)
 
 
-def test_blank_source_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SOURCE_DATA_DIR", "   ")
-    with pytest.raises(config.SourceNotConfigured):
-        config.replay_batches()
+def test_defaults_are_repo_relative() -> None:
+    assert Path(__file__).resolve().parent.parent == config.REPO_ROOT
+    assert (config.REPO_ROOT / "pyproject.toml").is_file()
+    root = config.PIPELINE_DATA_DIR
+    assert (
+        root / "lake",
+        root / "lake" / "bronze",
+        root / "warehouse" / "meta.duckdb",
+    ) == (config.LAKE_DIR, config.BRONZE_DIR, config.WAREHOUSE_PATH)
 
 
-def test_missing_paths_are_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("SOURCE_DATA_DIR", str(tmp_path))
-    problems = config.validate_source()
-    assert len(problems) == 3
-    assert all(str(tmp_path) in p for p in problems)
+def test_env_override_moves_every_derived_path(reloaded_config: Path) -> None:
+    root = reloaded_config
+    assert (
+        root,
+        root / "lake" / "bronze",
+        root / "warehouse" / "meta.duckdb",
+    ) == (config.PIPELINE_DATA_DIR, config.BRONZE_DIR, config.WAREHOUSE_PATH)

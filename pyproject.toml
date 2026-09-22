@@ -1,7 +1,7 @@
 [project]
 name = "pokemon-meta-pipeline"
 version = "0.1.0"
-description = "Batch pipeline: Pokémon TCG replay corpus -> metagame analytics warehouse"
+description = "Analytics data platform for Play Rough Analytics: parsed Pokémon TCG games -> metagame warehouse, model, agent"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.0",
@@ -60,10 +60,15 @@ check_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The legacy package warns on import, which happens at collection time where a
+# per-module pytestmark cannot reach it. tests/legacy asserts the warning explicitly.
+filterwarnings = ["ignore:pipeline.legacy.kaggle is deprecated:DeprecationWarning"]
 
 [tool.coverage.run]
 source = ["pipeline"]
 branch = true
+# Deprecated code stays runnable and tested but must not prop up the gate.
+omit = ["pipeline/legacy/*"]
 
 [tool.coverage.report]
 fail_under = 70

@@ -9,9 +9,11 @@ from pathlib import Path
 import pyarrow.dataset as ds
 import pytest
 
-from pipeline import enrich, ingest
-from tests.test_enrich import land_chunk
-from tests.test_ingest import make_replay
+from pipeline.legacy.kaggle import enrich, ingest
+from tests.legacy.test_enrich import land_chunk
+from tests.legacy.test_ingest import make_replay
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def read_bronze(bronze_dir: Path, name: str) -> list[dict]:

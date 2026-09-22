@@ -198,4 +198,5 @@ parsing it (the original corpus pull had discarded timestamps it already had),
 and quality checks catch the pipeline author's own bugs at least as often as the
 source's (a `firstPlayer = -1` sentinel produced `went_first = false` for both
 seats until an "exactly one seat went first" check exposed it). The code for
-that stage remains under `pipeline/` until the bronze ingest above replaces it.
+that stage is deprecated and kept under `pipeline/legacy/kaggle/`; see
+[adr/0001-deprecate-kaggle-source.md](adr/0001-deprecate-kaggle-source.md).

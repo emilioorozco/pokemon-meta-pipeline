@@ -2,7 +2,7 @@
 
 Reads each episode replay, extracts the analytically useful core (~1% of the
 bytes: ids, teams, outcome, both decklists, per-turn engine events), joins the
-recovered episode metadata from pipeline.enrich, and writes three bronze tables
+recovered episode metadata from pipeline.legacy.kaggle.enrich, and writes three bronze tables
 partitioned by play_date:
 
   bronze/games        one row per game
@@ -13,8 +13,8 @@ Games failing basic quality checks (missing decks, no winner, not DONE) are
 quarantined: reported and skipped, never silently written.
 
 Usage:
-  python -m pipeline.ingest --sample 20   # first N games per batch
-  python -m pipeline.ingest               # full corpus
+  python -m pipeline.legacy.kaggle.ingest --sample 20   # first N games per batch
+  python -m pipeline.legacy.kaggle.ingest               # full corpus
 """
 
 from __future__ import annotations
@@ -27,10 +27,10 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.dataset as ds
 
-from pipeline import enrich
-from pipeline.config import LAKE_DIR, replay_batches, validate_source
+from pipeline.config import BRONZE_DIR
+from pipeline.legacy.kaggle import enrich
+from pipeline.legacy.kaggle.config import replay_batches, validate_source
 
-BRONZE_DIR = LAKE_DIR / "bronze"
 DECK_SIZE = 60
 
 

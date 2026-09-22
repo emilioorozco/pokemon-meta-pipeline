@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import enrich
+from pipeline.legacy.kaggle import enrich
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def make_episode(ep_id: int, *, agents: int = 2) -> dict:

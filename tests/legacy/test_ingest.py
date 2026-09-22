@@ -5,7 +5,9 @@ from datetime import UTC
 
 import pytest
 
-from pipeline.ingest import DECK_SIZE, extract_game, to_rows
+from pipeline.legacy.kaggle.ingest import DECK_SIZE, extract_game, to_rows
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def make_replay(
