@@ -107,6 +107,12 @@ notification on `parsed/` for `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`,
 the `parsed-games` queue and its dead-letter queue at three deliveries are a
 separate ticket. The consumer reads `PRA_QUEUE_URL`, which nothing else does.
 
+It logs and reports itself like every other stage (the Ops section below), with
+one difference that follows from never finishing: the unit it records is the
+receive batch, not the run. A batch that came back with messages writes one
+`run_metrics` row counting what that batch received, landed and quarantined,
+and an idle long poll writes nothing.
+
 What a message turns into:
 
 - A record is acted on when it names the configured bucket, its key is under
@@ -929,14 +935,20 @@ continues; a stage whose bookkeeping fails logs a warning and reports its real
 result, because a run that did its work must not be marked broken by its own
 telemetry.
 
-Stage names, one per command: `bronze_backfill`, `silver`, `gold`, `train`,
-`promote`, `drift`, `quality_gate` and `run_all`, plus `refresh_fixtures` and
-`fetch_catalog` for the two maintenance scripts. Under the Airflow DAG the gold
-step is three tasks and names itself `gold_run`, `gold_test` and
-`gold_features`, for the reason section 7 gives. `serve` is the exception: it is a long-running process with
-no run to close, so it configures logging at startup and logs one record per
-request (method, path, status, duration in milliseconds, loaded model version)
-from a middleware, and writes no `run_metrics` row.
+Stage names, one per command: `bronze_backfill`, `consume`, `silver`, `gold`,
+`train`, `promote`, `drift`, `quality_gate` and `run_all`, plus
+`refresh_fixtures` and `fetch_catalog` for the two maintenance scripts. Under
+the Airflow DAG the gold step is three tasks and names itself `gold_run`,
+`gold_test` and `gold_features`, for the reason section 7 gives.
+
+Two commands do not fit one row per run, and each bends it a different way.
+`consume` never finishes, so its unit is one receive batch (section 1b): a
+batch that came back with messages is timed and written, an idle long poll
+writes nothing, and the row a consumer that has been up for days holds is the
+one for its most recent batch. `serve` is a process rather than a run at all,
+so it configures logging at startup, logs one record per request (method, path,
+status, duration in milliseconds, loaded model version) from a middleware, and
+writes no `run_metrics` row.
 
 **Reading it back.** Two dbt models under `models/ops/`, both views over the
 Parquet so a stage that finished a second ago is in the next query:

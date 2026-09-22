@@ -244,8 +244,10 @@ beside it stays parseable. Every stage of one run shares a `run_id`, from
 row to `data/lake/run_metrics/` with its duration, its rows in, out and
 quarantined, and `ok` or `failed`. Two dbt models read that back: `run_metrics`
 and `mart_pipeline_health`, one row per stage with the last run's outcome and
-the quarantine rate over the last ten. `python -m pipeline.serve` logs a record
-per request instead, because a service has no run to close.
+the quarantine rate over the last ten. The two commands that never finish say it
+differently: `python -m pipeline.consume` writes that row per receive batch and
+nothing for an idle poll, and `python -m pipeline.serve` logs a record per
+request instead, because a service has no run to close.
 
 ```bash
 PRA_RUN_ID=nightly-1 uv run python -m pipeline.backfill --source-dir tests/fixtures
