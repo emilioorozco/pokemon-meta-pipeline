@@ -26,8 +26,18 @@ an inclusion rate. A fourth forbids inventing a number when a query comes back
 empty. The fifth is a boundary rather than a style note: nothing the agent can
 reach carries a name or a handle, so it cannot answer a question about a
 person even if it is asked nicely.
+
+The whole prompt can be replaced from outside, by pointing
+`PRA_AGENT_SYSTEM_PROMPT_FILE` at a file. That hook exists for one purpose: the
+golden evaluation in `pipeline.eval` claims the rules above are load bearing,
+and the only way to show it is to run the same questions against a prompt with
+the rules taken out and watch the score fall (docs/evals.md). A missing file
+raises rather than falling back, because an experiment that quietly ran the
+good prompt would report the wrong conclusion, and a service started with the
+variable set by accident should fail loudly on the first agent it builds.
 """
 
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -39,6 +49,11 @@ from pipeline.config import REPO_ROOT
 
 MARTS_SCHEMA: Final = REPO_ROOT / "dbt" / "models" / "marts" / "schema.yml"
 SCHEMA_FILES: Final[tuple[Path, ...]] = (MARTS_SCHEMA,)
+
+# A file whose contents replace the whole prompt, schema and rules included.
+# Read on every call rather than at import, because the evaluation sets it and
+# then builds an agent inside the same process.
+PROMPT_FILE_VAR: Final = "PRA_AGENT_SYSTEM_PROMPT_FILE"
 
 # The tables the SQL tool will run against, and therefore the only ones the
 # prompt describes: the four marts of the gold layer, and the three dimensions
@@ -188,8 +203,32 @@ how often a card is played. Use it to say what a card does; use `query_marts`
 for every number."""
 
 
-@lru_cache(maxsize=2)
+def override_path() -> Path | None:
+    """The replacement prompt file named by the environment, if one is."""
+    configured = os.environ.get(PROMPT_FILE_VAR, "").strip()
+    return Path(configured) if configured else None
+
+
 def system_prompt(with_card_tool: bool = False) -> str:
+    """The prompt the agent is built with: the generated one, or a replacement.
+
+    Uncached, and cheap anyway: with no override set this is one environment
+    lookup in front of the cached builder below, which is the thing that reads
+    the schema file. With one set it is a file read per agent built, which is
+    once per process on the serving path and once per question in an
+    evaluation that is deliberately measuring the prompt.
+    """
+    override = override_path()
+    if override is None:
+        return generated_prompt(with_card_tool)
+    # Deliberately not merged with anything: an override is the whole prompt,
+    # including the card-tool note, so that "the rules are missing" means the
+    # rules really are missing.
+    return override.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=2)
+def generated_prompt(with_card_tool: bool = False) -> str:
     """The whole prompt: what the agent is, the rules, its tools and the schema.
 
     Cached because it reads a file and a process builds more than one agent: the

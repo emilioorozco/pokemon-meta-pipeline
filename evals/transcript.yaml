@@ -1,0 +1,174 @@
+# A recorded run of the golden set, so the evaluation is runnable with no key.
+#
+# This is not an answer key and the scorer never reads it. It is a transcript:
+# for each question, the tool calls a competent run makes and the text it ends
+# on. `python -m pipeline.eval --fake evals/transcript.yaml` replays these
+# turns through the real agent loop, which means the real `create_agent`
+# graph, the real `query_marts` tool, the real SQL gate and a real DuckDB query
+# against the fixture warehouse. The only thing replayed rather than decided is
+# which query to write, which is the part that costs a provider key and is not
+# deterministic.
+#
+# So a green run of the fake proves the harness, the tools and the marts, and
+# says nothing about the model. The run that says something about the model is
+# the one with `ANTHROPIC_API_KEY` set and no `--fake`, which is what the
+# weekly workflow does.
+#
+# The replay model follows exactly one instruction from the system prompt: it
+# will not call a tool the prompt has not told it about, which for
+# `query_marts` means every table in the recorded SQL has to be described in
+# the prompt. That is why a prompt with the schema cut out of it drops the
+# score here too, and it is the only respect in which this fake behaves like a
+# model (docs/evals.md).
+#
+# When a question is added to `evals/golden.yaml`, add its turns here under the
+# same id, keeping the SQL to one statement over the allowlisted tables.
+
+version: 1
+
+runs:
+  matchup_win_rate:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins,
+            losses, win_rate, min_games_met from mart_matchups where
+            archetype_name = 'Dragapult control' and opponent_archetype_name =
+            'Alakazam / Toucannon'
+    answer: >-
+      Dragapult control has won the only game it has played against Alakazam /
+      Toucannon: 1 win and 0 losses over 1 game, so the rate is 100% of a
+      sample of one. The mart flags the row as thin (min_games_met is false),
+      which is the honest reading of it.
+
+  matchup_thin_sample:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins,
+            losses, win_rate, min_games_met from mart_matchups where
+            archetype_name = 'Dragapult / Dusknoir' and
+            opponent_archetype_name = 'Applin / Celebi'
+    answer: >-
+      No. Dragapult / Dusknoir against Applin / Celebi is 1 game in this
+      corpus, won 1 and lost 0, and the mart marks it as below the project's
+      minimum sample (min_games_met is false). One game is an anecdote, not a
+      win rate.
+
+  weekly_record:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, week_start, games, wins, losses, win_rate,
+            min_games_met from mart_archetype_weekly where archetype_name =
+            'Dragapult control' and week_start = date '2026-09-14'
+    answer: >-
+      In the week starting 2026-09-14, Dragapult control played 1 game and won
+      it: 1 win, 0 losses, over 1 game. The week is flagged as thin
+      (min_games_met is false), so there is nothing to read into the rate.
+
+  busiest_archetype:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, sum(games) as games from
+            mart_archetype_weekly group by archetype_name order by games desc,
+            archetype_name
+    answer: >-
+      Two archetypes tie for the most: Dragapult / Dusknoir and Dragapult
+      control, with 2 games each. Every other archetype in the warehouse has 1
+      game, over a corpus of 10 games in total, so the ordering is a count and
+      not a ranking.
+
+  week_coverage:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select count(*) as archetypes, sum(games) as games from
+            mart_archetype_weekly where week_start = date '2026-09-21'
+    answer: >-
+      The week starting 2026-09-21 holds 4 archetypes and 4 games, one game
+      each. At 4 games nothing in that week supports a rate.
+
+  card_text_lookup:
+    turns:
+      - tool: lookup_cards
+        args:
+          query: Phantom Dive attack on Dragapult ex
+          k: 3
+    answer: >-
+      Phantom Dive is Dragapult ex's attack. For a Fire and a Psychic Energy it
+      does 200 damage and puts 6 damage counters on your opponent's Benched
+      Pokemon in any way you like. That is printed card text; it says nothing
+      about how often the card is played.
+
+  card_text_and_marts:
+    turns:
+      - tool: lookup_cards
+        args:
+          query: Area Zero Underdepths
+          k: 2
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, card_name, games, games_with_card,
+            seen_rate from mart_cards_seen where archetype_name = 'Dragapult
+            control' and card_name = 'Area Zero Underdepths'
+    answer: >-
+      Area Zero Underdepths is a Stadium card: it stays in play until another
+      Stadium replaces it, and each player with a Tera Pokemon in play may have
+      up to 8 Pokemon on their side of the field. In the marts it was observed
+      in 1 of the 2 Dragapult control games, a seen_rate of 0.5, which is an
+      observation over 2 games and a lower bound on how often the deck actually
+      ran it.
+
+  seen_rate_is_not_inclusion:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, card_name, games, games_with_card,
+            seen_rate, decklist_games, inclusion_rate from mart_cards_seen
+            where archetype_name = 'Dragapult / Dusknoir' and card_name =
+            'Crispin'
+    answer: >-
+      I cannot tell you that from these tables. Crispin was observed in both of
+      the 2 games Dragapult / Dusknoir has here, a seen_rate of 1.0, and that is an
+      observation rate: a stock export reveals only what was played, so it is a
+      lower bound. No Dragapult / Dusknoir game here shared a full decklist
+      (decklist_games is 0, inclusion_rate is null), so the share of decks
+      carrying the card is not something this warehouse knows.
+
+  player_identity_refusal:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select count(*) as members, sum(games) as games from
+            mart_player_summary
+    answer: >-
+      There is no name or handle here to give you. The pipeline replaces every
+      handle with a one-way keyed token before anything is written, and the
+      roster table is not readable by this tool at all. What I can say is that
+      the member summary covers 2 members over 10 games; the keys in it are
+      irreversible tokens rather than people, so I will not present one as an
+      answer.
+
+  matchup_with_no_games:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins,
+            win_rate from mart_matchups where archetype_name = 'Cynthia''s
+            Garchomp' and opponent_archetype_name = 'Dragapult / Dusknoir'
+    answer: >-
+      The warehouse has no games between Cynthia's Garchomp and Dragapult /
+      Dusknoir, so there is no win rate to report. Both archetypes are in the
+      corpus and the pairing is not; I will not estimate a number the tables do
+      not hold.

@@ -886,12 +886,43 @@ existed. A JSON log line per tool call carries the tool, the row count and the
 input length, and one per answer carries the model, the tool-call count and the
 usage. Nothing logs the question, the answer or the SQL.
 
-### Still to come
+### The golden question set
 
-The golden question set: a list of questions with the numbers their answers
-have to contain, scored in continuous integration so a prompt change that makes
-the agent stop citing sample sizes is a failed build rather than something
-somebody notices later.
+`evals/golden.yaml` and `python -m pipeline.eval`, written up in full in
+[evals.md](evals.md). Ten questions the fixture marts really answer, each with
+the tools its answer has to call, the facts it has to contain and the claims it
+must not make; the command runs them through the real agent, prints a table and
+exits non-zero when anything failed.
+
+It grades facts rather than wording. A `require` entry is a number, an
+archetype, a card or a sample size, matched as a substring or as a regular
+expression, because two correct answers to the same question will not share a
+sentence and a set that insists on one gets ignored. `expect_tools` is a set
+and an extra call is reported rather than failed, for the same reason: calling
+the tool is a fact, the order is not. The `forbid` half is where the rules
+above are actually enforced. `[0-9a-f]{16}`, the shape of the player token, is
+forbidden on every question; two questions ask directly for a deck inclusion
+rate the stock-only corpus cannot give, and forbid the claim rather than the
+phrase, since the right answer is to say the number is an observation.
+
+The prompt can be replaced wholesale by pointing
+`PRA_AGENT_SYSTEM_PROMPT_FILE` at a file, which exists so the claim that the
+five rules matter can be run as an experiment:
+`--prompt-override evals/broken_prompt.txt` swaps in the same job description
+with the schema and the rules cut out, and the score falls. Each run is logged
+to MLflow in the `agent-evals` experiment with the sha256 of the prompt that
+was actually rendered, so a column renamed in `schema.yml` is visible as a
+different prompt even though no Python changed.
+
+The cadence is a trade. `.github/workflows/agent-eval.yml` scores the set
+against the real provider weekly, on a push to main that touches the agent or
+the questions, and on demand; it is not on every pull request, because a run is
+tens of model calls and a paid check that flickers is a check people route
+around. What runs on every pull request is the same set with the recorded turns
+in `evals/transcript.yaml` replayed through the real graph, the real SQL gate
+and real DuckDB against the fixture marts: ten out of ten, no key, no bill, and
+it fails the moment a mart is renamed or the gate starts refusing a query the
+set depends on.
 
 ## 7. Orchestration (in progress, Airflow and a plain runner)
 

@@ -247,17 +247,35 @@ def validate_sql(sql: str, allowed_tables: Sequence[str] = ALLOWED_TABLES) -> st
                 f"name instead: {', '.join(allowed_tables)}."
             )
 
-    ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(text)}
     allowed = {name.lower() for name in allowed_tables}
-    for match in _TABLE_REF.finditer(text):
-        table = match.group(1).lower().split(".")[-1]
-        if table in ctes or table in allowed:
+    for table in referenced_tables(sql):
+        if table in allowed:
             continue
         return (
             f"refused: `{table}` is not a table this tool can read. The tables are: "
             f"{', '.join(allowed_tables)}."
         )
     return None
+
+
+def referenced_tables(sql: str) -> list[str]:
+    """The tables a statement reads, in the order it names them, CTEs left out.
+
+    Split out of `validate_sql` because two callers need the same answer. The
+    validator asks whether every name is on the allowlist; `pipeline.eval`'s
+    replay model asks whether the system prompt described them, since a model
+    cannot query a table it was never told exists. Names the statement
+    introduces itself with `WITH` are not tables and are dropped here rather
+    than at each call site.
+    """
+    text = strip_literals(sql)
+    ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(text)}
+    names: list[str] = []
+    for match in _TABLE_REF.finditer(text):
+        table = match.group(1).lower().split(".")[-1]
+        if table not in ctes and table not in names:
+            names.append(table)
+    return names
 
 
 def with_limit(sql: str, *, default: int = DEFAULT_LIMIT, cap: int = MAX_LIMIT) -> str:

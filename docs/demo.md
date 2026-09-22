@@ -272,6 +272,20 @@ detail.
   the agent reads the same marts the dashboard would, it cites the sample size
   because the corpus is small enough that a bare percentage would be
   misleading, and the tables it cannot read are a list a reviewer can check.
+- **Agent evaluation**: runs today, after the gold step, and with no provider
+  key at all. `uv run python -m pipeline.card_index build --source
+  tests/card_text.jsonl --out /tmp/demo/card_index --embedder hashing`, then
+  `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.eval --fake
+  evals/transcript.yaml --warehouse /tmp/demo/warehouse/meta.duckdb
+  --card-index /tmp/demo/card_index` scores the ten golden questions and prints
+  a pass or fail per question with the tools each answer called. Add
+  `--prompt-override evals/broken_prompt.txt` to run the same set against a
+  prompt with the schema and the rules taken out and watch the score fall to
+  zero. Drop `--fake` and wrap it in `op run` to score the real model instead,
+  which is what the weekly workflow does. What it proves: the agent's answers
+  are asserted against facts and forbidden claims rather than eyeballed, the
+  numbers are the fixture warehouse's own, and the prompt is measurably load
+  bearing. docs/evals.md is the write-up.
 - **Airflow DAG**: runs today, and out of the timed sequence because the image
   takes a few minutes to build the first time. `docker compose build airflow`,
   `docker compose up -d airflow mlflow`, then

@@ -192,6 +192,16 @@ the SQL validation and the DuckDB query underneath are all real, and the only
 thing the fake replaces is the decision about which SQL to write. Nothing in
 the suite needs a provider key.
 
+The agent is scored rather than trusted. `evals/golden.yaml` is ten questions
+the fixture marts answer, each with the tools its answer has to call, the facts
+it has to contain and the claims it must not make, including the sixteen-hex
+shape of a player token and the deck-inclusion reading of `seen_rate`;
+`python -m pipeline.eval` runs them, prints a table and logs the run to MLflow
+under `agent-evals`. It is weekly rather than on every pull request because it
+costs provider calls, and the same set replays through the real tools with no
+key in `pytest -m dbt`. `docs/evals.md` has the questions, the broken-prompt
+experiment and the cadence.
+
 The serving stage is instrumented, which is the one place a run-per-stage row
 does not fit. Every request is an OpenTelemetry span with a `predict.inference`
 child around the model call, exported to a collector when one is configured and
@@ -366,7 +376,9 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
       validated allowlist in front of a read-only DuckDB connection
 - [x] Card-text retriever: printed card text from a public database, embedded
       locally and searched by cosine, as the agent's second tool
-- [ ] A golden question set for the agent, scored in continuous integration
+- [x] A golden question set for the agent: ten questions with the tools, facts
+      and forbidden claims their answers are scored against, run weekly against
+      the provider and on every pull request against recorded turns
 - [x] Structured JSON logging with a shared run identifier, and a `run_metrics`
       row per stage per run surfaced by two dbt models
 - [x] Airflow directed acyclic graph (DAG) calling the stage commands in order,
