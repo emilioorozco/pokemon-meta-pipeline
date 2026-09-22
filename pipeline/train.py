@@ -13,6 +13,12 @@ Arrow into pandas. What it writes: nothing to the warehouse, everything to the
 tracking server (a local `data/mlruns` directory unless `MLFLOW_TRACKING_URI`
 points somewhere, such as the `mlflow` service in compose.yaml).
 
+Every run also registers its model as a new version of `win-probability`,
+tagged with the holdout numbers and with whether it beat the baseline. That is
+all it does: a version is a candidate, and nothing serves it. Moving the
+`production` alias is `python -m pipeline.promote`, a separate command with a
+rule it prints, so a scheduled retrain cannot quietly ship a worse model.
+
 Three choices worth knowing before reading the code.
 
 The split is by date and it is made in dbt, not here. `features_turn.split` is
@@ -59,36 +65,22 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import log_loss, roc_auc_score
 
-from pipeline.config import PIPELINE_DATA_DIR, REPO_ROOT, WAREHOUSE_PATH
+from pipeline.config import REGISTERED_MODEL_NAME, REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
+from pipeline.ml_features import (
+    CATEGORICAL,
+    LABEL,
+    MODEL_FEATURES,
+    ArchetypeCodes,
+    design_matrix,
+)
 
 FEATURE_TABLE: Final = "features_turn"
 DEFAULT_EXPERIMENT: Final = "win-probability"
-LABEL: Final = "won"
 
-# The columns the model is given, in this order. `features.json` is logged from
-# this tuple, so the artifact and the design matrix cannot disagree.
-MODEL_FEATURES: Final[tuple[str, ...]] = (
-    "turn_number",
-    "went_first",
-    "archetype_key",
-    "opponent_archetype_key",
-    "prizes_taken_self",
-    "prizes_taken_opp",
-    "prize_diff",
-    "knockouts_self",
-    "knockouts_opp",
-    "cards_drawn_self",
-    "energy_attached_self",
-    "pokemon_played_self",
-    "trainers_played_self",
-    "evolutions_self",
-    "attacks_self",
-    "turns_played_self",
-)
-CATEGORICAL: Final[tuple[str, ...]] = ("archetype_key", "opponent_archetype_key")
 # Read but not modelled: identity, the date the split is made on, and the split.
 CARRIED: Final[tuple[str, ...]] = ("game_id", "seat", "play_date", "split")
 # Columns of `features_turn` deliberately withheld from the model, logged as a
@@ -99,7 +91,6 @@ EXCLUDED_FEATURES: Final[tuple[str, ...]] = (
     "prizes_remaining_self",
     "prizes_remaining_opp",
 )
-UNSEEN_CATEGORY: Final = -1
 
 # Small data, so the defaults are the conservative end of every knob: shallow
 # trees, a low learning rate with enough rounds to still fit, and a leaf that
@@ -171,12 +162,6 @@ class Baseline:
         ]
         clamped = np.clip(np.asarray(rates, dtype=float), BASELINE_CLIP, 1 - BASELINE_CLIP)
         return np.asarray(clamped, dtype=float)
-
-
-def default_tracking_uri() -> str:
-    """`MLFLOW_TRACKING_URI` when it is set, else a local directory under the data dir."""
-    configured = os.environ.get("MLFLOW_TRACKING_URI")
-    return configured if configured else f"file:{PIPELINE_DATA_DIR / 'mlruns'}"
 
 
 def git_commit() -> str | None:
@@ -252,30 +237,12 @@ def split_by_date(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return train, holdout
 
 
-def build_codes(train: pd.DataFrame) -> dict[str, dict[str, int]]:
+def build_codes(train: pd.DataFrame) -> ArchetypeCodes:
     """An integer code per archetype, fitted on the training split alone."""
     return {
         column: {value: index for index, value in enumerate(sorted(set(train[column])))}
         for column in CATEGORICAL
     }
-
-
-def design_matrix(frame: pd.DataFrame, codes: dict[str, dict[str, int]]) -> pd.DataFrame:
-    """The feature columns as numbers, in `MODEL_FEATURES` order.
-
-    Everything is numeric by the time it leaves here: booleans become 0 and 1,
-    archetypes become their training-split code, and an archetype the training
-    split never held becomes -1, which LightGBM treats as a missing category.
-    """
-    matrix = pd.DataFrame(index=frame.index)
-    for column in MODEL_FEATURES:
-        if column in codes:
-            mapping = codes[column]
-            matrix[column] = [mapping.get(value, UNSEEN_CATEGORY) for value in frame[column]]
-            matrix[column] = matrix[column].astype("int32")
-        else:
-            matrix[column] = frame[column].astype("int32")
-    return matrix
 
 
 def evaluate(labels: np.ndarray, predictions: np.ndarray) -> Metrics:
@@ -396,7 +363,7 @@ def log_model_run(
     params: dict[str, Any],
     data_params: dict[str, Any],
     commit: str | None,
-) -> tuple[Metrics, pd.DataFrame]:
+) -> tuple[Metrics, pd.DataFrame, str]:
     """Train LightGBM inside the active MLflow run and log everything that describes it."""
     codes = build_codes(train)
     x_train = design_matrix(train, codes)
@@ -461,7 +428,46 @@ def log_model_run(
         input_example=x_holdout.head(5),
     )
     mlflow.set_tag("model_uri", logged.model_uri)
-    return holdout_metrics, importance
+    return holdout_metrics, importance, str(logged.model_uri)
+
+
+def register_version(
+    *,
+    model_uri: str,
+    holdout: Metrics,
+    data_params: dict[str, Any],
+    beats: bool,
+) -> str:
+    """Register this run's model as a new version of `win-probability`, tagged with its score.
+
+    Every training run produces a version; nothing here decides whether it is
+    any good. That is `python -m pipeline.promote`, which reads exactly these
+    tags, and the separation is the point: training is allowed to run on a
+    schedule and produce a worse model, and the thing serving loads only moves
+    when a second command says it may.
+
+    The tags duplicate numbers that are already metrics on the source run. That
+    is deliberate. A version is what the promotion step and the service read,
+    and making either of them walk back to a run to find out how good the model
+    is turns a comparison into a join. The run id stays on the version, so the
+    full record is one hop away when the tags are not enough.
+
+    Only the LightGBM run is registered. The baseline is a group-by kept as a
+    yardstick; registering it would put something in the registry that no
+    serving path can load.
+    """
+    version = mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+    client = MlflowClient()
+    tags = {
+        "holdout_logloss": f"{holdout.logloss:.6f}",
+        "holdout_auc": f"{holdout.auc:.6f}",
+        "beats_baseline": "1" if beats else "0",
+        "train_to": str(data_params["train_to"]),
+        "holdout_to": str(data_params["holdout_to"]),
+    }
+    for key, value in tags.items():
+        client.set_model_version_tag(REGISTERED_MODEL_NAME, version.version, key, value)
+    return str(version.version)
 
 
 def log_baseline_run(
@@ -521,6 +527,7 @@ def report(
     beats: bool,
     tracking_uri: str,
     experiment: str,
+    version: str,
 ) -> None:
     """Print the numbers a reader needs to judge the run, including the bad news."""
     lines = [
@@ -549,6 +556,11 @@ def report(
     lines.append("top features by gain:")
     for rank, row in enumerate(importance.head(5).itertuples(index=False), start=1):
         lines.append(f"  {rank}. {row.feature:<24} gain {row.gain:,.1f}  splits {row.splits}")
+    lines.append("")
+    lines.append(
+        f"registered {REGISTERED_MODEL_NAME} version {version}. "
+        "It serves nothing until `python -m pipeline.promote` moves the production alias."
+    )
     print("\n".join(lines))
 
 
@@ -581,7 +593,7 @@ def run_training(
     # side by side is the whole point of logging the baseline at all.
     with mlflow.start_run(run_name="lightgbm") as run:
         model_run = run.info.run_id
-        model_holdout, importance = log_model_run(
+        model_holdout, importance, model_uri = log_model_run(
             train=train, holdout=holdout, params=params, data_params=data_params, commit=commit
         )
     with mlflow.start_run(run_name="baseline") as run:
@@ -600,6 +612,12 @@ def run_training(
         mlflow.log_metric("baseline_auc", baseline_holdout.auc)
         mlflow.set_tag("compared_with", baseline_run)
 
+    # After both runs, because `beats_baseline` is one of the version's tags and
+    # it is not known until the baseline has been scored on the same holdout.
+    version = register_version(
+        model_uri=model_uri, holdout=model_holdout, data_params=data_params, beats=beats
+    )
+
     report(
         data_params=data_params,
         model=model_holdout,
@@ -608,6 +626,7 @@ def run_training(
         beats=beats,
         tracking_uri=tracking_uri,
         experiment=experiment,
+        version=version,
     )
     return 0
 
