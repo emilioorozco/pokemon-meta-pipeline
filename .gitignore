@@ -32,3 +32,7 @@ airflow_home/
 
 # local logs
 *.log
+
+# local-only op env files (real values, never committed)
+.env.prod.op
+.env.*.local
