@@ -46,7 +46,10 @@ def handles_in(blob: dict[str, Any]) -> set[str]:
     """The handles a blob names in its structured fields.
 
     Works for v1 blobs (no summary): players come from statsByPlayer keys and
-    segment players. Empty strings are not handles.
+    segment players. Empty strings are not handles. Archetype names are never
+    handles: a manual game puts the opponent's archetype in `players[1]`,
+    `opponentName` and `winner`, and rewriting it there while the same string
+    stays in `opponentArchetype` would trip the leak check on every manual game.
     """
     found: set[str] = set()
     summary = blob.get("summary") or {}
@@ -61,6 +64,10 @@ def handles_in(blob: dict[str, Any]) -> set[str]:
         if isinstance(player, str):
             found.add(player)
     found.discard("")
+    for field in ("myArchetype", "opponentArchetype"):
+        value = summary.get(field)
+        if isinstance(value, str):
+            found.discard(value)
     return found
 
 

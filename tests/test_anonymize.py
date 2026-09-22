@@ -264,3 +264,18 @@ def test_manual_game_without_segments() -> None:
     assert out["summary"]["players"] == [token_for("Ash K", KEY), token_for("Ash", KEY)]
     assert out["summary"]["winner"] == token_for("Ash", KEY)
     assert assert_no_handles(out, handles_in(blob)) == []
+
+
+def test_manual_game_archetype_in_players_is_not_a_handle() -> None:
+    # A manual game names the opponent by archetype in players[1], opponentName and
+    # winner; that string must survive untouched everywhere, including opponentArchetype.
+    blob = make_manual_blob(me="Ash K", opp="Dragapult Dusknoir")
+    blob["summary"]["opponentArchetype"] = "Dragapult Dusknoir"
+    blob["summary"]["myArchetype"] = "Gardevoir ex"
+    assert handles_in(blob) == {"Ash K"}
+    out = anonymize(blob, KEY)
+    assert out["summary"]["players"] == [token_for("Ash K", KEY), "Dragapult Dusknoir"]
+    assert out["summary"]["opponentName"] == "Dragapult Dusknoir"
+    assert out["summary"]["winner"] == "Dragapult Dusknoir"
+    assert out["summary"]["opponentArchetype"] == "Dragapult Dusknoir"
+    assert assert_no_handles(out, {"Ash K"}) == []
