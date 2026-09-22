@@ -8,7 +8,7 @@ stage reaches back into a previous stage's internals.
 S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
         |
         v
-[1 bronze]  validate, anonymize, flatten -> game / game_seat / game_event Parquet
+[1 bronze]  validate, anonymize, land one nested row per game as Parquet
         |                                    (+ quarantine)
         v
 [2 silver]  PySpark: typed, cards exploded, catalog + archetype aliases joined, features
@@ -36,32 +36,53 @@ Status legend: done, in progress, planned.
 
 Input: every object under `parsed/` in the environment's bucket (name from
 the `RawBucketName` stack output), plus the anonymization key from the
-environment. Reads are by key listing plus per-object version id; a run can be
-limited to a date range or a list of keys.
+environment. Reads are by paginated key listing plus the version id the read
+itself reports; a run can be limited to the first N objects.
+
+Command: `python -m pipeline.backfill` (`--limit N`, `--dry-run`).
 
 Steps per object:
 
-1. Parse JSON. Failure: quarantine `json_parse_error`.
-2. Detect version: `schemaVersion` present and equal to 2, or absent (v1).
-   Anything else: quarantine `unsupported_schema_version`.
-3. Validate against the exported JSON Schema for that version. Failure:
-   quarantine `schema_invalid` with the failing path.
-4. Resolve `play_date`: `summary.playedAt` for v2; S3 last-modified for v1,
-   flagged in `play_date_source`.
-5. Collect handles: `summary.players` (v2) or `statsByPlayer` keys (v1), plus
-   `Segment.player`. Fewer than two: quarantine `players_lt_2`.
-6. Anonymize: replace each handle with its HMAC token in every string value of
+1. Parse JSON. Failure: quarantine `invalid_json`.
+2. Validate against the contract models, which dispatch on `schemaVersion`: a
+   version other than 2 fails as a v2 blob and names that key. Failure:
+   quarantine `contract_violation` with the failing paths.
+3. A blob with no `schemaVersion` is v1, the pre-contract shape. It has no
+   `summary` and therefore no play date, and the only substitute is the
+   object's S3 last-modified time, which is the upload time and not the play
+   time. Rather than guess a partition, quarantine `v1_blob` with a hint to
+   re-parse it upstream to v2. Such a blob is not anonymized and not written.
+4. Every valid v2 game lands, blob untouched, including the ones a modified
+   client exported with both complete decklists. An opponent's list is in the
+   blob only because the opponent shared it in-game
+   ([data-handling.md](data-handling.md)), so `hasFullDecklists` is
+   informational: the run counts those games and routes nothing on the flag.
+5. `play_date` is `summary.playedAt`, so `play_date_source` is always
+   `summary` while only v2 blobs are written.
+6. Collect handles: `summary.players`, `winner`, `opponentName`,
+   `statsByPlayer` keys and `Segment.player`.
+7. Anonymize: replace each handle with its HMAC token in every string value of
    the blob (titles, `text`, `actor`, `fields`, `statsByPlayer` keys,
-   `unparsedLines`, `extras`, summary fields). Then scan the rewritten blob for
-   any remaining raw handle; a hit quarantines `handle_leak_check_failed`
-   rather than writing.
-7. Flatten into `game`, `game_seat`, `game_event` rows as defined in
-   [schema.md](schema.md).
+   `unparsedLines`, `extras`, summary fields), then re-validate the rewrite
+   against the contract, which proves it changed strings and not shape.
+   Failure: quarantine `contract_violation` with an `after anonymization:`
+   prefix.
+8. Land one row per game with the blob kept nested (summary struct, segments
+   list, decklists) as defined in [schema.md](schema.md); seat and event grains
+   are produced in silver.
 
-Output: the three bronze tables, partitioned by `play_date`, each touched
-partition deleted and rewritten in full (idempotent); quarantine records as
-JSON lines. Quality checks that fail the task: exactly two seat rows per game,
-at most one `is_winner` per game, no raw handle in any string column.
+The write happens once, at the end of the run, because a partition write
+replaces the whole day. Before it, the batch is scanned for any handle that
+survived the rewrite; a hit is re-checked per game, and the games that leak are
+quarantined `handle_leak_check_failed` while the rest are written. One
+unrewritable handle costs its own game, not the run.
+
+Output: bronze partitioned by `play_date`, each touched partition deleted and
+rewritten in full (idempotent); quarantined objects kept as received with a
+handle-free sidecar. The run prints read, landed, quarantined by reason, how
+many landed games carry full decklists, and the rows per partition. Quality
+checks that fail the task: exactly two seat rows per game, at most one
+`is_winner` per game, no raw handle in any string column.
 
 Why this shape: the blob is already parsed, so bronze is a contract check and
 a flatten, not a parser. Keeping bronze close to the source names means a
@@ -178,9 +199,9 @@ querying the warehouse. Only the public-safe subset (section 3) is published.
   pipeline cannot see them until upstream either writes a summary-only v2 blob
   for them or the project decides they stay out of scope. Until then, marts
   state "uploaded games only".
-- v1 backfill: an upstream admin re-parse rewrites every blob as v2 and
-  removes the `s3_last_modified` fallback from the data. Bronze is designed to
-  run before and after that without code changes.
+- v1 backfill: v1 blobs are quarantined, not landed, because they carry no play
+  date. An upstream admin re-parse rewrites them as v2 and the next run picks
+  them up with no code change here.
 - Archetype and alias export: silver needs the application's archetype rows
   (with `mergedInto` tombstones). The export format (a JSON object under the
   bucket, or an API call) is not decided.

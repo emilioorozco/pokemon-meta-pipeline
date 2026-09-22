@@ -1,0 +1,1636 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "choice": "tails"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "6a87abd6cbf438eb chose tails for the opening coin flip."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "33838f43a80b2a73 won the coin toss."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "first": false
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "33838f43a80b2a73 decided to go second."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "6a87abd6cbf438eb drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Ultra Ball, Ultra Ball, Basic Psychic Energy, Dragapult ex, Buddy-Buddy Poffin, Unfair Stamp, Budew"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {},
+          "kind": "mulligan",
+          "line": 10,
+          "subs": [
+            {
+              "details": [
+                "Lillie's Determination, Rare Candy, Team Rocket's Petrel, Greninja ex, Special Red Card, Buddy-Buddy Poffin, Neo Upper Energy"
+              ],
+              "fields": {
+                "mulligan": 1
+              },
+              "kind": "revealed",
+              "line": 11,
+              "text": "Cards revealed from Mulligan 1"
+            }
+          ],
+          "text": "6a87abd6cbf438eb took a mulligan."
+        },
+        {
+          "fields": {},
+          "kind": "other",
+          "line": 13,
+          "subs": [
+            {
+              "details": [
+                "Buddy-Buddy Poffin, Neo Upper Energy, Lillie's Determination, Air Balloon, Basic Water Energy, Surfing Beach, Rare Candy"
+              ],
+              "fields": {
+                "mulligan": 2
+              },
+              "kind": "revealed",
+              "line": 14,
+              "text": "Cards revealed from Mulligan 2"
+            }
+          ],
+          "text": "6a87abd6cbf438eb took 2 mulligans."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 2
+          },
+          "kind": "mulligan_draw",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Pok\u00e9 Pad, Ultra Ball"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 2 more cards because 6a87abd6cbf438eb took at least 1 mulligan."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Budew",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 19,
+          "subs": [],
+          "text": "6a87abd6cbf438eb played Budew to the Active Spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Froakie",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 20,
+          "subs": [],
+          "text": "6a87abd6cbf438eb played Froakie to the Bench."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 21,
+          "subs": [],
+          "text": "6a87abd6cbf438eb played Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Budew",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 22,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Budew to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 25,
+          "subs": [],
+          "text": "6a87abd6cbf438eb drew a card."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 26,
+          "subs": [],
+          "text": "6a87abd6cbf438eb ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "6a87abd6cbf438eb",
+      "title": "6a87abd6cbf438eb's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Munkidori",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 29,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Munkidori."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dreepy, Dreepy"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 31,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 33,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 34,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Duskull",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 35,
+              "text": "33838f43a80b2a73 drew Duskull."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 36,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 37,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Duskull to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 38,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Munkidori, Dragapult ex"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 39,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Meowth ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 41,
+              "text": "33838f43a80b2a73 drew Meowth ex."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 42,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 43,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Dreepy on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Meowth ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 44,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Meowth ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Last-Ditch Catch",
+            "pokemon": "Meowth ex"
+          },
+          "kind": "use",
+          "line": 45,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Lillie's Determination",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 46,
+              "text": "33838f43a80b2a73 drew Lillie's Determination."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 47,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73's Meowth ex used Last-Ditch Catch."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 48,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Ultra Ball, Ultra Ball, Unfair Stamp"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "shuffle_into",
+              "line": 49,
+              "text": "33838f43a80b2a73 shuffled 3 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Buddy-Buddy Poffin, Dragapult ex, Night Stretcher, Team Rocket's Watchtower, Buddy-Buddy Poffin, Boss's Orders, Rare Candy, Lillie's Determination"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 51,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 53,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dreepy and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 54,
+              "text": "33838f43a80b2a73 drew Dreepy and played it to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 55,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Budew",
+            "targetOwner": "6a87abd6cbf438eb",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 56,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 6a87abd6cbf438eb\u2019s Budew for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 59,
+          "subs": [],
+          "text": "6a87abd6cbf438eb drew a card."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Budew",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 60,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Budew used Itchy Pollen on 33838f43a80b2a73\u2019s Budew for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "6a87abd6cbf438eb",
+      "title": "6a87abd6cbf438eb's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Crispin",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 63,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Crispin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 64,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Buddy-Buddy Poffin, Dragapult ex, Night Stretcher, Team Rocket's Watchtower, Boss's Orders, Rare Candy, Crispin"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "shuffle_into",
+              "line": 65,
+              "text": "33838f43a80b2a73 shuffled 7 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Boss's Orders, Duskull, Buddy-Buddy Poffin, Dragapult ex, Rare Candy, Basic Psychic Energy, Dreepy, Jamming Tower"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 67,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 69,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Dreepy on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Budew",
+            "targetOwner": "6a87abd6cbf438eb",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 70,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 6a87abd6cbf438eb\u2019s Budew for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 73,
+          "subs": [],
+          "text": "6a87abd6cbf438eb drew a card."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Budew",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 74,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Budew used Itchy Pollen on 33838f43a80b2a73\u2019s Budew for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "6a87abd6cbf438eb",
+      "title": "6a87abd6cbf438eb's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 77,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Basic Fire Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 78,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Dreepy on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Jamming Tower"
+          },
+          "kind": "play_stadium",
+          "line": 79,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Jamming Tower to the Stadium spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Budew",
+            "targetOwner": "6a87abd6cbf438eb",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 80,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 6a87abd6cbf438eb\u2019s Budew for 10 damage."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 81,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Budew was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 82,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 83,
+          "subs": [],
+          "text": "Lillie's Determination was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Froakie"
+          },
+          "kind": "promote",
+          "line": 84,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Froakie is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 87,
+          "subs": [],
+          "text": "6a87abd6cbf438eb drew a card."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 88,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 89,
+              "text": "6a87abd6cbf438eb drew 3 cards."
+            }
+          ],
+          "text": "6a87abd6cbf438eb's Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Surfing Beach"
+          },
+          "kind": "play_stadium",
+          "line": 90,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Jamming Tower"
+              },
+              "kind": "discard_named",
+              "line": 91,
+              "text": "33838f43a80b2a73 discarded Jamming Tower."
+            }
+          ],
+          "text": "6a87abd6cbf438eb played Surfing Beach to the Stadium spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Froakie"
+          },
+          "kind": "attach",
+          "line": 92,
+          "subs": [],
+          "text": "6a87abd6cbf438eb attached Basic Water Energy to Froakie in the Active Spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "from": "Froakie",
+            "to": "Frogadier"
+          },
+          "kind": "evolve",
+          "line": 93,
+          "subs": [],
+          "text": "6a87abd6cbf438eb evolved Froakie to Frogadier in the Active Spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Xerosic's Machinations"
+          },
+          "kind": "play_card",
+          "line": 94,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Duskull, Boss's Orders, Buddy-Buddy Poffin, Dreepy"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "discard",
+              "line": 95,
+              "text": "33838f43a80b2a73 discarded 4 cards."
+            }
+          ],
+          "text": "6a87abd6cbf438eb played Xerosic's Machinations."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "move": "Summoning Jutsu",
+            "pokemon": "Frogadier"
+          },
+          "kind": "use",
+          "line": 97,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [
+                "Meowth ex, Froakie, Dreepy"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 98,
+              "text": "6a87abd6cbf438eb drew 3 cards."
+            },
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 100,
+              "text": "6a87abd6cbf438eb shuffled their deck."
+            }
+          ],
+          "text": "6a87abd6cbf438eb's Frogadier used Summoning Jutsu."
+        }
+      ],
+      "kind": "turn",
+      "player": "6a87abd6cbf438eb",
+      "title": "6a87abd6cbf438eb's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dusknoir",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 103,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Dusknoir."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 104,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "from": "Dreepy",
+                "to": "Dragapult ex"
+              },
+              "kind": "evolve",
+              "line": 105,
+              "text": "33838f43a80b2a73 evolved Dreepy to Dragapult ex on the Bench."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Rare Candy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 106,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusknoir",
+                "n": 1
+              },
+              "kind": "shuffle_into",
+              "line": 107,
+              "text": "33838f43a80b2a73 shuffled Dusknoir into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Night Stretcher, Night Stretcher, Ultra Ball, Drakloak, Crispin, Boss's Orders"
+              ],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 108,
+              "text": "33838f43a80b2a73 drew 6 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 110,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 111,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusclops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 112,
+              "text": "33838f43a80b2a73 drew Dusclops."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Duskull",
+            "to": "Dusclops"
+          },
+          "kind": "evolve",
+          "line": 113,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Duskull to Dusclops on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "retreat",
+          "line": 114,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Budew to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dragapult ex"
+          },
+          "kind": "promote",
+          "line": 115,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dragapult ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Frogadier",
+            "targetOwner": "6a87abd6cbf438eb",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 116,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Fezandipiti ex"
+              },
+              "kind": "put_counters",
+              "line": 117,
+              "text": "33838f43a80b2a73 put 6 damage counters on 33838f43a80b2a73's Fezandipiti ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 6a87abd6cbf438eb\u2019s Frogadier for 200 damage."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Frogadier"
+          },
+          "kind": "knockout",
+          "line": 118,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [
+                "Basic Water Energy, Froakie"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "6a87abd6cbf438eb",
+                "pokemon": "Frogadier"
+              },
+              "kind": "discard_from",
+              "line": 119,
+              "text": "2 cards were discarded from 6a87abd6cbf438eb's Frogadier."
+            }
+          ],
+          "text": "6a87abd6cbf438eb's Frogadier was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 121,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Crispin",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 122,
+          "subs": [],
+          "text": "Crispin was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "promote",
+          "line": 123,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Fezandipiti ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 126,
+          "subs": [],
+          "text": "6a87abd6cbf438eb drew a card."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Froakie",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 127,
+          "subs": [],
+          "text": "6a87abd6cbf438eb played Froakie to the Bench."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 128,
+          "subs": [],
+          "text": "6a87abd6cbf438eb played Dreepy to the Bench."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 129,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "card": "Dreepy and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 130,
+              "text": "6a87abd6cbf438eb drew Dreepy and played it to the Bench."
+            },
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 131,
+              "text": "6a87abd6cbf438eb shuffled their deck."
+            }
+          ],
+          "text": "6a87abd6cbf438eb played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 132,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 133,
+              "text": "6a87abd6cbf438eb drew 3 cards."
+            }
+          ],
+          "text": "6a87abd6cbf438eb's Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Fezandipiti ex"
+          },
+          "kind": "attach",
+          "line": 134,
+          "subs": [],
+          "text": "6a87abd6cbf438eb attached Air Balloon to Fezandipiti ex in the Active Spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Froakie"
+          },
+          "kind": "attach",
+          "line": 135,
+          "subs": [],
+          "text": "6a87abd6cbf438eb attached Basic Water Energy to Froakie on the Bench."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 136,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "n": 8
+              },
+              "kind": "shuffle_into",
+              "line": 137,
+              "text": "6a87abd6cbf438eb shuffled 8 cards into their deck."
+            },
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 138,
+              "text": "6a87abd6cbf438eb drew 8 cards."
+            }
+          ],
+          "text": "6a87abd6cbf438eb played Lillie's Determination."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 139,
+          "subs": [
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 140,
+              "text": "6a87abd6cbf438eb drew Drakloak."
+            },
+            {
+              "actor": "6a87abd6cbf438eb",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 141,
+              "text": "6a87abd6cbf438eb shuffled their deck."
+            }
+          ],
+          "text": "6a87abd6cbf438eb played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "retreat",
+          "line": 142,
+          "subs": [],
+          "text": "6a87abd6cbf438eb retreated Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {
+            "pokemon": "Dreepy"
+          },
+          "kind": "promote",
+          "line": 143,
+          "subs": [],
+          "text": "6a87abd6cbf438eb's Dreepy is now in the Active Spot."
+        },
+        {
+          "actor": "6a87abd6cbf438eb",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 144,
+          "subs": [],
+          "text": "6a87abd6cbf438eb ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "6a87abd6cbf438eb",
+      "title": "6a87abd6cbf438eb's Turn",
+      "turnNumber": 9
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Drakloak",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 147,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Drakloak."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 148,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "who": "opponent",
+            "winner": "33838f43a80b2a73"
+          },
+          "kind": "concede",
+          "line": 149,
+          "subs": [],
+          "text": "Opponent conceded. 33838f43a80b2a73 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 10
+    }
+  ],
+  "statsByPlayer": {
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive"
+      ],
+      "cardsDrawn": 45,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Pok\u00e9 Pad",
+        "Ultra Ball",
+        "Lillie's Determination",
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Jamming Tower",
+        "Rare Candy",
+        "Lillie's Determination"
+      ],
+      "damageDealt": 230,
+      "energyAttached": 3,
+      "evolutions": [
+        "Dragapult ex",
+        "Drakloak",
+        "Dusclops",
+        "Drakloak"
+      ],
+      "knockouts": 2,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Budew",
+        "Duskull",
+        "Meowth ex"
+      ],
+      "prizesTaken": 2,
+      "turnsTaken": 5
+    },
+    "6a87abd6cbf438eb": {
+      "attacks": [
+        "Itchy Pollen"
+      ],
+      "cardsDrawn": 31,
+      "cardsPlayed": [
+        "Surfing Beach",
+        "Xerosic's Machinations",
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Pok\u00e9 Pad"
+      ],
+      "damageDealt": 20,
+      "energyAttached": 2,
+      "evolutions": [
+        "Frogadier"
+      ],
+      "knockouts": 0,
+      "mulligans": 1,
+      "pokemonPlayed": [
+        "Budew",
+        "Froakie",
+        "Fezandipiti ex",
+        "Froakie",
+        "Dreepy"
+      ],
+      "prizesTaken": 0,
+      "turnsTaken": 5
+    }
+  },
+  "summary": {
+    "endReason": "opponent_concede",
+    "exportVariant": "stock",
+    "gameId": "126bd2d62d578086",
+    "hasFullDecklists": false,
+    "myArchetype": "Dragapult / Dusknoir",
+    "myArchetypeId": "01M2ENP13N223BCZGNQNCQZNYY",
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 2,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Crispin"
+        },
+        {
+          "count": 1,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 2,
+          "name": "Drakloak"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Dusclops"
+        },
+        {
+          "count": 1,
+          "name": "Dusknoir"
+        },
+        {
+          "count": 1,
+          "name": "Duskull"
+        },
+        {
+          "count": 2,
+          "name": "Jamming Tower"
+        },
+        {
+          "count": 3,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Meowth ex"
+        },
+        {
+          "count": 1,
+          "name": "Munkidori"
+        },
+        {
+          "count": 1,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Rare Candy"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 1,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 2,
+          "name": "Basic Water Energy"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Drakloak"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Fezandipiti ex"
+        },
+        {
+          "count": 2,
+          "name": "Froakie"
+        },
+        {
+          "count": 1,
+          "name": "Frogadier"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Surfing Beach"
+        },
+        {
+          "count": 1,
+          "name": "Xerosic's Machinations"
+        }
+      ]
+    },
+    "opponentArchetype": "Fezandipiti ex / Froakie",
+    "opponentArchetypeId": "01M2YC4Q2FMYZC7FG8PKBF7N0K",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "6a87abd6cbf438eb",
+    "parserVersion": 1,
+    "playedAt": "2026-09-20T03:00:48.758Z",
+    "players": [
+      "6a87abd6cbf438eb",
+      "33838f43a80b2a73"
+    ],
+    "result": "win",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive"
+        ],
+        "cardsDrawn": 45,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Pok\u00e9 Pad",
+          "Ultra Ball",
+          "Lillie's Determination",
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Jamming Tower",
+          "Rare Candy",
+          "Lillie's Determination"
+        ],
+        "damageDealt": 230,
+        "energyAttached": 3,
+        "evolutions": [
+          "Dragapult ex",
+          "Drakloak",
+          "Dusclops",
+          "Drakloak"
+        ],
+        "knockouts": 2,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Budew",
+          "Duskull",
+          "Meowth ex"
+        ],
+        "prizesTaken": 2,
+        "turnsTaken": 5
+      },
+      "opponent": {
+        "attacks": [
+          "Itchy Pollen"
+        ],
+        "cardsDrawn": 31,
+        "cardsPlayed": [
+          "Surfing Beach",
+          "Xerosic's Machinations",
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Pok\u00e9 Pad"
+        ],
+        "damageDealt": 20,
+        "energyAttached": 2,
+        "evolutions": [
+          "Frogadier"
+        ],
+        "knockouts": 0,
+        "mulligans": 1,
+        "pokemonPlayed": [
+          "Budew",
+          "Froakie",
+          "Fezandipiti ex",
+          "Froakie",
+          "Dreepy"
+        ],
+        "prizesTaken": 0,
+        "turnsTaken": 5
+      }
+    },
+    "turnCount": 10,
+    "unparsedCount": 1,
+    "uploadSource": "web",
+    "uploadedAt": "2026-09-20T03:00:48.758Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": false,
+    "winner": "33838f43a80b2a73",
+    "wonCoinToss": true
+  },
+  "unparsedLines": [
+    "6a87abd6cbf438eb took 2 mulligans."
+  ]
+}

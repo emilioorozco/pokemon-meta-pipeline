@@ -1,0 +1,4514 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "choice": "tails"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "07e63eae1915541b chose tails for the opening coin flip."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "07e63eae1915541b won the coin toss."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "first": true
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "07e63eae1915541b decided to go first."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "07e63eae1915541b drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Ultra Ball, Basic Grass Energy, Team Rocket's Spidops, Team Rocket's Ariana, Team Rocket's Wobbuffet, Ultra Ball, Team Rocket's Spidops"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "07e63eae1915541b played Dunsparce to the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pikipek",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "07e63eae1915541b played Pikipek to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Wobbuffet",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 12,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Wobbuffet to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 15,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Abra, Abra"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "07e63eae1915541b drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 19,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 20,
+          "subs": [],
+          "text": "07e63eae1915541b ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Archer",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 23,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Archer."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 24,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Team Rocket's Spidops"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 25,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Articuno",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 27,
+              "text": "33838f43a80b2a73 drew Team Rocket's Articuno."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 28,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Articuno",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 29,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Articuno to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Ariana"
+          },
+          "kind": "play_card",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Lillie's Determination, Energy Switch, Team Rocket's Transceiver, Ultra Ball, Team Rocket's Tarountula"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "draw",
+              "line": 31,
+              "text": "33838f43a80b2a73 drew 5 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Ariana."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 33,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver"
+          },
+          "kind": "play_card",
+          "line": 34,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Proton",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 35,
+              "text": "33838f43a80b2a73 drew Team Rocket's Proton."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 36,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 37,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 40,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 41,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Abra to Kadabra on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 42,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 43,
+              "text": "07e63eae1915541b drew 2 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 44,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Abra",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 45,
+          "subs": [],
+          "text": "07e63eae1915541b played Abra to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Genesect",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 46,
+          "subs": [],
+          "text": "07e63eae1915541b played Genesect to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 47,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Kadabra, Legacy Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 48,
+              "text": "07e63eae1915541b drew 2 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 50,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Hilda."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 51,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Abra to Kadabra on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 52,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 53,
+              "text": "07e63eae1915541b drew 2 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 54,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 55,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 56,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Abra"
+          },
+          "kind": "promote",
+          "line": 58,
+          "subs": [],
+          "text": "07e63eae1915541b's Abra is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Kadabra"
+          },
+          "kind": "attach",
+          "line": 59,
+          "subs": [],
+          "text": "07e63eae1915541b attached Telepathic Psychic Energy to Kadabra on the Bench."
+        },
+        {
+          "fields": {
+            "card": "Telepathic Psychic Energy"
+          },
+          "kind": "activated",
+          "line": 60,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 61,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "Telepathic Psychic Energy was activated."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Genesect"
+          },
+          "kind": "attach",
+          "line": 62,
+          "subs": [],
+          "text": "07e63eae1915541b attached Air Balloon to Genesect on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 63,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Kadabra",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 64,
+              "text": "07e63eae1915541b drew Kadabra."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 65,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 66,
+          "subs": [],
+          "text": "07e63eae1915541b ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 69,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton"
+          },
+          "kind": "play_card",
+          "line": 70,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Articuno, Team Rocket's Mewtwo ex, Team Rocket's Tarountula"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 71,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 73,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Articuno",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 74,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Articuno to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 75,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Mewtwo ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 76,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Mewtwo ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 77,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 80,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Abra",
+            "to": "Kadabra"
+          },
+          "kind": "evolve",
+          "line": 81,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Abra to Kadabra in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Kadabra"
+          },
+          "kind": "use",
+          "line": 82,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 83,
+              "text": "07e63eae1915541b drew 2 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Kadabra used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 84,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Toucannon",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 85,
+              "text": "07e63eae1915541b drew Toucannon."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 86,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 87,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "from": "Pikipek",
+                "to": "Toucannon"
+              },
+              "kind": "evolve",
+              "line": 88,
+              "text": "07e63eae1915541b evolved Pikipek to Toucannon on the Bench."
+            }
+          ],
+          "text": "07e63eae1915541b played Rare Candy."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Legacy Energy",
+            "energy": true,
+            "target": "Toucannon"
+          },
+          "kind": "attach",
+          "line": 89,
+          "subs": [],
+          "text": "07e63eae1915541b attached Legacy Energy to Toucannon on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 90,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Dunsparce and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 91,
+              "text": "07e63eae1915541b drew Dunsparce and played it to the Bench."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 92,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 93,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Team Rocket's Articuno",
+                "previous": "Team Rocket's Wobbuffet"
+              },
+              "kind": "switch",
+              "line": 94,
+              "text": "33838f43a80b2a73's Team Rocket's Articuno was switched with 33838f43a80b2a73's Team Rocket's Wobbuffet to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "07e63eae1915541b played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Articuno"
+          },
+          "kind": "promote",
+          "line": 95,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Articuno is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Aerial Draw",
+            "pokemon": "Toucannon"
+          },
+          "kind": "use",
+          "line": 96,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 97,
+              "text": "07e63eae1915541b drew a card."
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon used Aerial Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 98,
+          "subs": [],
+          "text": "07e63eae1915541b ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 101,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 102,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Team Rocket's Energy to Team Rocket's Mewtwo ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 103,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Ultra Ball, Team Rocket's Spidops, Team Rocket's Archer, Energy Switch, Ultra Ball, Team Rocket's Proton"
+              ],
+              "fields": {
+                "n": 6
+              },
+              "kind": "shuffle_into",
+              "line": 104,
+              "text": "33838f43a80b2a73 shuffled 6 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Proton, Team Rocket's Mimikyu, Team Rocket's Proton, Team Rocket's Archer, Team Rocket's Transceiver, Special Red Card, Lillie's Determination, Bug Catching Set"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 106,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Bug Catching Set"
+          },
+          "kind": "play_card",
+          "line": 108,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Spidops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 109,
+              "text": "33838f43a80b2a73 drew Team Rocket's Spidops."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 110,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Bug Catching Set."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 111,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 114,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Enhanced Hammer"
+          },
+          "kind": "play_card",
+          "line": 115,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Energy",
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Team Rocket's Mewtwo ex"
+              },
+              "kind": "discard_from",
+              "line": 116,
+              "text": "Team Rocket's Energy was discarded from 33838f43a80b2a73's Team Rocket's Mewtwo ex."
+            }
+          ],
+          "text": "07e63eae1915541b played Enhanced Hammer."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dawn"
+          },
+          "kind": "play_card",
+          "line": 117,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dunsparce, Dudunsparce, Alakazam"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 118,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 120,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dawn."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 121,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 122,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Kadabra to Alakazam on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 123,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 124,
+              "text": "07e63eae1915541b drew 3 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Kadabra"
+          },
+          "kind": "attach",
+          "line": 125,
+          "subs": [],
+          "text": "07e63eae1915541b attached Telepathic Psychic Energy to Kadabra in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 126,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Kadabra to Alakazam on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 127,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 128,
+              "text": "07e63eae1915541b drew 3 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 129,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 130,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 131,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 133,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Pikipek and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 134,
+              "text": "07e63eae1915541b drew Pikipek and played it to the Bench."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 135,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Kadabra",
+            "to": "Alakazam"
+          },
+          "kind": "evolve",
+          "line": 136,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Kadabra to Alakazam in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Psychic Draw",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 137,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 138,
+              "text": "07e63eae1915541b drew 3 cards."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam used Psychic Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "retreat",
+          "line": 139,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Telepathic Psychic Energy",
+                "owner": "07e63eae1915541b",
+                "pokemon": "Alakazam"
+              },
+              "kind": "discard_from",
+              "line": 140,
+              "text": "Telepathic Psychic Energy was discarded from 07e63eae1915541b's Alakazam."
+            }
+          ],
+          "text": "07e63eae1915541b retreated Alakazam to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Toucannon"
+          },
+          "kind": "promote",
+          "line": 141,
+          "subs": [],
+          "text": "07e63eae1915541b's Toucannon is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "damage": 260,
+            "move": "Feather Rondo",
+            "pokemon": "Toucannon",
+            "target": "Team Rocket's Articuno",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 142,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "10 Benched Pok\u00e9mon: 200 damage",
+                "Total damage: 260 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 143,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon used Feather Rondo on 33838f43a80b2a73\u2019s Team Rocket's Articuno for 260 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Articuno"
+          },
+          "kind": "knockout",
+          "line": 148,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Articuno was Knocked Out!"
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 149,
+          "subs": [],
+          "text": "07e63eae1915541b took a Prize card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "A card",
+            "owner": "07e63eae1915541b"
+          },
+          "kind": "to_hand",
+          "line": 150,
+          "subs": [],
+          "text": "A card was added to 07e63eae1915541b's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Tarountula"
+          },
+          "kind": "promote",
+          "line": 151,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Tarountula is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Giovanni",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 154,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Giovanni."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Mimikyu",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 155,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Mimikyu to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Team Rocket's Tarountula",
+            "to": "Team Rocket's Spidops"
+          },
+          "kind": "evolve",
+          "line": 156,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Team Rocket's Tarountula to Team Rocket's Spidops in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Charging Up",
+            "pokemon": "Team Rocket's Spidops"
+          },
+          "kind": "use",
+          "line": 157,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Grass Energy",
+                "energy": true,
+                "target": "Team Rocket's Spidops"
+              },
+              "kind": "attach",
+              "line": 158,
+              "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Spidops in the Active Spot."
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops used Charging Up."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 159,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Proton, Team Rocket's Proton, Team Rocket's Archer, Team Rocket's Transceiver, Special Red Card, Team Rocket's Giovanni"
+              ],
+              "fields": {
+                "n": 6
+              },
+              "kind": "shuffle_into",
+              "line": 160,
+              "text": "33838f43a80b2a73 shuffled 6 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Team Rocket's Proton, Team Rocket's Archer, Lucky Helmet, Team Rocket's Ariana, Basic Grass Energy, Team Rocket's Proton, Team Rocket's Factory"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 162,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Factory"
+          },
+          "kind": "play_stadium",
+          "line": 164,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Factory to the Stadium spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Spidops"
+          },
+          "kind": "attach",
+          "line": 165,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Spidops in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lucky Helmet",
+            "energy": false,
+            "target": "Team Rocket's Spidops"
+          },
+          "kind": "attach",
+          "line": 166,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Lucky Helmet to Team Rocket's Spidops in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 180,
+            "move": "Rocket Rush",
+            "pokemon": "Team Rocket's Spidops",
+            "target": "Toucannon",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 167,
+          "subs": [
+            {
+              "details": [
+                "6 Pok\u00e9mon: 180 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 168,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops used Rocket Rush on 07e63eae1915541b\u2019s Toucannon for 180 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Toucannon"
+          },
+          "kind": "knockout",
+          "line": 171,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Legacy Energy, Pikipek"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Toucannon"
+              },
+              "kind": "discard_from",
+              "line": 172,
+              "text": "2 cards were discarded from 07e63eae1915541b's Toucannon."
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon was Knocked Out!"
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Pikipek"
+          },
+          "kind": "promote",
+          "line": 174,
+          "subs": [],
+          "text": "07e63eae1915541b's Pikipek is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 177,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "play_stadium",
+          "line": 178,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Factory"
+              },
+              "kind": "discard_named",
+              "line": 179,
+              "text": "33838f43a80b2a73 discarded Team Rocket's Factory."
+            }
+          ],
+          "text": "07e63eae1915541b played Battle Cage to the Stadium spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 180,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Toucannon, Basic Psychic Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 181,
+              "text": "07e63eae1915541b drew 2 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 183,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Hilda."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 184,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "from": "Pikipek",
+                "to": "Toucannon"
+              },
+              "kind": "evolve",
+              "line": 185,
+              "text": "07e63eae1915541b evolved Pikipek to Toucannon in the Active Spot."
+            }
+          ],
+          "text": "07e63eae1915541b played Rare Candy."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Toucannon"
+          },
+          "kind": "attach",
+          "line": 186,
+          "subs": [],
+          "text": "07e63eae1915541b attached Basic Psychic Energy to Toucannon in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 187,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Pikipek"
+              },
+              "kind": "move_to_hand",
+              "line": 188,
+              "text": "07e63eae1915541b moved 07e63eae1915541b's Pikipek to their hand."
+            }
+          ],
+          "text": "07e63eae1915541b played Night Stretcher."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pikipek",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 189,
+          "subs": [],
+          "text": "07e63eae1915541b played Pikipek to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "damage": 260,
+            "move": "Feather Rondo",
+            "pokemon": "Toucannon",
+            "target": "Team Rocket's Spidops",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 190,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "10 Benched Pok\u00e9mon: 200 damage",
+                "Total damage: 260 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 191,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon used Feather Rondo on 33838f43a80b2a73\u2019s Team Rocket's Spidops for 260 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Spidops"
+          },
+          "kind": "knockout",
+          "line": 196,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Basic Grass Energy, Team Rocket's Tarountula, Lucky Helmet"
+              ],
+              "fields": {
+                "n": 4,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Team Rocket's Spidops"
+              },
+              "kind": "discard_from",
+              "line": 197,
+              "text": "4 cards were discarded from 33838f43a80b2a73's Team Rocket's Spidops."
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops was Knocked Out!"
+        },
+        {
+          "fields": {
+            "card": "Lucky Helmet"
+          },
+          "kind": "activated",
+          "line": 199,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Team Rocket's Ariana"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 200,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            }
+          ],
+          "text": "Lucky Helmet was activated."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 202,
+          "subs": [],
+          "text": "07e63eae1915541b took a Prize card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "A card",
+            "owner": "07e63eae1915541b"
+          },
+          "kind": "to_hand",
+          "line": 203,
+          "subs": [],
+          "text": "A card was added to 07e63eae1915541b's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "promote",
+          "line": 204,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mimikyu is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 9
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 207,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver"
+          },
+          "kind": "play_card",
+          "line": 208,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Archer",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 209,
+              "text": "33838f43a80b2a73 drew Team Rocket's Archer."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 210,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Tarountula"
+          },
+          "kind": "attach",
+          "line": 211,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Tarountula on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Archer"
+          },
+          "kind": "play_card",
+          "line": 212,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Team Rocket's Proton, Team Rocket's Archer, Team Rocket's Ariana, Team Rocket's Proton, Team Rocket's Ariana"
+              ],
+              "fields": {
+                "n": 6
+              },
+              "kind": "shuffle_into",
+              "line": 213,
+              "text": "33838f43a80b2a73 shuffled 6 cards into their deck."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 12
+              },
+              "kind": "shuffle_into",
+              "line": 215,
+              "text": "07e63eae1915541b shuffled 12 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Tarountula, Lillie's Clefairy ex, Team Rocket's Energy, Team Rocket's Factory, Ultra Ball"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "draw",
+              "line": 216,
+              "text": "33838f43a80b2a73 drew 5 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 218,
+              "text": "07e63eae1915541b drew 3 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Archer."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 219,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 220,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Lillie's Clefairy ex, Team Rocket's Factory"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 221,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Spidops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 223,
+              "text": "33838f43a80b2a73 drew Team Rocket's Spidops."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 224,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Team Rocket's Tarountula",
+            "to": "Team Rocket's Spidops"
+          },
+          "kind": "evolve",
+          "line": 225,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Team Rocket's Tarountula to Team Rocket's Spidops on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Charging Up",
+            "pokemon": "Team Rocket's Spidops"
+          },
+          "kind": "use",
+          "line": 226,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Grass Energy",
+                "energy": true,
+                "target": "Team Rocket's Spidops"
+              },
+              "kind": "attach",
+              "line": 227,
+              "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Spidops on the Bench."
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops used Charging Up."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "retreat",
+          "line": 228,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Team Rocket's Mimikyu to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Spidops"
+          },
+          "kind": "promote",
+          "line": 229,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 180,
+            "move": "Rocket Rush",
+            "pokemon": "Team Rocket's Spidops",
+            "target": "Toucannon",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 230,
+          "subs": [
+            {
+              "details": [
+                "6 Pok\u00e9mon: 180 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 231,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops used Rocket Rush on 07e63eae1915541b\u2019s Toucannon for 180 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Toucannon"
+          },
+          "kind": "knockout",
+          "line": 234,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Basic Psychic Energy, Pikipek"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Toucannon"
+              },
+              "kind": "discard_from",
+              "line": 235,
+              "text": "2 cards were discarded from 07e63eae1915541b's Toucannon."
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 237,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Bug Catching Set",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 238,
+          "subs": [],
+          "text": "Bug Catching Set was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "promote",
+          "line": 239,
+          "subs": [],
+          "text": "07e63eae1915541b's Genesect is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 10
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 242,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 243,
+          "subs": [],
+          "text": "07e63eae1915541b played Dunsparce to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 244,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Dudunsparce",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 245,
+              "text": "07e63eae1915541b drew Dudunsparce."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 246,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Alakazam"
+          },
+          "kind": "attach",
+          "line": 247,
+          "subs": [],
+          "text": "07e63eae1915541b attached Telepathic Psychic Energy to Alakazam on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "retreat",
+          "line": 248,
+          "subs": [],
+          "text": "07e63eae1915541b retreated Genesect to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "promote",
+          "line": 249,
+          "subs": [],
+          "text": "07e63eae1915541b's Alakazam is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Powerful Hand",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 250,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 4,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Team Rocket's Spidops"
+              },
+              "kind": "put_counters",
+              "line": 251,
+              "text": "07e63eae1915541b put 4 damage counters on 07e63eae1915541b's Team Rocket's Spidops."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam used Powerful Hand."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 11
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 254,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Bug Catching Set"
+          },
+          "kind": "play_card",
+          "line": 255,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Basic Grass Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 256,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 258,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Bug Catching Set."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 259,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Mewtwo ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 180,
+            "move": "Rocket Rush",
+            "pokemon": "Team Rocket's Spidops",
+            "target": "Alakazam",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 260,
+          "subs": [
+            {
+              "details": [
+                "6 Pok\u00e9mon: 180 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 261,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops used Rocket Rush on 07e63eae1915541b\u2019s Alakazam for 180 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "knockout",
+          "line": 264,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Telepathic Psychic Energy, Kadabra, Abra"
+              ],
+              "fields": {
+                "n": 3,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Alakazam"
+              },
+              "kind": "discard_from",
+              "line": 265,
+              "text": "3 cards were discarded from 07e63eae1915541b's Alakazam."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 267,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 268,
+          "subs": [],
+          "text": "Basic Grass Energy was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "promote",
+          "line": 269,
+          "subs": [],
+          "text": "07e63eae1915541b's Genesect is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 12
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 272,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 273,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 274,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 275,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 276,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "retreat",
+          "line": 278,
+          "subs": [],
+          "text": "07e63eae1915541b retreated Genesect to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "promote",
+          "line": 279,
+          "subs": [],
+          "text": "07e63eae1915541b's Alakazam is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Powerful Hand",
+            "pokemon": "Alakazam"
+          },
+          "kind": "use",
+          "line": 280,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 10,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Team Rocket's Spidops"
+              },
+              "kind": "put_counters",
+              "line": 281,
+              "text": "07e63eae1915541b put 10 damage counters on 07e63eae1915541b's Team Rocket's Spidops."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam used Powerful Hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Spidops"
+          },
+          "kind": "knockout",
+          "line": 282,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Basic Grass Energy, Team Rocket's Tarountula"
+              ],
+              "fields": {
+                "n": 3,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Team Rocket's Spidops"
+              },
+              "kind": "discard_from",
+              "line": 283,
+              "text": "3 cards were discarded from 33838f43a80b2a73's Team Rocket's Spidops."
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Spidops was Knocked Out!"
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 285,
+          "subs": [],
+          "text": "07e63eae1915541b took a Prize card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "A card",
+            "owner": "07e63eae1915541b"
+          },
+          "kind": "to_hand",
+          "line": 286,
+          "subs": [],
+          "text": "A card was added to 07e63eae1915541b's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "promote",
+          "line": 287,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 13
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 290,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 291,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Team Rocket's Energy to Team Rocket's Mewtwo ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 160,
+            "move": "Erasure Ball",
+            "pokemon": "Team Rocket's Mewtwo ex",
+            "target": "Alakazam",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 292,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 160 damage",
+                "0 Pok\u00e9mon: 0 damage",
+                "Total damage: 160 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 293,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex used Erasure Ball on 07e63eae1915541b\u2019s Alakazam for 160 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "knockout",
+          "line": 298,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Telepathic Psychic Energy, Kadabra, Abra"
+              ],
+              "fields": {
+                "n": 3,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Alakazam"
+              },
+              "kind": "discard_from",
+              "line": 299,
+              "text": "3 cards were discarded from 07e63eae1915541b's Alakazam."
+            }
+          ],
+          "text": "07e63eae1915541b's Alakazam was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 301,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 302,
+          "subs": [],
+          "text": "Team Rocket's Tarountula was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "promote",
+          "line": 303,
+          "subs": [],
+          "text": "07e63eae1915541b's Genesect is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 14
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 306,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 307,
+          "subs": [],
+          "text": "07e63eae1915541b played Dunsparce to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dawn"
+          },
+          "kind": "play_card",
+          "line": 308,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dunsparce, Dudunsparce, Alakazam"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 309,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 311,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dawn."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 312,
+          "subs": [],
+          "text": "07e63eae1915541b played Dunsparce to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Telepathic Psychic Energy",
+            "energy": true,
+            "target": "Alakazam"
+          },
+          "kind": "attach",
+          "line": 313,
+          "subs": [],
+          "text": "07e63eae1915541b attached Telepathic Psychic Energy to Alakazam on the Bench."
+        },
+        {
+          "fields": {
+            "card": "Telepathic Psychic Energy"
+          },
+          "kind": "activated",
+          "line": 314,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 315,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "Telepathic Psychic Energy was activated."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 316,
+          "subs": [],
+          "text": "07e63eae1915541b ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 15
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 319,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton"
+          },
+          "kind": "play_card",
+          "line": 320,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Mewtwo ex, Team Rocket's Mimikyu"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 321,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 323,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Mewtwo ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 324,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Mewtwo ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 325,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Mewtwo ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 160,
+            "move": "Erasure Ball",
+            "pokemon": "Team Rocket's Mewtwo ex",
+            "target": "Genesect",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 326,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 160 damage",
+                "0 Pok\u00e9mon: 0 damage",
+                "Total damage: 160 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 327,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex used Erasure Ball on 07e63eae1915541b\u2019s Genesect for 160 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Genesect"
+          },
+          "kind": "knockout",
+          "line": 332,
+          "subs": [],
+          "text": "07e63eae1915541b's Genesect was Knocked Out!"
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Air Balloon",
+            "owner": "07e63eae1915541b",
+            "pokemon": "Genesect"
+          },
+          "kind": "discard_from",
+          "line": 333,
+          "subs": [],
+          "text": "Air Balloon was discarded from 07e63eae1915541b's Genesect."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 334,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Maximum Belt",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 335,
+          "subs": [],
+          "text": "Maximum Belt was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "promote",
+          "line": 336,
+          "subs": [],
+          "text": "07e63eae1915541b's Dunsparce is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 16
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 339,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 340,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 341,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "move": "Run Away Draw",
+            "pokemon": "Dudunsparce"
+          },
+          "kind": "use",
+          "line": 342,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 343,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 344,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b's Dudunsparce used Run Away Draw."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 346,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 347,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 348,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "promote",
+          "line": 350,
+          "subs": [],
+          "text": "07e63eae1915541b's Alakazam is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Enhanced Hammer"
+          },
+          "kind": "play_card",
+          "line": 351,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Energy",
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Team Rocket's Mewtwo ex"
+              },
+              "kind": "discard_from",
+              "line": 352,
+              "text": "Team Rocket's Energy was discarded from 33838f43a80b2a73's Team Rocket's Mewtwo ex."
+            }
+          ],
+          "text": "07e63eae1915541b played Enhanced Hammer."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 353,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Dudunsparce",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 354,
+              "text": "07e63eae1915541b drew Dudunsparce."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 355,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 356,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 357,
+              "text": "07e63eae1915541b drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 359,
+              "text": "07e63eae1915541b shuffled their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 360,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Team Rocket's Articuno",
+                "previous": "Team Rocket's Mewtwo ex"
+              },
+              "kind": "switch",
+              "line": 361,
+              "text": "33838f43a80b2a73's Team Rocket's Articuno was switched with 33838f43a80b2a73's Team Rocket's Mewtwo ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "07e63eae1915541b played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Articuno"
+          },
+          "kind": "promote",
+          "line": 362,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Articuno is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 363,
+          "subs": [],
+          "text": "07e63eae1915541b ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 17
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 366,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Tarountula"
+          },
+          "kind": "attach",
+          "line": 367,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Tarountula on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 368,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 18
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 371,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Lana's Aid"
+          },
+          "kind": "play_card",
+          "line": 372,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Pikipek, Toucannon, Basic Psychic Energy"
+              ],
+              "fields": {
+                "card": "3 cards"
+              },
+              "kind": "move_to_hand",
+              "line": 373,
+              "text": "07e63eae1915541b moved 07e63eae1915541b's 3 cards to their hand."
+            }
+          ],
+          "text": "07e63eae1915541b played Lana's Aid."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 375,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 376,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 377,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 378,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Alakazam"
+          },
+          "kind": "attach",
+          "line": 380,
+          "subs": [],
+          "text": "07e63eae1915541b attached Air Balloon to Alakazam in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 381,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "from": "Pikipek",
+                "to": "Toucannon"
+              },
+              "kind": "evolve",
+              "line": 382,
+              "text": "07e63eae1915541b evolved Pikipek to Toucannon on the Bench."
+            }
+          ],
+          "text": "07e63eae1915541b played Rare Candy."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Toucannon"
+          },
+          "kind": "attach",
+          "line": 383,
+          "subs": [],
+          "text": "07e63eae1915541b attached Basic Psychic Energy to Toucannon on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "retreat",
+          "line": 384,
+          "subs": [],
+          "text": "07e63eae1915541b retreated Alakazam to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Toucannon"
+          },
+          "kind": "promote",
+          "line": 385,
+          "subs": [],
+          "text": "07e63eae1915541b's Toucannon is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 386,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "damage": 200,
+            "move": "Feather Rondo",
+            "pokemon": "Toucannon",
+            "target": "Team Rocket's Articuno",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 387,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "7 Benched Pok\u00e9mon: 140 damage",
+                "Total damage: 200 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 388,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon used Feather Rondo on 33838f43a80b2a73\u2019s Team Rocket's Articuno for 200 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Articuno"
+          },
+          "kind": "knockout",
+          "line": 393,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Articuno was Knocked Out!"
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 394,
+          "subs": [],
+          "text": "07e63eae1915541b took a Prize card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "A card",
+            "owner": "07e63eae1915541b"
+          },
+          "kind": "to_hand",
+          "line": 395,
+          "subs": [],
+          "text": "A card was added to 07e63eae1915541b's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "promote",
+          "line": 396,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mimikyu is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 19
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 399,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 400,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Team Rocket's Energy to Team Rocket's Mewtwo ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Maximum Belt",
+            "energy": false,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 401,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Maximum Belt to Team Rocket's Mewtwo ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver"
+          },
+          "kind": "play_card",
+          "line": 402,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Ariana",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 403,
+              "text": "33838f43a80b2a73 drew Team Rocket's Ariana."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 404,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 405,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Tarountula, Team Rocket's Mimikyu"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 406,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 408,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Ariana"
+          },
+          "kind": "play_card",
+          "line": 409,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Energy Switch, Lucky Helmet, Team Rocket's Energy, Team Rocket's Transceiver, Ultra Ball, Brave Bangle, Team Rocket's Giovanni"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "draw",
+              "line": 410,
+              "text": "33838f43a80b2a73 drew 7 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Ariana."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "retreat",
+          "line": 412,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Team Rocket's Mimikyu to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Wobbuffet"
+          },
+          "kind": "promote",
+          "line": 413,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Wobbuffet is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lucky Helmet",
+            "energy": false,
+            "target": "Team Rocket's Wobbuffet"
+          },
+          "kind": "attach",
+          "line": 414,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Lucky Helmet to Team Rocket's Wobbuffet in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 415,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 20
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 418,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 419,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "card": "Abra"
+              },
+              "kind": "move_to_hand",
+              "line": 420,
+              "text": "07e63eae1915541b moved 07e63eae1915541b's Abra to their hand."
+            }
+          ],
+          "text": "07e63eae1915541b played Night Stretcher."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Abra",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 421,
+          "subs": [],
+          "text": "07e63eae1915541b played Abra to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Abra",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 422,
+          "subs": [],
+          "text": "07e63eae1915541b played Abra to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 423,
+          "subs": [],
+          "text": "07e63eae1915541b played Dunsparce to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 424,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 425,
+              "text": "07e63eae1915541b drew 3 cards."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 426,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Pikipek",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 428,
+          "subs": [],
+          "text": "07e63eae1915541b played Pikipek to the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 429,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Team Rocket's Mewtwo ex",
+                "previous": "Team Rocket's Wobbuffet"
+              },
+              "kind": "switch",
+              "line": 430,
+              "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex was switched with 33838f43a80b2a73's Team Rocket's Wobbuffet to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "07e63eae1915541b played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "promote",
+          "line": 431,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex is now in the Active Spot."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "damage": 240,
+            "move": "Feather Rondo",
+            "pokemon": "Toucannon",
+            "target": "Team Rocket's Mewtwo ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 432,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "9 Benched Pok\u00e9mon: 180 damage",
+                "Total damage: 240 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 433,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon used Feather Rondo on 33838f43a80b2a73\u2019s Team Rocket's Mewtwo ex for 240 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 21
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Giovanni",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 440,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Giovanni."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Energy",
+            "energy": true,
+            "target": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "attach",
+          "line": 441,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Team Rocket's Energy to Team Rocket's Mewtwo ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 442,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Brave Bangle, Team Rocket's Proton"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 443,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 445,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Energy Switch"
+          },
+          "kind": "play_card",
+          "line": 446,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Grass Energy",
+                "energy": true,
+                "target": "Team Rocket's Mewtwo ex"
+              },
+              "kind": "attach",
+              "line": 447,
+              "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Mewtwo ex in the Active Spot."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Energy Switch."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Transceiver"
+          },
+          "kind": "play_card",
+          "line": 448,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Team Rocket's Ariana",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 449,
+              "text": "33838f43a80b2a73 drew Team Rocket's Ariana."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 450,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Transceiver."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "retreat",
+          "line": 451,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Energy, Basic Grass Energy"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Team Rocket's Mewtwo ex"
+              },
+              "kind": "discard_from",
+              "line": 452,
+              "text": "2 cards were discarded from 33838f43a80b2a73's Team Rocket's Mewtwo ex."
+            }
+          ],
+          "text": "33838f43a80b2a73 retreated Team Rocket's Mewtwo ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mewtwo ex"
+          },
+          "kind": "promote",
+          "line": 454,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 160,
+            "move": "Erasure Ball",
+            "pokemon": "Team Rocket's Mewtwo ex",
+            "target": "Toucannon",
+            "targetOwner": "07e63eae1915541b",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 455,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 160 damage",
+                "0 Pok\u00e9mon: 0 damage",
+                "Total damage: 160 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 456,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Team Rocket's Mewtwo ex used Erasure Ball on 07e63eae1915541b\u2019s Toucannon for 160 damage."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Toucannon"
+          },
+          "kind": "knockout",
+          "line": 461,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Basic Psychic Energy, Pikipek"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "07e63eae1915541b",
+                "pokemon": "Toucannon"
+              },
+              "kind": "discard_from",
+              "line": 462,
+              "text": "2 cards were discarded from 07e63eae1915541b's Toucannon."
+            }
+          ],
+          "text": "07e63eae1915541b's Toucannon was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 464,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Spidops",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 465,
+          "subs": [],
+          "text": "Team Rocket's Spidops was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "pokemon": "Alakazam"
+          },
+          "kind": "promote",
+          "line": 466,
+          "subs": [],
+          "text": "07e63eae1915541b's Alakazam is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 22
+    },
+    {
+      "entries": [
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 469,
+          "subs": [],
+          "text": "07e63eae1915541b drew a card."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 470,
+          "subs": [],
+          "text": "07e63eae1915541b evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "07e63eae1915541b",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 471,
+          "subs": [
+            {
+              "actor": "07e63eae1915541b",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 472,
+              "text": "07e63eae1915541b drew a card."
+            },
+            {
+              "actor": "07e63eae1915541b",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 473,
+              "text": "07e63eae1915541b shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "07e63eae1915541b played Dudunsparce."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "who": "opponent",
+            "winner": "33838f43a80b2a73"
+          },
+          "kind": "concede",
+          "line": 475,
+          "subs": [],
+          "text": "Opponent conceded. 33838f43a80b2a73 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "07e63eae1915541b",
+      "title": "07e63eae1915541b's Turn",
+      "turnNumber": 23
+    }
+  ],
+  "statsByPlayer": {
+    "07e63eae1915541b": {
+      "attacks": [
+        "Feather Rondo"
+      ],
+      "cardsDrawn": 80,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Hilda",
+        "Dudunsparce",
+        "Pok\u00e9 Pad",
+        "Pok\u00e9 Pad",
+        "Rare Candy",
+        "Buddy-Buddy Poffin",
+        "Boss's Orders",
+        "Enhanced Hammer",
+        "Dawn",
+        "Dudunsparce",
+        "Buddy-Buddy Poffin",
+        "Battle Cage",
+        "Hilda",
+        "Rare Candy",
+        "Night Stretcher",
+        "Pok\u00e9 Pad",
+        "Dudunsparce",
+        "Dawn",
+        "Dudunsparce",
+        "Enhanced Hammer",
+        "Pok\u00e9 Pad",
+        "Buddy-Buddy Poffin",
+        "Boss's Orders",
+        "Lana's Aid",
+        "Dudunsparce",
+        "Rare Candy",
+        "Night Stretcher",
+        "Dudunsparce",
+        "Boss's Orders",
+        "Dudunsparce"
+      ],
+      "damageDealt": 960,
+      "energyAttached": 7,
+      "evolutions": [
+        "Kadabra",
+        "Dudunsparce",
+        "Kadabra",
+        "Kadabra",
+        "Toucannon",
+        "Dudunsparce",
+        "Alakazam",
+        "Alakazam",
+        "Alakazam",
+        "Toucannon",
+        "Dudunsparce",
+        "Dudunsparce",
+        "Dudunsparce",
+        "Dudunsparce",
+        "Toucannon",
+        "Dudunsparce",
+        "Dudunsparce"
+      ],
+      "knockouts": 4,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Dunsparce",
+        "Pikipek",
+        "Abra",
+        "Genesect",
+        "Pikipek",
+        "Dunsparce",
+        "Dunsparce",
+        "Dunsparce",
+        "Abra",
+        "Abra",
+        "Dunsparce",
+        "Pikipek"
+      ],
+      "prizesTaken": 4,
+      "turnsTaken": 12
+    },
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Rocket Rush",
+        "Erasure Ball"
+      ],
+      "cardsDrawn": 67,
+      "cardsPlayed": [
+        "Ultra Ball",
+        "Team Rocket's Ariana",
+        "Team Rocket's Transceiver",
+        "Team Rocket's Proton",
+        "Lillie's Determination",
+        "Bug Catching Set",
+        "Lillie's Determination",
+        "Team Rocket's Factory",
+        "Team Rocket's Transceiver",
+        "Team Rocket's Archer",
+        "Ultra Ball",
+        "Bug Catching Set",
+        "Team Rocket's Proton",
+        "Team Rocket's Transceiver",
+        "Ultra Ball",
+        "Team Rocket's Ariana",
+        "Ultra Ball",
+        "Energy Switch",
+        "Team Rocket's Transceiver"
+      ],
+      "damageDealt": 1020,
+      "energyAttached": 12,
+      "evolutions": [
+        "Team Rocket's Spidops",
+        "Team Rocket's Spidops"
+      ],
+      "knockouts": 6,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Team Rocket's Wobbuffet",
+        "Team Rocket's Articuno",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Articuno",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Mewtwo ex",
+        "Team Rocket's Mimikyu",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Mewtwo ex"
+      ],
+      "prizesTaken": 5,
+      "turnsTaken": 11
+    }
+  },
+  "summary": {
+    "endReason": "opponent_concede",
+    "exportVariant": "stock",
+    "gameId": "a35e2e685adaa910",
+    "hasFullDecklists": false,
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 8,
+          "name": "Basic Grass Energy"
+        },
+        {
+          "count": 2,
+          "name": "Bug Catching Set"
+        },
+        {
+          "count": 1,
+          "name": "Energy Switch"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 2,
+          "name": "Lucky Helmet"
+        },
+        {
+          "count": 1,
+          "name": "Maximum Belt"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Archer"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Ariana"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Articuno"
+        },
+        {
+          "count": 4,
+          "name": "Team Rocket's Energy"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Factory"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Giovanni"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Mewtwo ex"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Mimikyu"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Proton"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Spidops"
+        },
+        {
+          "count": 3,
+          "name": "Team Rocket's Tarountula"
+        },
+        {
+          "count": 4,
+          "name": "Team Rocket's Transceiver"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Wobbuffet"
+        },
+        {
+          "count": 4,
+          "name": "Ultra Ball"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 3,
+          "name": "Abra"
+        },
+        {
+          "count": 3,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 3,
+          "name": "Alakazam"
+        },
+        {
+          "count": 2,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Battle Cage"
+        },
+        {
+          "count": 3,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 4,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 2,
+          "name": "Dawn"
+        },
+        {
+          "count": 4,
+          "name": "Dudunsparce"
+        },
+        {
+          "count": 4,
+          "name": "Dunsparce"
+        },
+        {
+          "count": 1,
+          "name": "Dunsparce and played it to the Bench"
+        },
+        {
+          "count": 2,
+          "name": "Enhanced Hammer"
+        },
+        {
+          "count": 1,
+          "name": "Genesect"
+        },
+        {
+          "count": 2,
+          "name": "Hilda"
+        },
+        {
+          "count": 3,
+          "name": "Kadabra"
+        },
+        {
+          "count": 1,
+          "name": "Lana's Aid"
+        },
+        {
+          "count": 1,
+          "name": "Legacy Energy"
+        },
+        {
+          "count": 2,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 3,
+          "name": "Pikipek"
+        },
+        {
+          "count": 1,
+          "name": "Pikipek and played it to the Bench"
+        },
+        {
+          "count": 4,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 3,
+          "name": "Rare Candy"
+        },
+        {
+          "count": 4,
+          "name": "Telepathic Psychic Energy"
+        },
+        {
+          "count": 3,
+          "name": "Toucannon"
+        }
+      ]
+    },
+    "opponentArchetype": "Dudunsparce / Kadabra",
+    "opponentArchetypeId": "01M2GK2P92MPJAZWYHYWP76ZRZ",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "07e63eae1915541b",
+    "parserVersion": 1,
+    "playedAt": "2026-09-14T18:32:40.251Z",
+    "players": [
+      "07e63eae1915541b",
+      "33838f43a80b2a73"
+    ],
+    "result": "win",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Rocket Rush",
+          "Erasure Ball"
+        ],
+        "cardsDrawn": 67,
+        "cardsPlayed": [
+          "Ultra Ball",
+          "Team Rocket's Ariana",
+          "Team Rocket's Transceiver",
+          "Team Rocket's Proton",
+          "Lillie's Determination",
+          "Bug Catching Set",
+          "Lillie's Determination",
+          "Team Rocket's Factory",
+          "Team Rocket's Transceiver",
+          "Team Rocket's Archer",
+          "Ultra Ball",
+          "Bug Catching Set",
+          "Team Rocket's Proton",
+          "Team Rocket's Transceiver",
+          "Ultra Ball",
+          "Team Rocket's Ariana",
+          "Ultra Ball",
+          "Energy Switch",
+          "Team Rocket's Transceiver"
+        ],
+        "damageDealt": 1020,
+        "energyAttached": 12,
+        "evolutions": [
+          "Team Rocket's Spidops",
+          "Team Rocket's Spidops"
+        ],
+        "knockouts": 6,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Team Rocket's Wobbuffet",
+          "Team Rocket's Articuno",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Articuno",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Mewtwo ex",
+          "Team Rocket's Mimikyu",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Mewtwo ex"
+        ],
+        "prizesTaken": 5,
+        "turnsTaken": 11
+      },
+      "opponent": {
+        "attacks": [
+          "Feather Rondo"
+        ],
+        "cardsDrawn": 80,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Hilda",
+          "Dudunsparce",
+          "Pok\u00e9 Pad",
+          "Pok\u00e9 Pad",
+          "Rare Candy",
+          "Buddy-Buddy Poffin",
+          "Boss's Orders",
+          "Enhanced Hammer",
+          "Dawn",
+          "Dudunsparce",
+          "Buddy-Buddy Poffin",
+          "Battle Cage",
+          "Hilda",
+          "Rare Candy",
+          "Night Stretcher",
+          "Pok\u00e9 Pad",
+          "Dudunsparce",
+          "Dawn",
+          "Dudunsparce",
+          "Enhanced Hammer",
+          "Pok\u00e9 Pad",
+          "Buddy-Buddy Poffin",
+          "Boss's Orders",
+          "Lana's Aid",
+          "Dudunsparce",
+          "Rare Candy",
+          "Night Stretcher",
+          "Dudunsparce",
+          "Boss's Orders",
+          "Dudunsparce"
+        ],
+        "damageDealt": 960,
+        "energyAttached": 7,
+        "evolutions": [
+          "Kadabra",
+          "Dudunsparce",
+          "Kadabra",
+          "Kadabra",
+          "Toucannon",
+          "Dudunsparce",
+          "Alakazam",
+          "Alakazam",
+          "Alakazam",
+          "Toucannon",
+          "Dudunsparce",
+          "Dudunsparce",
+          "Dudunsparce",
+          "Dudunsparce",
+          "Toucannon",
+          "Dudunsparce",
+          "Dudunsparce"
+        ],
+        "knockouts": 4,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Dunsparce",
+          "Pikipek",
+          "Abra",
+          "Genesect",
+          "Pikipek",
+          "Dunsparce",
+          "Dunsparce",
+          "Dunsparce",
+          "Abra",
+          "Abra",
+          "Dunsparce",
+          "Pikipek"
+        ],
+        "prizesTaken": 4,
+        "turnsTaken": 12
+      }
+    },
+    "turnCount": 23,
+    "unparsedCount": 0,
+    "uploadSource": "unknown",
+    "uploadedAt": "2026-09-14T18:32:40.251Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": false,
+    "winner": "33838f43a80b2a73",
+    "wonCoinToss": false
+  },
+  "unparsedLines": []
+}

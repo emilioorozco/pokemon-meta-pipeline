@@ -39,7 +39,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Type check
-        run: uv run mypy pipeline tests
+        run: uv run mypy pipeline tests scripts
 
       - name: Test
         run: uv run pytest --cov=pipeline --cov-report=term-missing --cov-fail-under=70

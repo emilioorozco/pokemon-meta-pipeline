@@ -1,0 +1,1019 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://playroughrankings.com/contracts/parsed-blob/v2",
+  "title": "ParsedBlobV2",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 2
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "gameId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "uploadedAt": {
+          "type": "string"
+        },
+        "playedAt": {
+          "type": "string"
+        },
+        "playedAtSource": {
+          "type": "string",
+          "enum": [
+            "log",
+            "upload",
+            "user"
+          ]
+        },
+        "exportVariant": {
+          "type": "string",
+          "enum": [
+            "stock",
+            "debug",
+            "manual"
+          ]
+        },
+        "parserVersion": {
+          "type": "integer"
+        },
+        "unparsedCount": {
+          "type": "integer"
+        },
+        "players": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mySide": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mySideSource": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "concede",
+            "named_draws",
+            "handle",
+            "user"
+          ]
+        },
+        "opponentName": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "win",
+            "loss",
+            "tie",
+            "unknown"
+          ]
+        },
+        "endReason": {
+          "type": "string",
+          "enum": [
+            "concede",
+            "opponent_concede",
+            "prizes",
+            "other",
+            "unknown"
+          ]
+        },
+        "winner": {
+          "type": "string"
+        },
+        "wentFirst": {
+          "type": "boolean"
+        },
+        "wonCoinToss": {
+          "type": "boolean"
+        },
+        "turnCount": {
+          "type": "integer"
+        },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "me": {
+              "type": "object",
+              "properties": {
+                "cardsDrawn": {
+                  "type": "integer"
+                },
+                "energyAttached": {
+                  "type": "integer"
+                },
+                "damageDealt": {
+                  "type": "integer"
+                },
+                "knockouts": {
+                  "type": "integer"
+                },
+                "prizesTaken": {
+                  "type": "integer"
+                },
+                "mulligans": {
+                  "type": "integer"
+                },
+                "turnsTaken": {
+                  "type": "integer"
+                },
+                "pokemonPlayed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "cardsPlayed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evolutions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "attacks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "cardsDrawn",
+                "energyAttached",
+                "damageDealt",
+                "knockouts",
+                "prizesTaken",
+                "mulligans",
+                "turnsTaken",
+                "pokemonPlayed",
+                "cardsPlayed",
+                "evolutions",
+                "attacks"
+              ],
+              "additionalProperties": false
+            },
+            "opponent": {
+              "type": "object",
+              "properties": {
+                "cardsDrawn": {
+                  "type": "integer"
+                },
+                "energyAttached": {
+                  "type": "integer"
+                },
+                "damageDealt": {
+                  "type": "integer"
+                },
+                "knockouts": {
+                  "type": "integer"
+                },
+                "prizesTaken": {
+                  "type": "integer"
+                },
+                "mulligans": {
+                  "type": "integer"
+                },
+                "turnsTaken": {
+                  "type": "integer"
+                },
+                "pokemonPlayed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "cardsPlayed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evolutions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "attacks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "cardsDrawn",
+                "energyAttached",
+                "damageDealt",
+                "knockouts",
+                "prizesTaken",
+                "mulligans",
+                "turnsTaken",
+                "pokemonPlayed",
+                "cardsPlayed",
+                "evolutions",
+                "attacks"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "matchId": {
+          "type": "string"
+        },
+        "uploadSource": {
+          "type": "string",
+          "enum": [
+            "web",
+            "overlay",
+            "overlay-mac",
+            "overlay-windows",
+            "ios-shortcut",
+            "manual",
+            "unknown"
+          ]
+        },
+        "uploadTokenId": {
+          "type": "string"
+        },
+        "uploadClient": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "deckId": {
+          "type": "string"
+        },
+        "deckVersion": {
+          "type": "integer"
+        },
+        "deckName": {
+          "type": "string"
+        },
+        "myDeckMeta": {
+          "type": "object",
+          "properties": {
+            "tcglDeckId": {
+              "type": "string"
+            },
+            "deckName": {
+              "type": "string"
+            },
+            "deckDefinitionId": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "sleeve": {
+              "type": "string"
+            },
+            "coin": {
+              "type": "string"
+            },
+            "deckBox": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "opponentDeckMeta": {
+          "type": "object",
+          "properties": {
+            "tcglDeckId": {
+              "type": "string"
+            },
+            "deckName": {
+              "type": "string"
+            },
+            "deckDefinitionId": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "sleeve": {
+              "type": "string"
+            },
+            "coin": {
+              "type": "string"
+            },
+            "deckBox": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "myDecklistSource": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "paste",
+            "api",
+            "inferred"
+          ]
+        },
+        "opponentDecklistSource": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "paste",
+            "api",
+            "inferred"
+          ]
+        },
+        "hasFullDecklists": {
+          "type": "boolean"
+        },
+        "observedCards": {
+          "type": "object",
+          "properties": {
+            "me": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cardId": {
+                    "type": "string"
+                  },
+                  "baseCardId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "set": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "count"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "opponent": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cardId": {
+                    "type": "string"
+                  },
+                  "baseCardId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "set": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "count"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "inferredPrizes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cardId": {
+                "type": "string"
+              },
+              "baseCardId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "set": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "prizeCardsTaken": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cardId": {
+                "type": "string"
+              },
+              "baseCardId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "set": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "opponentArchetype": {
+          "type": "string"
+        },
+        "myArchetypeId": {
+          "type": "string"
+        },
+        "myArchetype": {
+          "type": "string"
+        },
+        "opponentArchetypeId": {
+          "type": "string"
+        },
+        "opponentArchetypeSource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "user"
+          ]
+        },
+        "opponentArchetypeResolution": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "alias",
+            "created"
+          ]
+        },
+        "tournamentId": {
+          "type": "string"
+        },
+        "tournamentName": {
+          "type": "string"
+        },
+        "round": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "seasonId": {
+          "type": "string"
+        },
+        "seasonName": {
+          "type": "string"
+        },
+        "seasonSource": {
+          "type": "string",
+          "enum": [
+            "log",
+            "user"
+          ]
+        },
+        "elo": {
+          "type": "object",
+          "properties": {
+            "seasonId": {
+              "type": "string"
+            },
+            "seasonName": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "previousElo": {
+              "type": "integer"
+            },
+            "newElo": {
+              "type": "integer"
+            },
+            "delta": {
+              "type": "integer"
+            },
+            "modes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "modeElos": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer"
+              }
+            },
+            "defaultElo": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "seasonId",
+            "previousElo",
+            "newElo",
+            "delta"
+          ],
+          "additionalProperties": false
+        },
+        "excludedFromStats": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "gameId",
+        "userId",
+        "uploadedAt",
+        "playedAt",
+        "exportVariant",
+        "parserVersion",
+        "unparsedCount",
+        "players",
+        "mySide",
+        "result",
+        "endReason",
+        "turnCount",
+        "stats",
+        "hasFullDecklists"
+      ],
+      "additionalProperties": false
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "setup",
+              "turn",
+              "checkup",
+              "other"
+            ]
+          },
+          "turnNumber": {
+            "type": "integer"
+          },
+          "player": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "opening_hand",
+                    "mulligan",
+                    "mulligan_draw",
+                    "coin_choice",
+                    "coin_toss",
+                    "go_first",
+                    "draw",
+                    "draw_named",
+                    "play_pokemon",
+                    "play_stadium",
+                    "play_card",
+                    "attach",
+                    "evolve",
+                    "attack",
+                    "use",
+                    "knockout",
+                    "prize",
+                    "retreat",
+                    "promote",
+                    "switch",
+                    "end_turn",
+                    "timeout",
+                    "concede",
+                    "win",
+                    "discard",
+                    "discard_named",
+                    "discard_from",
+                    "shuffle",
+                    "shuffle_into",
+                    "to_hand",
+                    "activated",
+                    "condition_damage",
+                    "status",
+                    "status_end",
+                    "put_counters",
+                    "move_counters",
+                    "move_to_hand",
+                    "put_deck",
+                    "prevented",
+                    "took_damage",
+                    "tera",
+                    "coin_flip",
+                    "choice",
+                    "breakdown",
+                    "drawn_cards",
+                    "revealed",
+                    "other"
+                  ]
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                "subs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "line": {
+                        "type": "integer"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "opening_hand",
+                          "mulligan",
+                          "mulligan_draw",
+                          "coin_choice",
+                          "coin_toss",
+                          "go_first",
+                          "draw",
+                          "draw_named",
+                          "play_pokemon",
+                          "play_stadium",
+                          "play_card",
+                          "attach",
+                          "evolve",
+                          "attack",
+                          "use",
+                          "knockout",
+                          "prize",
+                          "retreat",
+                          "promote",
+                          "switch",
+                          "end_turn",
+                          "timeout",
+                          "concede",
+                          "win",
+                          "discard",
+                          "discard_named",
+                          "discard_from",
+                          "shuffle",
+                          "shuffle_into",
+                          "to_hand",
+                          "activated",
+                          "condition_damage",
+                          "status",
+                          "status_end",
+                          "put_counters",
+                          "move_counters",
+                          "move_to_hand",
+                          "put_deck",
+                          "prevented",
+                          "took_damage",
+                          "tera",
+                          "coin_flip",
+                          "choice",
+                          "breakdown",
+                          "drawn_cards",
+                          "revealed",
+                          "other"
+                        ]
+                      },
+                      "actor": {
+                        "type": "string"
+                      },
+                      "fields": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        }
+                      },
+                      "details": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "line",
+                      "text",
+                      "kind",
+                      "fields",
+                      "details"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "line",
+                "text",
+                "kind",
+                "fields",
+                "subs"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "entries"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "statsByPlayer": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "cardsDrawn": {
+            "type": "integer"
+          },
+          "energyAttached": {
+            "type": "integer"
+          },
+          "damageDealt": {
+            "type": "integer"
+          },
+          "knockouts": {
+            "type": "integer"
+          },
+          "prizesTaken": {
+            "type": "integer"
+          },
+          "mulligans": {
+            "type": "integer"
+          },
+          "turnsTaken": {
+            "type": "integer"
+          },
+          "pokemonPlayed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cardsPlayed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evolutions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attacks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "cardsDrawn",
+          "energyAttached",
+          "damageDealt",
+          "knockouts",
+          "prizesTaken",
+          "mulligans",
+          "turnsTaken",
+          "pokemonPlayed",
+          "cardsPlayed",
+          "evolutions",
+          "attacks"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "unparsedLines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "extras": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "myDecklist": {
+      "type": "object",
+      "properties": {
+        "cards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cardId": {
+                "type": "string"
+              },
+              "baseCardId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "set": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "cardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "paste",
+            "api",
+            "inferred"
+          ]
+        }
+      },
+      "required": [
+        "cards",
+        "cardCount",
+        "complete",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "opponentDecklist": {
+      "type": "object",
+      "properties": {
+        "cards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cardId": {
+                "type": "string"
+              },
+              "baseCardId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "set": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "count"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "cardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "paste",
+            "api",
+            "inferred"
+          ]
+        }
+      },
+      "required": [
+        "cards",
+        "cardCount",
+        "complete",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "summary",
+    "segments",
+    "statsByPlayer",
+    "unparsedLines",
+    "extras"
+  ],
+  "additionalProperties": false
+}

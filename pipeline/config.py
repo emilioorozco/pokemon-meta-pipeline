@@ -19,4 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PIPELINE_DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", REPO_ROOT / "data"))
 LAKE_DIR = PIPELINE_DATA_DIR / "lake"
 BRONZE_DIR = LAKE_DIR / "bronze"
+# Rejected blobs are kept as received, so this directory stays local and gitignored.
+QUARANTINE_DIR = LAKE_DIR / "quarantine"
 WAREHOUSE_PATH = PIPELINE_DATA_DIR / "warehouse" / "meta.duckdb"

@@ -1,0 +1,2169 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "choice": "heads"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "9c69b2fa91b9937a chose heads for the opening coin flip."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "9c69b2fa91b9937a won the coin toss."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "first": false
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "9c69b2fa91b9937a decided to go second."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "9c69b2fa91b9937a drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Night Stretcher, Dreepy, Buddy-Buddy Poffin, Drakloak, Jamming Tower, Special Red Card, Budew"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "N's Zekrom",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played N's Zekrom to the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Budew",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Budew to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 14,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 15,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dreepy, Duskull"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 19,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 20,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 23,
+          "subs": [],
+          "text": "9c69b2fa91b9937a drew a card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "N's Darumaka",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 24,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played N's Darumaka to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 25,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "N's Zorua, N's Zorua"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 26,
+              "text": "9c69b2fa91b9937a drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 28,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Basic Darkness Energy",
+            "energy": true,
+            "target": "N's Zorua"
+          },
+          "kind": "attach",
+          "line": 29,
+          "subs": [],
+          "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Janine's Secret Art"
+          },
+          "kind": "play_card",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Basic Darkness Energy",
+                "energy": true,
+                "target": "N's Zorua"
+              },
+              "kind": "attach",
+              "line": 31,
+              "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Basic Darkness Energy",
+                "energy": true,
+                "target": "N's Zorua"
+              },
+              "kind": "attach",
+              "line": 32,
+              "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 33,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Janine's Secret Art."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 34,
+          "subs": [],
+          "text": "9c69b2fa91b9937a ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "9c69b2fa91b9937a",
+      "title": "9c69b2fa91b9937a's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Unfair Stamp",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 37,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Unfair Stamp."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 38,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 39,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Night Stretcher, Jamming Tower, Special Red Card, Unfair Stamp"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 40,
+              "text": "33838f43a80b2a73 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Ultra Ball, Team Rocket's Watchtower, Dragapult ex, Unfair Stamp, Lillie's Determination, Budew, Pok\u00e9 Pad, Rare Candy"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 42,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 44,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 45,
+              "text": "33838f43a80b2a73 drew Drakloak."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 46,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 47,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 48,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Crispin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 49,
+              "text": "33838f43a80b2a73 drew Crispin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 50,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Buddy-Buddy Poffin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 51,
+              "text": "33838f43a80b2a73 drew Buddy-Buddy Poffin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 52,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dreepy, Duskull"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 53,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 55,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "N's Zekrom",
+            "targetOwner": "9c69b2fa91b9937a",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 56,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on 9c69b2fa91b9937a\u2019s N's Zekrom for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 59,
+          "subs": [],
+          "text": "9c69b2fa91b9937a drew a card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "from": "N's Zorua",
+            "to": "N's Zoroark ex"
+          },
+          "kind": "evolve",
+          "line": 60,
+          "subs": [],
+          "text": "9c69b2fa91b9937a evolved N's Zorua to N's Zoroark ex on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "move": "Trade",
+            "pokemon": "N's Zoroark ex"
+          },
+          "kind": "use",
+          "line": 61,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "N's Darumaka"
+              },
+              "kind": "discard_named",
+              "line": 62,
+              "text": "9c69b2fa91b9937a discarded N's Darumaka."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 63,
+              "text": "9c69b2fa91b9937a drew 2 cards."
+            }
+          ],
+          "text": "9c69b2fa91b9937a's N's Zoroark ex used Trade."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Basic Darkness Energy",
+            "energy": true,
+            "target": "N's Zorua"
+          },
+          "kind": "attach",
+          "line": 64,
+          "subs": [],
+          "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 65,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Drakloak",
+                "previous": "Budew"
+              },
+              "kind": "switch",
+              "line": 66,
+              "text": "33838f43a80b2a73's Drakloak was switched with 33838f43a80b2a73's Budew to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 67,
+          "subs": [],
+          "text": "33838f43a80b2a73's Drakloak is now in the Active Spot."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 68,
+          "subs": [],
+          "text": "9c69b2fa91b9937a ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "9c69b2fa91b9937a",
+      "title": "9c69b2fa91b9937a's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Night Stretcher",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 71,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Night Stretcher."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 72,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusclops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 73,
+              "text": "33838f43a80b2a73 drew Dusclops."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 74,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Pok\u00e9 Pad",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 75,
+              "text": "33838f43a80b2a73 drew Pok\u00e9 Pad."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Crispin"
+          },
+          "kind": "play_card",
+          "line": 76,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 77,
+              "text": "33838f43a80b2a73 drew Basic Psychic Energy."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "energy": true,
+                "target": "Drakloak"
+              },
+              "kind": "attach",
+              "line": 78,
+              "text": "33838f43a80b2a73 attached Basic Fire Energy to Drakloak in the Active Spot."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 79,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Crispin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 80,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Drakloak in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 81,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Drakloak to Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Duskull",
+            "to": "Dusclops"
+          },
+          "kind": "evolve",
+          "line": 82,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Duskull to Dusclops on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 83,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 84,
+              "text": "33838f43a80b2a73 drew Drakloak."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 85,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 86,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 87,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Jamming Tower",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 88,
+              "text": "33838f43a80b2a73 drew Jamming Tower."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Cursed Blast",
+            "pokemon": "Dusclops"
+          },
+          "kind": "use",
+          "line": 89,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 5,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Zorua"
+              },
+              "kind": "put_counters",
+              "line": 90,
+              "text": "33838f43a80b2a73 put 5 damage counters on 33838f43a80b2a73's N's Zorua."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dusclops used Cursed Blast."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dusclops"
+          },
+          "kind": "knockout",
+          "line": 91,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dusclops was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Dusclops"
+          },
+          "kind": "discard_from",
+          "line": 92,
+          "subs": [],
+          "text": "Duskull was discarded from 33838f43a80b2a73's Dusclops."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 93,
+          "subs": [],
+          "text": "9c69b2fa91b9937a took a Prize card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "A card",
+            "owner": "9c69b2fa91b9937a"
+          },
+          "kind": "to_hand",
+          "line": 94,
+          "subs": [],
+          "text": "A card was added to 9c69b2fa91b9937a's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "N's Zekrom",
+            "targetOwner": "9c69b2fa91b9937a",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 95,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 1,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Darumaka"
+              },
+              "kind": "put_counters",
+              "line": 96,
+              "text": "33838f43a80b2a73 put a damage counter on 33838f43a80b2a73's N's Darumaka."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 2,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Zorua"
+              },
+              "kind": "put_counters",
+              "line": 97,
+              "text": "33838f43a80b2a73 put 2 damage counters on 33838f43a80b2a73's N's Zorua."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 3,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Zoroark ex"
+              },
+              "kind": "put_counters",
+              "line": 98,
+              "text": "33838f43a80b2a73 put 3 damage counters on 33838f43a80b2a73's N's Zoroark ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 9c69b2fa91b9937a\u2019s N's Zekrom for 200 damage."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "N's Zekrom"
+          },
+          "kind": "knockout",
+          "line": 99,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's N's Zekrom was Knocked Out!"
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "N's Zorua"
+          },
+          "kind": "knockout",
+          "line": 100,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "Basic Darkness Energy, Basic Darkness Energy"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "9c69b2fa91b9937a",
+                "pokemon": "N's Zorua"
+              },
+              "kind": "discard_from",
+              "line": 101,
+              "text": "2 cards were discarded from 9c69b2fa91b9937a's N's Zorua."
+            }
+          ],
+          "text": "9c69b2fa91b9937a's N's Zorua was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 2
+          },
+          "kind": "prize",
+          "line": 103,
+          "subs": [],
+          "text": "33838f43a80b2a73 took 2 Prize cards."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 104,
+          "subs": [],
+          "text": "Boss's Orders was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dragapult ex",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 105,
+          "subs": [],
+          "text": "Dragapult ex was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "N's Darumaka"
+          },
+          "kind": "promote",
+          "line": 106,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's N's Darumaka is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 109,
+          "subs": [],
+          "text": "9c69b2fa91b9937a drew a card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Yveltal",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 110,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played Yveltal to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "move": "Trade",
+            "pokemon": "N's Zoroark ex"
+          },
+          "kind": "use",
+          "line": 111,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "N's Zoroark ex"
+              },
+              "kind": "discard_named",
+              "line": 112,
+              "text": "9c69b2fa91b9937a discarded N's Zoroark ex."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 113,
+              "text": "9c69b2fa91b9937a drew 2 cards."
+            }
+          ],
+          "text": "9c69b2fa91b9937a's N's Zoroark ex used Trade."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 114,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "Pok\u00e9 Pad, Boss's Orders"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 115,
+              "text": "9c69b2fa91b9937a discarded 2 cards."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Meowth ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 117,
+              "text": "9c69b2fa91b9937a drew Meowth ex."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 118,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Ultra Ball."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Meowth ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 119,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played Meowth ex to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "move": "Last-Ditch Catch",
+            "pokemon": "Meowth ex"
+          },
+          "kind": "use",
+          "line": 120,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Lillie's Determination",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 121,
+              "text": "9c69b2fa91b9937a drew Lillie's Determination."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 122,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a's Meowth ex used Last-Ditch Catch."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 123,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "shuffle_into",
+              "line": 124,
+              "text": "9c69b2fa91b9937a shuffled a card into their deck."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 125,
+              "text": "9c69b2fa91b9937a drew 6 cards."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Lillie's Determination."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Munkidori",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 126,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played Munkidori to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "N's Zekrom",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 127,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played N's Zekrom to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Binding Mochi",
+            "energy": false,
+            "target": "N's Zoroark ex"
+          },
+          "kind": "attach",
+          "line": 128,
+          "subs": [],
+          "text": "9c69b2fa91b9937a attached Binding Mochi to N's Zoroark ex on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 129,
+          "subs": [],
+          "text": "9c69b2fa91b9937a ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "9c69b2fa91b9937a",
+      "title": "9c69b2fa91b9937a's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Darkness Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 132,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Basic Darkness Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 133,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Buddy-Buddy Poffin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 134,
+              "text": "33838f43a80b2a73 drew Buddy-Buddy Poffin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 135,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Ultra Ball",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 136,
+              "text": "33838f43a80b2a73 drew Ultra Ball."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 137,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Duskull"
+              },
+              "kind": "move_to_hand",
+              "line": 138,
+              "text": "33838f43a80b2a73 moved 33838f43a80b2a73's Duskull to their hand."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Night Stretcher."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 139,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Duskull to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 140,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Budew, Buddy-Buddy Poffin"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 141,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusknoir",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 143,
+              "text": "33838f43a80b2a73 drew Dusknoir."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 144,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 145,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "from": "Duskull",
+                "to": "Dusknoir"
+              },
+              "kind": "evolve",
+              "line": 146,
+              "text": "33838f43a80b2a73 evolved Duskull to Dusknoir on the Bench."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Rare Candy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 147,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "pokemon": "N's Zoroark ex",
+                "previous": "N's Darumaka"
+              },
+              "kind": "switch",
+              "line": 148,
+              "text": "9c69b2fa91b9937a's N's Zoroark ex was switched with 9c69b2fa91b9937a's N's Darumaka to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Boss's Orders."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "N's Zoroark ex"
+          },
+          "kind": "promote",
+          "line": 149,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's N's Zoroark ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Cursed Blast",
+            "pokemon": "Dusknoir"
+          },
+          "kind": "use",
+          "line": 150,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 13,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Zoroark ex"
+              },
+              "kind": "put_counters",
+              "line": 151,
+              "text": "33838f43a80b2a73 put 13 damage counters on 33838f43a80b2a73's N's Zoroark ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dusknoir used Cursed Blast."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dusknoir"
+          },
+          "kind": "knockout",
+          "line": 152,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dusknoir was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Dusknoir"
+          },
+          "kind": "discard_from",
+          "line": 153,
+          "subs": [],
+          "text": "Duskull was discarded from 33838f43a80b2a73's Dusknoir."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 154,
+          "subs": [],
+          "text": "9c69b2fa91b9937a took a Prize card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "A card",
+            "owner": "9c69b2fa91b9937a"
+          },
+          "kind": "to_hand",
+          "line": 155,
+          "subs": [],
+          "text": "A card was added to 9c69b2fa91b9937a's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "N's Zoroark ex",
+            "targetOwner": "9c69b2fa91b9937a",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 156,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 6,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "N's Zekrom"
+              },
+              "kind": "put_counters",
+              "line": 157,
+              "text": "33838f43a80b2a73 put 6 damage counters on 33838f43a80b2a73's N's Zekrom."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on 9c69b2fa91b9937a\u2019s N's Zoroark ex for 200 damage."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "N's Zoroark ex"
+          },
+          "kind": "knockout",
+          "line": 158,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "Basic Darkness Energy, Basic Darkness Energy, N's Zorua, Binding Mochi"
+              ],
+              "fields": {
+                "n": 4,
+                "owner": "9c69b2fa91b9937a",
+                "pokemon": "N's Zoroark ex"
+              },
+              "kind": "discard_from",
+              "line": 159,
+              "text": "4 cards were discarded from 9c69b2fa91b9937a's N's Zoroark ex."
+            }
+          ],
+          "text": "9c69b2fa91b9937a's N's Zoroark ex was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 2
+          },
+          "kind": "prize",
+          "line": 161,
+          "subs": [],
+          "text": "33838f43a80b2a73 took 2 Prize cards."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 162,
+          "subs": [],
+          "text": "Lillie's Determination was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 163,
+          "subs": [],
+          "text": "Basic Fire Energy was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "Yveltal"
+          },
+          "kind": "promote",
+          "line": 164,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's Yveltal is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 167,
+          "subs": [],
+          "text": "9c69b2fa91b9937a drew a card."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Secret Box"
+          },
+          "kind": "play_card",
+          "line": 168,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "Night Stretcher, Lillie's Determination, Black Belt's Training"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "discard",
+              "line": 169,
+              "text": "9c69b2fa91b9937a discarded 3 cards."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [
+                "Transformation Tome, Binding Mochi, Lillie's Determination, N's Castle"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "draw",
+              "line": 171,
+              "text": "9c69b2fa91b9937a drew 4 cards."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 173,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Secret Box."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Transformation Tome"
+          },
+          "kind": "play_card",
+          "line": 174,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played Transformation Tome."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Binding Mochi",
+            "energy": false,
+            "target": "N's Zorua"
+          },
+          "kind": "attach",
+          "line": 175,
+          "subs": [],
+          "text": "9c69b2fa91b9937a attached Binding Mochi to N's Zorua on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "N's Castle"
+          },
+          "kind": "play_stadium",
+          "line": 176,
+          "subs": [],
+          "text": "9c69b2fa91b9937a played N's Castle to the Stadium spot."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 177,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 178,
+              "text": "9c69b2fa91b9937a drew 6 cards."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Lillie's Determination."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Basic Darkness Energy",
+            "energy": true,
+            "target": "N's Zorua"
+          },
+          "kind": "attach",
+          "line": 179,
+          "subs": [],
+          "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "N's PP Up"
+          },
+          "kind": "play_card",
+          "line": 180,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Basic Darkness Energy",
+                "energy": true,
+                "target": "N's Zorua"
+              },
+              "kind": "attach",
+              "line": 181,
+              "text": "9c69b2fa91b9937a attached Basic Darkness Energy to N's Zorua on the Bench."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played N's PP Up."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 182,
+          "subs": [
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {
+                "card": "Budew and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 183,
+              "text": "9c69b2fa91b9937a drew Budew and played it to the Bench."
+            },
+            {
+              "actor": "9c69b2fa91b9937a",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 184,
+              "text": "9c69b2fa91b9937a shuffled their deck."
+            }
+          ],
+          "text": "9c69b2fa91b9937a played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "Yveltal"
+          },
+          "kind": "retreat",
+          "line": 185,
+          "subs": [],
+          "text": "9c69b2fa91b9937a retreated Yveltal to the Bench."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "promote",
+          "line": 186,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's Budew is now in the Active Spot."
+        },
+        {
+          "actor": "9c69b2fa91b9937a",
+          "fields": {
+            "damage": 10,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Dragapult ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 187,
+          "subs": [],
+          "text": "9c69b2fa91b9937a's Budew used Itchy Pollen on 33838f43a80b2a73\u2019s Dragapult ex for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "9c69b2fa91b9937a",
+      "title": "9c69b2fa91b9937a's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 190,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Basic Psychic Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "who": "opponent",
+            "winner": "33838f43a80b2a73"
+          },
+          "kind": "concede",
+          "line": 191,
+          "subs": [],
+          "text": "Opponent conceded. 33838f43a80b2a73 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 9
+    }
+  ],
+  "statsByPlayer": {
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive"
+      ],
+      "cardsDrawn": 35,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Pok\u00e9 Pad",
+        "Buddy-Buddy Poffin",
+        "Crispin",
+        "Pok\u00e9 Pad",
+        "Night Stretcher",
+        "Ultra Ball",
+        "Rare Candy",
+        "Boss's Orders"
+      ],
+      "damageDealt": 410,
+      "energyAttached": 2,
+      "evolutions": [
+        "Drakloak",
+        "Drakloak",
+        "Dragapult ex",
+        "Dusclops",
+        "Drakloak",
+        "Dusknoir"
+      ],
+      "knockouts": 3,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Budew",
+        "Dreepy",
+        "Duskull"
+      ],
+      "prizesTaken": 4,
+      "turnsTaken": 5
+    },
+    "9c69b2fa91b9937a": {
+      "attacks": [
+        "Itchy Pollen"
+      ],
+      "cardsDrawn": 36,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Janine's Secret Art",
+        "Boss's Orders",
+        "Ultra Ball",
+        "Lillie's Determination",
+        "Secret Box",
+        "Transformation Tome",
+        "N's Castle",
+        "Lillie's Determination",
+        "N's PP Up",
+        "Buddy-Buddy Poffin"
+      ],
+      "damageDealt": 10,
+      "energyAttached": 6,
+      "evolutions": [
+        "N's Zoroark ex"
+      ],
+      "knockouts": 2,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "N's Zekrom",
+        "N's Darumaka",
+        "Yveltal",
+        "Meowth ex",
+        "Munkidori",
+        "N's Zekrom"
+      ],
+      "prizesTaken": 2,
+      "turnsTaken": 4
+    }
+  },
+  "summary": {
+    "endReason": "opponent_concede",
+    "exportVariant": "stock",
+    "gameId": "15f8c1715e20bf57",
+    "hasFullDecklists": false,
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Basic Darkness Energy"
+        },
+        {
+          "count": 1,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 1,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Crispin"
+        },
+        {
+          "count": 1,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 3,
+          "name": "Drakloak"
+        },
+        {
+          "count": 1,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Dusclops"
+        },
+        {
+          "count": 1,
+          "name": "Dusknoir"
+        },
+        {
+          "count": 3,
+          "name": "Duskull"
+        },
+        {
+          "count": 1,
+          "name": "Jamming Tower"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 2,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Rare Candy"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Unfair Stamp"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 6,
+          "name": "Basic Darkness Energy"
+        },
+        {
+          "count": 2,
+          "name": "Binding Mochi"
+        },
+        {
+          "count": 1,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Janine's Secret Art"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Meowth ex"
+        },
+        {
+          "count": 1,
+          "name": "Munkidori"
+        },
+        {
+          "count": 1,
+          "name": "N's Castle"
+        },
+        {
+          "count": 2,
+          "name": "N's Darumaka"
+        },
+        {
+          "count": 1,
+          "name": "N's PP Up"
+        },
+        {
+          "count": 2,
+          "name": "N's Zekrom"
+        },
+        {
+          "count": 2,
+          "name": "N's Zoroark ex"
+        },
+        {
+          "count": 1,
+          "name": "Secret Box"
+        },
+        {
+          "count": 1,
+          "name": "Transformation Tome"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Yveltal"
+        }
+      ]
+    },
+    "opponentArchetype": "N's Zoroark ex / Meowth ex",
+    "opponentArchetypeId": "01M2VWQZQP5B64JB297GWVGZQ9",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "9c69b2fa91b9937a",
+    "parserVersion": 1,
+    "playedAt": "2026-09-19T03:53:13.965Z",
+    "players": [
+      "9c69b2fa91b9937a",
+      "33838f43a80b2a73"
+    ],
+    "result": "win",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive"
+        ],
+        "cardsDrawn": 35,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Pok\u00e9 Pad",
+          "Buddy-Buddy Poffin",
+          "Crispin",
+          "Pok\u00e9 Pad",
+          "Night Stretcher",
+          "Ultra Ball",
+          "Rare Candy",
+          "Boss's Orders"
+        ],
+        "damageDealt": 410,
+        "energyAttached": 2,
+        "evolutions": [
+          "Drakloak",
+          "Drakloak",
+          "Dragapult ex",
+          "Dusclops",
+          "Drakloak",
+          "Dusknoir"
+        ],
+        "knockouts": 3,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Budew",
+          "Dreepy",
+          "Duskull"
+        ],
+        "prizesTaken": 4,
+        "turnsTaken": 5
+      },
+      "opponent": {
+        "attacks": [
+          "Itchy Pollen"
+        ],
+        "cardsDrawn": 36,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Janine's Secret Art",
+          "Boss's Orders",
+          "Ultra Ball",
+          "Lillie's Determination",
+          "Secret Box",
+          "Transformation Tome",
+          "N's Castle",
+          "Lillie's Determination",
+          "N's PP Up",
+          "Buddy-Buddy Poffin"
+        ],
+        "damageDealt": 10,
+        "energyAttached": 6,
+        "evolutions": [
+          "N's Zoroark ex"
+        ],
+        "knockouts": 2,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "N's Zekrom",
+          "N's Darumaka",
+          "Yveltal",
+          "Meowth ex",
+          "Munkidori",
+          "N's Zekrom"
+        ],
+        "prizesTaken": 2,
+        "turnsTaken": 4
+      }
+    },
+    "turnCount": 9,
+    "unparsedCount": 0,
+    "uploadSource": "web",
+    "uploadedAt": "2026-09-19T03:53:13.965Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": true,
+    "winner": "33838f43a80b2a73",
+    "wonCoinToss": false
+  },
+  "unparsedLines": []
+}

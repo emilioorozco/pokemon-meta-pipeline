@@ -24,7 +24,11 @@ S3 parsed/{userId}/{gameId}.json
 ```
 
 Each stage is one command and one DAG task; inputs and outputs are files or
-tables, and every partition write is idempotent. Details and status per stage
+tables, and every partition write is idempotent.
+
+Bronze backfill: `python -m pipeline.backfill`
+
+Details and status per stage
 are in [docs/stages.md](docs/stages.md); what the source contains and why the
 schema looks the way it does is in [docs/discovery.md](docs/discovery.md).
 
@@ -41,6 +45,19 @@ AWS_PROFILE       optional named AWS profile
 HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
 PIPELINE_DATA_DIR where the lake and warehouse are written, default ./data
 ```
+
+One backfill run reads every blob under the prefix, lands the valid ones in
+bronze and quarantines the rest under `data/lake/quarantine/`:
+
+```
+op run --env-file=.env.op -- uv run python -m pipeline.backfill   # key from 1Password
+uv run python -m pipeline.backfill                                # env already populated
+```
+
+`--dry-run` reads and validates without writing anything; `--limit N` stops
+after N blobs.
+
+Data handling, anonymization and deletion: see [docs/data-handling.md](docs/data-handling.md).
 
 ## Layout
 

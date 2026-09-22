@@ -1,0 +1,1955 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "choice": "heads"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "b446df1846261426 chose heads for the opening coin flip."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "b446df1846261426 won the coin toss."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "first": true
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "b446df1846261426 decided to go first."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "b446df1846261426 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Budew, Buddy-Buddy Poffin, Boss's Orders, Lillie's Determination, Crispin, Lillie's Determination, Shaymin"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Cynthia's Gible",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "b446df1846261426 played Cynthia's Gible to the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Budew",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Budew to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 14,
+          "subs": [],
+          "text": "b446df1846261426 drew a card."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Cynthia's Power Weight",
+            "energy": false,
+            "target": "Cynthia's Gible"
+          },
+          "kind": "attach",
+          "line": 15,
+          "subs": [],
+          "text": "b446df1846261426 attached Cynthia's Power Weight to Cynthia's Gible in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [
+                "Cynthia's Gible, Cynthia's Gible"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "b446df1846261426 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 19,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Rocky Fighting Energy",
+            "energy": true,
+            "target": "Cynthia's Gible"
+          },
+          "kind": "attach",
+          "line": 20,
+          "subs": [],
+          "text": "b446df1846261426 attached Rocky Fighting Energy to Cynthia's Gible in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 21,
+          "subs": [],
+          "text": "b446df1846261426 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "b446df1846261426",
+      "title": "b446df1846261426's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 24,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Dreepy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 25,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 26,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dreepy, Duskull"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 27,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 29,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Boss's Orders, Lillie's Determination, Crispin, Shaymin"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 31,
+              "text": "33838f43a80b2a73 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Drakloak, Pok\u00e9 Pad, Pok\u00e9 Pad, Basic Psychic Energy, Basic Fire Energy, Ultra Ball, Meowth ex, Fezandipiti ex"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 33,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Dreepy"
+          },
+          "kind": "attach",
+          "line": 35,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Dreepy on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 20,
+            "move": "Itchy Pollen",
+            "pokemon": "Budew",
+            "target": "Cynthia's Gible",
+            "targetOwner": "b446df1846261426",
+            "weakness": "Grass"
+          },
+          "kind": "attack",
+          "line": 36,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 10 damage",
+                "Weakness to Grass: 10 damage",
+                "Total damage: 20 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 37,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Budew used Itchy Pollen on b446df1846261426\u2019s Cynthia's Gible for 20 damage. b446df1846261426's Cynthia's Gible took 10 more damage because of Grass Weakness."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 44,
+          "subs": [],
+          "text": "b446df1846261426 drew a card."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 45,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [
+                "Cynthia's Gabite, Rocky Fighting Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 46,
+              "text": "b446df1846261426 drew 2 cards."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 48,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426 played Hilda."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Gible",
+            "to": "Cynthia's Gabite"
+          },
+          "kind": "evolve",
+          "line": 49,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Gible to Cynthia's Gabite in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Gible",
+            "to": "Cynthia's Gabite"
+          },
+          "kind": "evolve",
+          "line": 50,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Gible to Cynthia's Gabite on the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Gible",
+            "to": "Cynthia's Gabite"
+          },
+          "kind": "evolve",
+          "line": 51,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Gible to Cynthia's Gabite on the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Rocky Fighting Energy",
+            "energy": true,
+            "target": "Cynthia's Gabite"
+          },
+          "kind": "attach",
+          "line": 52,
+          "subs": [],
+          "text": "b446df1846261426 attached Rocky Fighting Energy to Cynthia's Gabite on the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "move": "Champion's Call",
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "use",
+          "line": 53,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "card": "Cynthia's Roselia",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 54,
+              "text": "b446df1846261426 drew Cynthia's Roselia."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 55,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite used Champion's Call."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Cynthia's Roselia",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 56,
+          "subs": [],
+          "text": "b446df1846261426 played Cynthia's Roselia to the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "move": "Champion's Call",
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "use",
+          "line": 57,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "card": "Cynthia's Roselia",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 58,
+              "text": "b446df1846261426 drew Cynthia's Roselia."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 59,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite used Champion's Call."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "move": "Champion's Call",
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "use",
+          "line": 60,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "card": "Cynthia's Roselia",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 61,
+              "text": "b446df1846261426 drew Cynthia's Roselia."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 62,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite used Champion's Call."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Cynthia's Roselia",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 63,
+          "subs": [],
+          "text": "b446df1846261426 played Cynthia's Roselia to the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Cynthia's Roselia",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 64,
+          "subs": [],
+          "text": "b446df1846261426 played Cynthia's Roselia to the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "damage": 40,
+            "move": "Dragonslice",
+            "pokemon": "Cynthia's Gabite",
+            "target": "Budew",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 65,
+          "subs": [],
+          "text": "b446df1846261426's Cynthia's Gabite used Dragonslice on 33838f43a80b2a73\u2019s Budew for 40 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Budew"
+          },
+          "kind": "knockout",
+          "line": 66,
+          "subs": [],
+          "text": "33838f43a80b2a73's Budew was Knocked Out!"
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 67,
+          "subs": [],
+          "text": "b446df1846261426 took a Prize card."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "A card",
+            "owner": "b446df1846261426"
+          },
+          "kind": "to_hand",
+          "line": 68,
+          "subs": [],
+          "text": "A card was added to b446df1846261426's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dreepy"
+          },
+          "kind": "promote",
+          "line": 69,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dreepy is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "b446df1846261426",
+      "title": "b446df1846261426's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 72,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Fezandipiti ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 73,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Fezandipiti ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 74,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Fire Energy, Ultra Ball, Rare Candy"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 75,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73's Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 77,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 78,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Rare Candy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 79,
+              "text": "33838f43a80b2a73 drew Rare Candy."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 80,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dreepy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 81,
+              "text": "33838f43a80b2a73 drew Dreepy."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 82,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dreepy",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 83,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dreepy to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 84,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Fire Energy, Ultra Ball"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 85,
+              "text": "33838f43a80b2a73 discarded 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dragapult ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 87,
+              "text": "33838f43a80b2a73 drew Dragapult ex."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 88,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Ultra Ball."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 89,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "from": "Dreepy",
+                "to": "Dragapult ex"
+              },
+              "kind": "evolve",
+              "line": 90,
+              "text": "33838f43a80b2a73 evolved Dreepy to Dragapult ex in the Active Spot."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Rare Candy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Dragapult ex"
+          },
+          "kind": "attach",
+          "line": 91,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 92,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dusclops",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 93,
+              "text": "33838f43a80b2a73 drew Dusclops."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 94,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Duskull",
+            "to": "Dusclops"
+          },
+          "kind": "evolve",
+          "line": 95,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Duskull to Dusclops on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Meowth ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 96,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Meowth ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Last-Ditch Catch",
+            "pokemon": "Meowth ex"
+          },
+          "kind": "use",
+          "line": 97,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Lillie's Determination",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 98,
+              "text": "33838f43a80b2a73 drew Lillie's Determination."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 99,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73's Meowth ex used Last-Ditch Catch."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 100,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Boss's Orders, Rare Candy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 101,
+              "text": "33838f43a80b2a73 shuffled 2 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Fire Energy, Munkidori, Buddy-Buddy Poffin, Night Stretcher, Unfair Stamp, Moltres, Ultra Ball, Pok\u00e9 Pad"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 103,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Unfair Stamp"
+          },
+          "kind": "play_card",
+          "line": 105,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Fire Energy, Munkidori, Buddy-Buddy Poffin, Night Stretcher, Moltres, Ultra Ball, Pok\u00e9 Pad"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "shuffle_into",
+              "line": 106,
+              "text": "33838f43a80b2a73 shuffled 7 cards into their deck."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "shuffle_into",
+              "line": 108,
+              "text": "b446df1846261426 shuffled 3 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Duskull, Night Stretcher, Boss's Orders, Rare Candy, Crispin"
+              ],
+              "fields": {
+                "n": 5
+              },
+              "kind": "draw",
+              "line": 109,
+              "text": "33838f43a80b2a73 drew 5 cards."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 111,
+              "text": "b446df1846261426 drew 2 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Unfair Stamp."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Cursed Blast",
+            "pokemon": "Dusclops"
+          },
+          "kind": "use",
+          "line": 112,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 5,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Cynthia's Gabite"
+              },
+              "kind": "put_counters",
+              "line": 113,
+              "text": "33838f43a80b2a73 put 5 damage counters on 33838f43a80b2a73's Cynthia's Gabite."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dusclops used Cursed Blast."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dusclops"
+          },
+          "kind": "knockout",
+          "line": 114,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dusclops was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Dusclops"
+          },
+          "kind": "discard_from",
+          "line": 115,
+          "subs": [],
+          "text": "Duskull was discarded from 33838f43a80b2a73's Dusclops."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 116,
+          "subs": [],
+          "text": "b446df1846261426 took a Prize card."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "A card",
+            "owner": "b446df1846261426"
+          },
+          "kind": "to_hand",
+          "line": 117,
+          "subs": [],
+          "text": "A card was added to b446df1846261426's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Duskull",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 118,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Duskull to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 200,
+            "move": "Phantom Dive",
+            "pokemon": "Dragapult ex",
+            "target": "Cynthia's Gabite",
+            "targetOwner": "b446df1846261426",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 119,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "n": 1,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Cynthia's Roselia"
+              },
+              "kind": "put_counters",
+              "line": 120,
+              "text": "33838f43a80b2a73 put a damage counter on 33838f43a80b2a73's Cynthia's Roselia."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex used Phantom Dive on b446df1846261426\u2019s Cynthia's Gabite for 200 damage."
+        },
+        {
+          "fields": {
+            "card": "Rocky Fighting Energy"
+          },
+          "kind": "activated",
+          "line": 121,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 122,
+              "text": "Effects of Phantom Dive did not affect Cynthia's Gabite."
+            }
+          ],
+          "text": "Rocky Fighting Energy was activated."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "knockout",
+          "line": 123,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [
+                "Rocky Fighting Energy, Cynthia's Gible, Cynthia's Power Weight"
+              ],
+              "fields": {
+                "n": 3,
+                "owner": "b446df1846261426",
+                "pokemon": "Cynthia's Gabite"
+              },
+              "kind": "discard_from",
+              "line": 124,
+              "text": "3 cards were discarded from b446df1846261426's Cynthia's Gabite."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 126,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dusknoir",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 127,
+          "subs": [],
+          "text": "Dusknoir was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "promote",
+          "line": 128,
+          "subs": [],
+          "text": "b446df1846261426's Cynthia's Gabite is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 131,
+          "subs": [],
+          "text": "b446df1846261426 drew a card."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "move": "Champion's Call",
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "use",
+          "line": 132,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "card": "Cynthia's Roserade",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 133,
+              "text": "b446df1846261426 drew Cynthia's Roserade."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 134,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite used Champion's Call."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Roselia",
+            "to": "Cynthia's Roserade"
+          },
+          "kind": "evolve",
+          "line": 135,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Roselia to Cynthia's Roserade on the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "move": "Champion's Call",
+            "pokemon": "Cynthia's Gabite"
+          },
+          "kind": "use",
+          "line": 136,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {
+                "card": "Cynthia's Roserade",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 137,
+              "text": "b446df1846261426 drew Cynthia's Roserade."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 138,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Gabite used Champion's Call."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Roselia",
+            "to": "Cynthia's Roserade"
+          },
+          "kind": "evolve",
+          "line": 139,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Roselia to Cynthia's Roserade on the Bench."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 140,
+          "subs": [
+            {
+              "actor": "b446df1846261426",
+              "details": [
+                "Cynthia's Garchomp ex, Neo Upper Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 141,
+              "text": "b446df1846261426 drew 2 cards."
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 143,
+              "text": "b446df1846261426 shuffled their deck."
+            }
+          ],
+          "text": "b446df1846261426 played Hilda."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "from": "Cynthia's Gabite",
+            "to": "Cynthia's Garchomp ex"
+          },
+          "kind": "evolve",
+          "line": 144,
+          "subs": [],
+          "text": "b446df1846261426 evolved Cynthia's Gabite to Cynthia's Garchomp ex in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "Basic Fighting Energy",
+            "energy": true,
+            "target": "Cynthia's Garchomp ex"
+          },
+          "kind": "attach",
+          "line": 145,
+          "subs": [],
+          "text": "b446df1846261426 attached Basic Fighting Energy to Cynthia's Garchomp ex in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "damage": 320,
+            "move": "Draconic Buster",
+            "pokemon": "Cynthia's Garchomp ex",
+            "target": "Dragapult ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 146,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 260 damage",
+                "(Ability) Cheer On to Glory: 30 damage",
+                "(Ability) Cheer On to Glory: 30 damage",
+                "Total damage: 320 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 147,
+              "text": "Damage breakdown:"
+            },
+            {
+              "actor": "b446df1846261426",
+              "details": [
+                "Rocky Fighting Energy, Basic Fighting Energy"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "b446df1846261426",
+                "pokemon": "Cynthia's Garchomp ex"
+              },
+              "kind": "discard_from",
+              "line": 153,
+              "text": "2 cards were discarded from b446df1846261426's Cynthia's Garchomp ex."
+            }
+          ],
+          "text": "b446df1846261426's Cynthia's Garchomp ex used Draconic Buster on 33838f43a80b2a73\u2019s Dragapult ex for 320 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dragapult ex"
+          },
+          "kind": "knockout",
+          "line": 155,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Fire Energy, Basic Psychic Energy, Dreepy"
+              ],
+              "fields": {
+                "n": 3,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Dragapult ex"
+              },
+              "kind": "discard_from",
+              "line": 156,
+              "text": "3 cards were discarded from 33838f43a80b2a73's Dragapult ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Dragapult ex was Knocked Out!"
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "n": 2
+          },
+          "kind": "prize",
+          "line": 158,
+          "subs": [],
+          "text": "b446df1846261426 took 2 Prize cards."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "A card",
+            "owner": "b446df1846261426"
+          },
+          "kind": "to_hand",
+          "line": 159,
+          "subs": [],
+          "text": "A card was added to b446df1846261426's hand."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "card": "A card",
+            "owner": "b446df1846261426"
+          },
+          "kind": "to_hand",
+          "line": 160,
+          "subs": [],
+          "text": "A card was added to b446df1846261426's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Drakloak"
+          },
+          "kind": "promote",
+          "line": 161,
+          "subs": [],
+          "text": "33838f43a80b2a73's Drakloak is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "b446df1846261426",
+      "title": "b446df1846261426's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dragapult ex",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 164,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Dragapult ex."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 165,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Buddy-Buddy Poffin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 166,
+              "text": "33838f43a80b2a73 drew Buddy-Buddy Poffin."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Crispin"
+          },
+          "kind": "play_card",
+          "line": 167,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Psychic Energy",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 168,
+              "text": "33838f43a80b2a73 drew Basic Psychic Energy."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Basic Fire Energy",
+                "energy": true,
+                "target": "Drakloak"
+              },
+              "kind": "attach",
+              "line": 169,
+              "text": "33838f43a80b2a73 attached Basic Fire Energy to Drakloak in the Active Spot."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 170,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Crispin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Psychic Energy",
+            "energy": true,
+            "target": "Drakloak"
+          },
+          "kind": "attach",
+          "line": 171,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Psychic Energy to Drakloak in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Flip the Script",
+            "pokemon": "Fezandipiti ex"
+          },
+          "kind": "use",
+          "line": 172,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dreepy, Pok\u00e9 Pad, Pok\u00e9 Pad"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 173,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73's Fezandipiti ex used Flip the Script."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 175,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Drakloak",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 176,
+              "text": "33838f43a80b2a73 drew Drakloak."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 177,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dreepy",
+            "to": "Drakloak"
+          },
+          "kind": "evolve",
+          "line": 178,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dreepy to Drakloak on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Recon Directive",
+            "pokemon": "Drakloak"
+          },
+          "kind": "use",
+          "line": 179,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Boss's Orders",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 180,
+              "text": "33838f43a80b2a73 drew Boss's Orders."
+            }
+          ],
+          "text": "33838f43a80b2a73's Drakloak used Recon Directive."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Rare Candy"
+          },
+          "kind": "play_card",
+          "line": 181,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "from": "Duskull",
+                "to": "Dusknoir"
+              },
+              "kind": "evolve",
+              "line": 182,
+              "text": "33838f43a80b2a73 evolved Duskull to Dusknoir on the Bench."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Rare Candy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Drakloak",
+            "to": "Dragapult ex"
+          },
+          "kind": "evolve",
+          "line": 183,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Drakloak to Dragapult ex in the Active Spot."
+        },
+        {
+          "actor": "b446df1846261426",
+          "fields": {
+            "who": "you",
+            "winner": "b446df1846261426"
+          },
+          "kind": "concede",
+          "line": 184,
+          "subs": [],
+          "text": "You conceded. b446df1846261426 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 6
+    }
+  ],
+  "statsByPlayer": {
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Itchy Pollen",
+        "Phantom Dive"
+      ],
+      "cardsDrawn": 48,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Pok\u00e9 Pad",
+        "Ultra Ball",
+        "Rare Candy",
+        "Pok\u00e9 Pad",
+        "Lillie's Determination",
+        "Unfair Stamp",
+        "Crispin",
+        "Pok\u00e9 Pad",
+        "Rare Candy"
+      ],
+      "damageDealt": 220,
+      "energyAttached": 4,
+      "evolutions": [
+        "Drakloak",
+        "Dragapult ex",
+        "Dusclops",
+        "Drakloak",
+        "Dusknoir",
+        "Dragapult ex"
+      ],
+      "knockouts": 1,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Budew",
+        "Dreepy",
+        "Fezandipiti ex",
+        "Dreepy",
+        "Meowth ex",
+        "Duskull"
+      ],
+      "prizesTaken": 1,
+      "turnsTaken": 3
+    },
+    "b446df1846261426": {
+      "attacks": [
+        "Dragonslice",
+        "Draconic Buster"
+      ],
+      "cardsDrawn": 23,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Hilda",
+        "Hilda"
+      ],
+      "damageDealt": 360,
+      "energyAttached": 3,
+      "evolutions": [
+        "Cynthia's Gabite",
+        "Cynthia's Gabite",
+        "Cynthia's Gabite",
+        "Cynthia's Roserade",
+        "Cynthia's Roserade",
+        "Cynthia's Garchomp ex"
+      ],
+      "knockouts": 3,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Cynthia's Gible",
+        "Cynthia's Roselia",
+        "Cynthia's Roselia",
+        "Cynthia's Roselia"
+      ],
+      "prizesTaken": 4,
+      "turnsTaken": 3
+    }
+  },
+  "summary": {
+    "endReason": "concede",
+    "exportVariant": "stock",
+    "gameId": "0d213f9a4b58b3f4",
+    "hasFullDecklists": false,
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 2,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 2,
+          "name": "Basic Psychic Energy"
+        },
+        {
+          "count": 1,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Budew"
+        },
+        {
+          "count": 1,
+          "name": "Crispin"
+        },
+        {
+          "count": 2,
+          "name": "Dragapult ex"
+        },
+        {
+          "count": 2,
+          "name": "Drakloak"
+        },
+        {
+          "count": 2,
+          "name": "Dreepy"
+        },
+        {
+          "count": 1,
+          "name": "Dusclops"
+        },
+        {
+          "count": 1,
+          "name": "Dusknoir"
+        },
+        {
+          "count": 2,
+          "name": "Duskull"
+        },
+        {
+          "count": 1,
+          "name": "Fezandipiti ex"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Meowth ex"
+        },
+        {
+          "count": 3,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 2,
+          "name": "Rare Candy"
+        },
+        {
+          "count": 1,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Unfair Stamp"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 1,
+          "name": "Basic Fighting Energy"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 3,
+          "name": "Cynthia's Gabite"
+        },
+        {
+          "count": 1,
+          "name": "Cynthia's Garchomp ex"
+        },
+        {
+          "count": 1,
+          "name": "Cynthia's Gible"
+        },
+        {
+          "count": 1,
+          "name": "Cynthia's Power Weight"
+        },
+        {
+          "count": 3,
+          "name": "Cynthia's Roselia"
+        },
+        {
+          "count": 2,
+          "name": "Cynthia's Roserade"
+        },
+        {
+          "count": 2,
+          "name": "Hilda"
+        },
+        {
+          "count": 2,
+          "name": "Rocky Fighting Energy"
+        }
+      ]
+    },
+    "opponentArchetype": "Cynthia's Garchomp",
+    "opponentArchetypeId": "01M2EQNQAFK24J5AGXRDT3NMFW",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "b446df1846261426",
+    "parserVersion": 1,
+    "playedAt": "2026-09-14T01:14:29.355Z",
+    "players": [
+      "b446df1846261426",
+      "33838f43a80b2a73"
+    ],
+    "result": "loss",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Itchy Pollen",
+          "Phantom Dive"
+        ],
+        "cardsDrawn": 48,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Pok\u00e9 Pad",
+          "Ultra Ball",
+          "Rare Candy",
+          "Pok\u00e9 Pad",
+          "Lillie's Determination",
+          "Unfair Stamp",
+          "Crispin",
+          "Pok\u00e9 Pad",
+          "Rare Candy"
+        ],
+        "damageDealt": 220,
+        "energyAttached": 4,
+        "evolutions": [
+          "Drakloak",
+          "Dragapult ex",
+          "Dusclops",
+          "Drakloak",
+          "Dusknoir",
+          "Dragapult ex"
+        ],
+        "knockouts": 1,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Budew",
+          "Dreepy",
+          "Fezandipiti ex",
+          "Dreepy",
+          "Meowth ex",
+          "Duskull"
+        ],
+        "prizesTaken": 1,
+        "turnsTaken": 3
+      },
+      "opponent": {
+        "attacks": [
+          "Dragonslice",
+          "Draconic Buster"
+        ],
+        "cardsDrawn": 23,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Hilda",
+          "Hilda"
+        ],
+        "damageDealt": 360,
+        "energyAttached": 3,
+        "evolutions": [
+          "Cynthia's Gabite",
+          "Cynthia's Gabite",
+          "Cynthia's Gabite",
+          "Cynthia's Roserade",
+          "Cynthia's Roserade",
+          "Cynthia's Garchomp ex"
+        ],
+        "knockouts": 3,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Cynthia's Gible",
+          "Cynthia's Roselia",
+          "Cynthia's Roselia",
+          "Cynthia's Roselia"
+        ],
+        "prizesTaken": 4,
+        "turnsTaken": 3
+      }
+    },
+    "turnCount": 6,
+    "unparsedCount": 1,
+    "uploadSource": "unknown",
+    "uploadedAt": "2026-09-14T01:14:29.355Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": false,
+    "winner": "b446df1846261426",
+    "wonCoinToss": false
+  },
+  "unparsedLines": [
+    "- Effects of Phantom Dive did not affect Cynthia's Gabite."
+  ]
+}

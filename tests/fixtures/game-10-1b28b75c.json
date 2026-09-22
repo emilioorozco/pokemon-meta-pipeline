@@ -1,0 +1,1157 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "choice": "heads"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "7bea690c1c7e946f chose heads for the opening coin flip."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "7bea690c1c7e946f won the coin toss."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "first": true
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "7bea690c1c7e946f decided to go first."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "7bea690c1c7e946f drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Lillie's Determination, Team Rocket's Proton, Team Rocket's Transceiver, Bug Catching Set, Team Rocket's Spidops, Team Rocket's Tarountula, Team Rocket's Mewtwo ex"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {},
+          "kind": "mulligan",
+          "line": 10,
+          "subs": [
+            {
+              "details": [
+                "Boss's Orders, Dipplin, Tool Scrapper, Festival Grounds, Dipplin, Thwackey, Enhanced Hammer"
+              ],
+              "fields": {
+                "mulligan": 1
+              },
+              "kind": "revealed",
+              "line": 11,
+              "text": "Cards revealed from Mulligan 1"
+            }
+          ],
+          "text": "7bea690c1c7e946f took a mulligan."
+        },
+        {
+          "fields": {},
+          "kind": "other",
+          "line": 13,
+          "subs": [
+            {
+              "details": [
+                "Buddy-Buddy Poffin, Boss's Orders, Festival Grounds, Pok\u00e9 Pad, Basic Grass Energy, Basic Grass Energy, Dipplin"
+              ],
+              "fields": {
+                "mulligan": 2
+              },
+              "kind": "revealed",
+              "line": 14,
+              "text": "Cards revealed from Mulligan 2"
+            }
+          ],
+          "text": "7bea690c1c7e946f took 2 mulligans."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 2
+          },
+          "kind": "mulligan_draw",
+          "line": 16,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Night Stretcher, Team Rocket's Mimikyu"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 17,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 2 more cards because 7bea690c1c7e946f took at least 1 mulligan."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Applin",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 19,
+          "subs": [],
+          "text": "7bea690c1c7e946f played Applin to the Active Spot."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Grookey",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 20,
+          "subs": [],
+          "text": "7bea690c1c7e946f played Grookey to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 21,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 24,
+          "subs": [],
+          "text": "7bea690c1c7e946f drew a card."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 25,
+          "subs": [],
+          "text": "7bea690c1c7e946f ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "7bea690c1c7e946f",
+      "title": "7bea690c1c7e946f's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Giovanni",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 28,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Team Rocket's Giovanni."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Mimikyu",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 29,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Mimikyu to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Proton"
+          },
+          "kind": "play_card",
+          "line": 30,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Tarountula, Team Rocket's Tarountula, Team Rocket's Tarountula"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 31,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 33,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Team Rocket's Proton."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 34,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 35,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Tarountula",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 36,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Tarountula to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Bug Catching Set"
+          },
+          "kind": "play_card",
+          "line": 37,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Basic Grass Energy, Team Rocket's Spidops"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 38,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 40,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Bug Catching Set."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Team Rocket's Tarountula"
+          },
+          "kind": "attach",
+          "line": 41,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Grass Energy to Team Rocket's Tarountula in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 42,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 45,
+          "subs": [],
+          "text": "7bea690c1c7e946f drew a card."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Applin",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 46,
+          "subs": [],
+          "text": "7bea690c1c7e946f played Applin to the Bench."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 47,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "card": "Dipplin",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 48,
+              "text": "7bea690c1c7e946f drew Dipplin."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 49,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "from": "Applin",
+            "to": "Dipplin"
+          },
+          "kind": "evolve",
+          "line": 50,
+          "subs": [],
+          "text": "7bea690c1c7e946f evolved Applin to Dipplin in the Active Spot."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 51,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "card": "Thwackey",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 52,
+              "text": "7bea690c1c7e946f drew Thwackey."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 53,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "from": "Grookey",
+            "to": "Thwackey"
+          },
+          "kind": "evolve",
+          "line": 54,
+          "subs": [],
+          "text": "7bea690c1c7e946f evolved Grookey to Thwackey on the Bench."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Secret Box"
+          },
+          "kind": "play_card",
+          "line": 55,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [
+                "Kieran, Enhanced Hammer, Brave Bangle"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "discard",
+              "line": 56,
+              "text": "7bea690c1c7e946f discarded 3 cards."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [
+                "Buddy-Buddy Poffin, Air Balloon, Lillie's Determination, Festival Grounds"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "draw",
+              "line": 58,
+              "text": "7bea690c1c7e946f drew 4 cards."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 60,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Secret Box."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Festival Grounds"
+          },
+          "kind": "play_stadium",
+          "line": 61,
+          "subs": [],
+          "text": "7bea690c1c7e946f played Festival Grounds to the Stadium spot."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 62,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [
+                "Applin, Grookey"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 63,
+              "text": "7bea690c1c7e946f drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 65,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Thwackey"
+          },
+          "kind": "attach",
+          "line": 66,
+          "subs": [],
+          "text": "7bea690c1c7e946f attached Air Balloon to Thwackey on the Bench."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 67,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 68,
+              "text": "7bea690c1c7e946f drew 8 cards."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Lillie's Determination."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "energy": true,
+            "target": "Dipplin"
+          },
+          "kind": "attach",
+          "line": 69,
+          "subs": [],
+          "text": "7bea690c1c7e946f attached Basic Grass Energy to Dipplin in the Active Spot."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "move": "Boom Boom Groove",
+            "pokemon": "Thwackey"
+          },
+          "kind": "use",
+          "line": 70,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "n": 1
+              },
+              "kind": "draw",
+              "line": 71,
+              "text": "7bea690c1c7e946f drew a card."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 72,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f's Thwackey used Boom Boom Groove."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 73,
+          "subs": [
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "card": "Applin and played it to the Bench",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 74,
+              "text": "7bea690c1c7e946f drew Applin and played it to the Bench."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 75,
+              "text": "7bea690c1c7e946f shuffled their deck."
+            }
+          ],
+          "text": "7bea690c1c7e946f played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "damage": 100,
+            "move": "Do the Wave",
+            "pokemon": "Dipplin",
+            "target": "Team Rocket's Tarountula",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 76,
+          "subs": [
+            {
+              "details": [
+                "5 Benched Pok\u00e9mon: 100 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 77,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "7bea690c1c7e946f's Dipplin used Do the Wave on 33838f43a80b2a73\u2019s Team Rocket's Tarountula for 100 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Tarountula"
+          },
+          "kind": "knockout",
+          "line": 80,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Tarountula was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Grass Energy",
+            "owner": "33838f43a80b2a73",
+            "pokemon": "Team Rocket's Tarountula"
+          },
+          "kind": "discard_from",
+          "line": 81,
+          "subs": [],
+          "text": "Basic Grass Energy was discarded from 33838f43a80b2a73's Team Rocket's Tarountula."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 82,
+          "subs": [],
+          "text": "7bea690c1c7e946f took a Prize card."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "A card",
+            "owner": "7bea690c1c7e946f"
+          },
+          "kind": "to_hand",
+          "line": 83,
+          "subs": [],
+          "text": "A card was added to 7bea690c1c7e946f's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "promote",
+          "line": 84,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mimikyu is now in the Active Spot."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "move": "Festival Lead",
+            "pokemon": "Dipplin"
+          },
+          "kind": "use",
+          "line": 85,
+          "subs": [
+            {
+              "details": [
+                "5 Benched Pok\u00e9mon: 100 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 86,
+              "text": "Damage breakdown:"
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "damage": 100,
+                "move": "Do the Wave",
+                "pokemon": "Dipplin",
+                "target": "Team Rocket's Mimikyu",
+                "targetOwner": "33838f43a80b2a73",
+                "weakness": ""
+              },
+              "kind": "attack",
+              "line": 89,
+              "text": "7bea690c1c7e946f's Dipplin used Do the Wave on 33838f43a80b2a73\u2019s Team Rocket's Mimikyu for 100 damage."
+            },
+            {
+              "actor": "7bea690c1c7e946f",
+              "details": [],
+              "fields": {
+                "choice": "Do the Wave"
+              },
+              "kind": "choice",
+              "line": 90,
+              "text": "7bea690c1c7e946f chose Do the Wave"
+            }
+          ],
+          "text": "7bea690c1c7e946f's Dipplin used Festival Lead."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Mimikyu"
+          },
+          "kind": "knockout",
+          "line": 91,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Mimikyu was Knocked Out!"
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 92,
+          "subs": [],
+          "text": "7bea690c1c7e946f took a Prize card."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "card": "A card",
+            "owner": "7bea690c1c7e946f"
+          },
+          "kind": "to_hand",
+          "line": 93,
+          "subs": [],
+          "text": "A card was added to 7bea690c1c7e946f's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Team Rocket's Tarountula"
+          },
+          "kind": "promote",
+          "line": 94,
+          "subs": [],
+          "text": "33838f43a80b2a73's Team Rocket's Tarountula is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "7bea690c1c7e946f",
+      "title": "7bea690c1c7e946f's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Special Red Card",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 97,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Special Red Card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Team Rocket's Tarountula",
+            "to": "Team Rocket's Spidops"
+          },
+          "kind": "evolve",
+          "line": 98,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Team Rocket's Tarountula to Team Rocket's Spidops in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Team Rocket's Tarountula",
+            "to": "Team Rocket's Spidops"
+          },
+          "kind": "evolve",
+          "line": 99,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Team Rocket's Tarountula to Team Rocket's Spidops on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Team Rocket's Mewtwo ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 100,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Team Rocket's Mewtwo ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 101,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Transceiver, Night Stretcher, Team Rocket's Giovanni, Special Red Card"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 102,
+              "text": "33838f43a80b2a73 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Team Rocket's Ariana, Brave Bangle, Team Rocket's Articuno, Team Rocket's Giovanni, Night Stretcher, Ultra Ball, Team Rocket's Giovanni, Maximum Belt"
+              ],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 104,
+              "text": "33838f43a80b2a73 drew 8 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "7bea690c1c7e946f",
+          "fields": {
+            "who": "you",
+            "winner": "7bea690c1c7e946f"
+          },
+          "kind": "concede",
+          "line": 106,
+          "subs": [],
+          "text": "You conceded. 7bea690c1c7e946f wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 4
+    }
+  ],
+  "statsByPlayer": {
+    "33838f43a80b2a73": {
+      "attacks": [],
+      "cardsDrawn": 26,
+      "cardsPlayed": [
+        "Team Rocket's Proton",
+        "Bug Catching Set",
+        "Lillie's Determination"
+      ],
+      "damageDealt": 0,
+      "energyAttached": 1,
+      "evolutions": [
+        "Team Rocket's Spidops",
+        "Team Rocket's Spidops"
+      ],
+      "knockouts": 0,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Team Rocket's Tarountula",
+        "Team Rocket's Mimikyu",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Tarountula",
+        "Team Rocket's Mewtwo ex"
+      ],
+      "prizesTaken": 0,
+      "turnsTaken": 2
+    },
+    "7bea690c1c7e946f": {
+      "attacks": [
+        "Do the Wave"
+      ],
+      "cardsDrawn": 27,
+      "cardsPlayed": [
+        "Pok\u00e9 Pad",
+        "Pok\u00e9 Pad",
+        "Secret Box",
+        "Festival Grounds",
+        "Buddy-Buddy Poffin",
+        "Lillie's Determination",
+        "Buddy-Buddy Poffin"
+      ],
+      "damageDealt": 200,
+      "energyAttached": 1,
+      "evolutions": [
+        "Dipplin",
+        "Thwackey"
+      ],
+      "knockouts": 2,
+      "mulligans": 1,
+      "pokemonPlayed": [
+        "Applin",
+        "Grookey",
+        "Applin"
+      ],
+      "prizesTaken": 2,
+      "turnsTaken": 2
+    }
+  },
+  "summary": {
+    "endReason": "concede",
+    "exportVariant": "stock",
+    "gameId": "1b28b75c87d110b1",
+    "hasFullDecklists": false,
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 2,
+          "name": "Basic Grass Energy"
+        },
+        {
+          "count": 1,
+          "name": "Bug Catching Set"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Special Red Card"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Giovanni"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Mewtwo ex"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Mimikyu"
+        },
+        {
+          "count": 1,
+          "name": "Team Rocket's Proton"
+        },
+        {
+          "count": 2,
+          "name": "Team Rocket's Spidops"
+        },
+        {
+          "count": 4,
+          "name": "Team Rocket's Tarountula"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 1,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 2,
+          "name": "Applin"
+        },
+        {
+          "count": 1,
+          "name": "Applin and played it to the Bench"
+        },
+        {
+          "count": 1,
+          "name": "Basic Grass Energy"
+        },
+        {
+          "count": 2,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Dipplin"
+        },
+        {
+          "count": 1,
+          "name": "Festival Grounds"
+        },
+        {
+          "count": 1,
+          "name": "Grookey"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 2,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Secret Box"
+        },
+        {
+          "count": 1,
+          "name": "Thwackey"
+        }
+      ]
+    },
+    "opponentArchetype": "Festival Lead",
+    "opponentArchetypeId": "01M2G1TS18VVW4E7ANEJP131VG",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "7bea690c1c7e946f",
+    "parserVersion": 1,
+    "playedAt": "2026-09-14T13:31:15.122Z",
+    "players": [
+      "7bea690c1c7e946f",
+      "33838f43a80b2a73"
+    ],
+    "result": "loss",
+    "stats": {
+      "me": {
+        "attacks": [],
+        "cardsDrawn": 26,
+        "cardsPlayed": [
+          "Team Rocket's Proton",
+          "Bug Catching Set",
+          "Lillie's Determination"
+        ],
+        "damageDealt": 0,
+        "energyAttached": 1,
+        "evolutions": [
+          "Team Rocket's Spidops",
+          "Team Rocket's Spidops"
+        ],
+        "knockouts": 0,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Team Rocket's Tarountula",
+          "Team Rocket's Mimikyu",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Tarountula",
+          "Team Rocket's Mewtwo ex"
+        ],
+        "prizesTaken": 0,
+        "turnsTaken": 2
+      },
+      "opponent": {
+        "attacks": [
+          "Do the Wave"
+        ],
+        "cardsDrawn": 27,
+        "cardsPlayed": [
+          "Pok\u00e9 Pad",
+          "Pok\u00e9 Pad",
+          "Secret Box",
+          "Festival Grounds",
+          "Buddy-Buddy Poffin",
+          "Lillie's Determination",
+          "Buddy-Buddy Poffin"
+        ],
+        "damageDealt": 200,
+        "energyAttached": 1,
+        "evolutions": [
+          "Dipplin",
+          "Thwackey"
+        ],
+        "knockouts": 2,
+        "mulligans": 1,
+        "pokemonPlayed": [
+          "Applin",
+          "Grookey",
+          "Applin"
+        ],
+        "prizesTaken": 2,
+        "turnsTaken": 2
+      }
+    },
+    "turnCount": 4,
+    "unparsedCount": 1,
+    "uploadSource": "unknown",
+    "uploadedAt": "2026-09-14T13:31:15.122Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": false,
+    "winner": "7bea690c1c7e946f",
+    "wonCoinToss": false
+  },
+  "unparsedLines": [
+    "7bea690c1c7e946f took 2 mulligans."
+  ]
+}

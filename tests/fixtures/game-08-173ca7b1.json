@@ -1,0 +1,2576 @@
+{
+  "extras": {},
+  "schemaVersion": 2,
+  "segments": [
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "choice": "tails"
+          },
+          "kind": "coin_choice",
+          "line": 2,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 chose tails for the opening coin flip."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "won": true
+          },
+          "kind": "coin_toss",
+          "line": 3,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 won the coin toss."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "first": false
+          },
+          "kind": "go_first",
+          "line": 4,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 decided to go second."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 5,
+          "subs": [
+            {
+              "details": [],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 6,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 7
+          },
+          "kind": "opening_hand",
+          "line": 7,
+          "subs": [
+            {
+              "details": [
+                "Boss's Orders, Hilda, Mega Lopunny ex, Boss's Orders, Buddy-Buddy Poffin, Chien-Pao, Mist Energy"
+              ],
+              "fields": {
+                "n": 7
+              },
+              "kind": "drawn_cards",
+              "line": 8,
+              "text": "7 drawn cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 drew 7 cards for the opening hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Snorunt",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 10,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 played Snorunt to the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Chien-Pao",
+            "to": "Active Spot"
+          },
+          "kind": "play_pokemon",
+          "line": 11,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Chien-Pao to the Active Spot."
+        }
+      ],
+      "kind": "setup",
+      "title": "Setup"
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Wally's Compassion",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 14,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Wally's Compassion."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 15,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Buneary, Fan Rotom"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 16,
+              "text": "33838f43a80b2a73 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 18,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "move": "Fan Call",
+            "pokemon": "Fan Rotom"
+          },
+          "kind": "use",
+          "line": 19,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dunsparce, Dunsparce, Buneary"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 20,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 22,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73's Fan Rotom used Fan Call."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 23,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dunsparce to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 24,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dunsparce to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Buneary",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 25,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Buneary to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Chien-Pao"
+          },
+          "kind": "attach",
+          "line": 26,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Mist Energy to Chien-Pao in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {},
+          "kind": "end_turn",
+          "line": 27,
+          "subs": [],
+          "text": "33838f43a80b2a73 ended their turn."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 1
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 30,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 31,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Staryu, Dunsparce"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 32,
+              "text": "2aed844ba14ce9d7 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 34,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 35,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Snorunt, Pok\u00e9 Pad"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 36,
+              "text": "2aed844ba14ce9d7 discarded 2 cards."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Mew ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 38,
+              "text": "2aed844ba14ce9d7 drew Mew ex."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 39,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Ultra Ball."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Mew ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 40,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 played Mew ex to the Bench."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 41,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 42,
+              "text": "2aed844ba14ce9d7 shuffled 2 cards into their deck."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "n": 8
+              },
+              "kind": "draw",
+              "line": 43,
+              "text": "2aed844ba14ce9d7 drew 8 cards."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Lillie's Determination."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Snorunt"
+          },
+          "kind": "attach",
+          "line": 44,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Basic Water Energy to Snorunt in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 45,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Dunsparce, Snorunt"
+              ],
+              "fields": {
+                "n": 2,
+                "toBench": true
+              },
+              "kind": "draw",
+              "line": 46,
+              "text": "2aed844ba14ce9d7 drew 2 cards and played them to the Bench."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 48,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 10,
+            "move": "Chilly",
+            "pokemon": "Snorunt",
+            "target": "Chien-Pao",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 49,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Snorunt used Chilly on 33838f43a80b2a73\u2019s Chien-Pao for 10 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 2
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 52,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 53,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dudunsparce, Mist Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 54,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 56,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Hilda."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 57,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 58,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Abra, Lillie's Clefairy ex, Mega Lopunny ex"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 59,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 61,
+              "text": "33838f43a80b2a73 shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Dudunsparce."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Buneary",
+            "to": "Mega Lopunny ex"
+          },
+          "kind": "evolve",
+          "line": 63,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Buneary to Mega Lopunny ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Mega Lopunny ex"
+          },
+          "kind": "attach",
+          "line": 64,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Mist Energy to Mega Lopunny ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Chien-Pao"
+          },
+          "kind": "retreat",
+          "line": 65,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Mist Energy",
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Chien-Pao"
+              },
+              "kind": "discard_from",
+              "line": 66,
+              "text": "Mist Energy was discarded from 33838f43a80b2a73's Chien-Pao."
+            }
+          ],
+          "text": "33838f43a80b2a73 retreated Chien-Pao to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 67,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Buneary",
+            "to": "Mega Lopunny ex"
+          },
+          "kind": "evolve",
+          "line": 68,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Buneary to Mega Lopunny ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Abra",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 69,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Abra to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 230,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Snorunt",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 70,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "Damage: 170 damage",
+                "Damage: 170 damage",
+                "Total damage: 230 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 71,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Snorunt for 230 damage."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Snorunt"
+          },
+          "kind": "knockout",
+          "line": 77,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Snorunt was Knocked Out!"
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Basic Water Energy",
+            "owner": "2aed844ba14ce9d7",
+            "pokemon": "Snorunt"
+          },
+          "kind": "discard_from",
+          "line": 78,
+          "subs": [],
+          "text": "Basic Water Energy was discarded from 2aed844ba14ce9d7's Snorunt."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 79,
+          "subs": [],
+          "text": "33838f43a80b2a73 took a Prize card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dudunsparce",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 80,
+          "subs": [],
+          "text": "Dudunsparce was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Staryu"
+          },
+          "kind": "promote",
+          "line": 81,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Staryu is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 3
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 84,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Ultra Ball"
+          },
+          "kind": "play_card",
+          "line": 85,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Lillie's Clefairy ex, Salvatore"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "discard",
+              "line": 86,
+              "text": "2aed844ba14ce9d7 discarded 2 cards."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Mega Starmie ex",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 88,
+              "text": "2aed844ba14ce9d7 drew Mega Starmie ex."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 89,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Ultra Ball."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "from": "Staryu",
+            "to": "Mega Starmie ex"
+          },
+          "kind": "evolve",
+          "line": 90,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 evolved Staryu to Mega Starmie ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 91,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Mega Froslass ex, Legacy Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 92,
+              "text": "2aed844ba14ce9d7 drew 2 cards."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 94,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Hilda."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Legacy Energy",
+            "energy": true,
+            "target": "Mega Starmie ex"
+          },
+          "kind": "attach",
+          "line": 95,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Legacy Energy to Mega Starmie ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "from": "Snorunt",
+            "to": "Mega Froslass ex"
+          },
+          "kind": "evolve",
+          "line": 96,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 evolved Snorunt to Mega Froslass ex on the Bench."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 120,
+            "move": "Jetting Blow",
+            "pokemon": "Mega Starmie ex",
+            "target": "Mega Lopunny ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 97,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "damage": 50,
+                "pokemon": "Abra"
+              },
+              "kind": "took_damage",
+              "line": 98,
+              "text": "33838f43a80b2a73's Abra took 50 damage."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex used Jetting Blow on 33838f43a80b2a73\u2019s Mega Lopunny ex for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Abra"
+          },
+          "kind": "knockout",
+          "line": 99,
+          "subs": [],
+          "text": "33838f43a80b2a73's Abra was Knocked Out!"
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 100,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 took a Prize card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 101,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 4
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Hilda",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 104,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Hilda."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "from": "Dunsparce",
+            "to": "Dudunsparce"
+          },
+          "kind": "evolve",
+          "line": 105,
+          "subs": [],
+          "text": "33838f43a80b2a73 evolved Dunsparce to Dudunsparce on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dudunsparce"
+          },
+          "kind": "play_card",
+          "line": 106,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Air Balloon, Hilda, Battle Cage"
+              ],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 107,
+              "text": "33838f43a80b2a73 drew 3 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dudunsparce, Dunsparce"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "shuffle_into",
+              "line": 109,
+              "text": "33838f43a80b2a73 shuffled 2 cards into their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Dudunsparce."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Wally's Compassion"
+          },
+          "kind": "play_card",
+          "line": 111,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 112,
+              "text": "33838f43a80b2a73's Mega Lopunny ex healed 120 damage."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Mist Energy"
+              },
+              "kind": "move_to_hand",
+              "line": 113,
+              "text": "33838f43a80b2a73 moved 33838f43a80b2a73's Mist Energy to their hand."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Wally's Compassion."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Air Balloon",
+            "energy": false,
+            "target": "Mega Lopunny ex"
+          },
+          "kind": "attach",
+          "line": 114,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Air Balloon to Mega Lopunny ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "retreat",
+          "line": 115,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Mega Lopunny ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 116,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Mega Lopunny ex"
+          },
+          "kind": "attach",
+          "line": 117,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Mist Energy to Mega Lopunny ex in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Clefairy ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 118,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Lillie's Clefairy ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Battle Cage"
+          },
+          "kind": "play_stadium",
+          "line": 119,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Battle Cage to the Stadium spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 230,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Mega Starmie ex",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 120,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "Damage: 170 damage",
+                "Damage: 170 damage",
+                "Total damage: 230 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 121,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Mega Starmie ex for 230 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 5
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 129,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Wally's Compassion"
+          },
+          "kind": "play_card",
+          "line": 130,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 131,
+              "text": "2aed844ba14ce9d7's Mega Starmie ex healed 230 damage."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Legacy Energy"
+              },
+              "kind": "move_to_hand",
+              "line": 132,
+              "text": "2aed844ba14ce9d7 moved 2aed844ba14ce9d7's Legacy Energy to their hand."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Wally's Compassion."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Legacy Energy",
+            "energy": true,
+            "target": "Mega Starmie ex"
+          },
+          "kind": "attach",
+          "line": 133,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Legacy Energy to Mega Starmie ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 120,
+            "move": "Jetting Blow",
+            "pokemon": "Mega Starmie ex",
+            "target": "Mega Lopunny ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 134,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "damage": 50,
+                "pokemon": "Fan Rotom"
+              },
+              "kind": "took_damage",
+              "line": 135,
+              "text": "33838f43a80b2a73's Fan Rotom took 50 damage."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex used Jetting Blow on 33838f43a80b2a73\u2019s Mega Lopunny ex for 120 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 6
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 138,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Mist Energy."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Mega Lopunny ex"
+          },
+          "kind": "attach",
+          "line": 139,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Mist Energy to Mega Lopunny ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 140,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "pokemon": "Mega Froslass ex",
+                "previous": "Mega Starmie ex"
+              },
+              "kind": "switch",
+              "line": 141,
+              "text": "2aed844ba14ce9d7's Mega Froslass ex was switched with 2aed844ba14ce9d7's Mega Starmie ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Boss's Orders."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Froslass ex"
+          },
+          "kind": "promote",
+          "line": 142,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Mega Froslass ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "retreat",
+          "line": 143,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Mist Energy",
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Mega Lopunny ex"
+              },
+              "kind": "discard_from",
+              "line": 144,
+              "text": "Mist Energy was discarded from 33838f43a80b2a73's Mega Lopunny ex."
+            }
+          ],
+          "text": "33838f43a80b2a73 retreated Mega Lopunny ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 145,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 230,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Mega Froslass ex",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 146,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "Damage: 170 damage",
+                "Damage: 170 damage",
+                "Total damage: 230 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 147,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Mega Froslass ex for 230 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 7
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 155,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 156,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 157,
+              "text": "2aed844ba14ce9d7 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 158,
+              "text": "2aed844ba14ce9d7 drew 6 cards."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Lillie's Determination."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Night Stretcher"
+          },
+          "kind": "play_card",
+          "line": 159,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Basic Water Energy"
+              },
+              "kind": "move_to_hand",
+              "line": 160,
+              "text": "2aed844ba14ce9d7 moved 2aed844ba14ce9d7's Basic Water Energy to their hand."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Night Stretcher."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Mega Froslass ex"
+          },
+          "kind": "attach",
+          "line": 161,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Basic Water Energy to Mega Froslass ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Froslass ex"
+          },
+          "kind": "retreat",
+          "line": 162,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Basic Water Energy",
+                "owner": "2aed844ba14ce9d7",
+                "pokemon": "Mega Froslass ex"
+              },
+              "kind": "discard_from",
+              "line": 163,
+              "text": "Basic Water Energy was discarded from 2aed844ba14ce9d7's Mega Froslass ex."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 retreated Mega Froslass ex to the Bench."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Starmie ex"
+          },
+          "kind": "promote",
+          "line": 164,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex is now in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 120,
+            "move": "Jetting Blow",
+            "pokemon": "Mega Starmie ex",
+            "target": "Mega Lopunny ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 165,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "damage": 50,
+                "pokemon": "Fan Rotom"
+              },
+              "kind": "took_damage",
+              "line": 166,
+              "text": "33838f43a80b2a73's Fan Rotom took 50 damage."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex used Jetting Blow on 33838f43a80b2a73\u2019s Mega Lopunny ex for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Fan Rotom"
+          },
+          "kind": "knockout",
+          "line": 167,
+          "subs": [],
+          "text": "33838f43a80b2a73's Fan Rotom was Knocked Out!"
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 168,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 took a Prize card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 169,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 8
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 172,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 173,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "pokemon": "Mega Froslass ex",
+                "previous": "Mega Starmie ex"
+              },
+              "kind": "switch",
+              "line": 174,
+              "text": "2aed844ba14ce9d7's Mega Froslass ex was switched with 2aed844ba14ce9d7's Mega Starmie ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Boss's Orders."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Froslass ex"
+          },
+          "kind": "promote",
+          "line": 175,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Mega Froslass ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 60,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Mega Froslass ex",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 176,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Mega Froslass ex for 60 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 9
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 179,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Buddy-Buddy Poffin"
+          },
+          "kind": "play_card",
+          "line": 180,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 181,
+              "text": "2aed844ba14ce9d7 shuffled their deck."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Buddy-Buddy Poffin."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Ignition Energy",
+            "energy": true,
+            "target": "Mega Froslass ex"
+          },
+          "kind": "attach",
+          "line": 182,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Ignition Energy to Mega Froslass ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Froslass ex"
+          },
+          "kind": "retreat",
+          "line": 183,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "card": "Ignition Energy",
+                "owner": "2aed844ba14ce9d7",
+                "pokemon": "Mega Froslass ex"
+              },
+              "kind": "discard_from",
+              "line": 184,
+              "text": "Ignition Energy was discarded from 2aed844ba14ce9d7's Mega Froslass ex."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 retreated Mega Froslass ex to the Bench."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Starmie ex"
+          },
+          "kind": "promote",
+          "line": 185,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex is now in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 120,
+            "move": "Jetting Blow",
+            "pokemon": "Mega Starmie ex",
+            "target": "Mega Lopunny ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 186,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "damage": 50,
+                "pokemon": "Chien-Pao"
+              },
+              "kind": "took_damage",
+              "line": 187,
+              "text": "33838f43a80b2a73's Chien-Pao took 50 damage."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex used Jetting Blow on 33838f43a80b2a73\u2019s Mega Lopunny ex for 120 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 10
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 190,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad"
+          },
+          "kind": "play_card",
+          "line": 191,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "card": "Dunsparce",
+                "n": 1
+              },
+              "kind": "draw_named",
+              "line": 192,
+              "text": "33838f43a80b2a73 drew Dunsparce."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 193,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Dunsparce",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 194,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Dunsparce to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Hilda"
+          },
+          "kind": "play_card",
+          "line": 195,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Dudunsparce, Mist Energy"
+              ],
+              "fields": {
+                "n": 2
+              },
+              "kind": "draw",
+              "line": 196,
+              "text": "33838f43a80b2a73 drew 2 cards."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {},
+              "kind": "shuffle",
+              "line": 198,
+              "text": "33838f43a80b2a73 shuffled their deck."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Hilda."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mist Energy",
+            "energy": true,
+            "target": "Mega Lopunny ex"
+          },
+          "kind": "attach",
+          "line": 199,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Mist Energy to Mega Lopunny ex on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "retreat",
+          "line": 200,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Mega Lopunny ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 201,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 230,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Mega Starmie ex",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 202,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "Damage: 170 damage",
+                "Damage: 170 damage",
+                "Total damage: 230 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 203,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Mega Starmie ex for 230 damage."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 11
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 211,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Boss's Orders"
+          },
+          "kind": "play_card",
+          "line": 212,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "pokemon": "Dunsparce",
+                "previous": "Mega Lopunny ex"
+              },
+              "kind": "switch",
+              "line": 213,
+              "text": "33838f43a80b2a73's Dunsparce was switched with 33838f43a80b2a73's Mega Lopunny ex to become the Active Pok\u00e9mon."
+            }
+          ],
+          "text": "2aed844ba14ce9d7 played Boss's Orders."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "promote",
+          "line": 214,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dunsparce is now in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 120,
+            "move": "Jetting Blow",
+            "pokemon": "Mega Starmie ex",
+            "target": "Dunsparce",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 215,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [],
+              "fields": {
+                "damage": 50,
+                "pokemon": "Mega Lopunny ex"
+              },
+              "kind": "took_damage",
+              "line": 216,
+              "text": "33838f43a80b2a73's Mega Lopunny ex took 50 damage."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex used Jetting Blow on 33838f43a80b2a73\u2019s Dunsparce for 120 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Dunsparce"
+          },
+          "kind": "knockout",
+          "line": 217,
+          "subs": [],
+          "text": "33838f43a80b2a73's Dunsparce was Knocked Out!"
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "prize",
+          "line": 218,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 took a Prize card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 219,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 220,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 12
+    },
+    {
+      "entries": [
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9 Pad",
+            "n": 1
+          },
+          "kind": "draw_named",
+          "line": 223,
+          "subs": [],
+          "text": "33838f43a80b2a73 drew Pok\u00e9 Pad."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination"
+          },
+          "kind": "play_card",
+          "line": 224,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Lillie's Determination, Hilda, Dudunsparce, Pok\u00e9 Pad"
+              ],
+              "fields": {
+                "n": 4
+              },
+              "kind": "shuffle_into",
+              "line": 225,
+              "text": "33838f43a80b2a73 shuffled 4 cards into their deck."
+            },
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Special Red Card, Basic Fire Energy, Battle Cage, Mew ex, Dudunsparce, Basic Fire Energy"
+              ],
+              "fields": {
+                "n": 6
+              },
+              "kind": "draw",
+              "line": 227,
+              "text": "33838f43a80b2a73 drew 6 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Lillie's Determination."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Basic Fire Energy",
+            "energy": true,
+            "target": "Chien-Pao"
+          },
+          "kind": "attach",
+          "line": 229,
+          "subs": [],
+          "text": "33838f43a80b2a73 attached Basic Fire Energy to Chien-Pao on the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Mew ex",
+            "to": "Bench"
+          },
+          "kind": "play_pokemon",
+          "line": 230,
+          "subs": [],
+          "text": "33838f43a80b2a73 played Mew ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Special Red Card"
+          },
+          "kind": "play_card",
+          "line": 231,
+          "subs": [
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 232,
+              "text": "2aed844ba14ce9d7 shuffled their hand."
+            },
+            {
+              "details": [],
+              "fields": {},
+              "kind": "other",
+              "line": 233,
+              "text": "2aed844ba14ce9d7 put 6 cards on the bottom of their deck."
+            },
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [],
+              "fields": {
+                "n": 3
+              },
+              "kind": "draw",
+              "line": 234,
+              "text": "2aed844ba14ce9d7 drew 3 cards."
+            }
+          ],
+          "text": "33838f43a80b2a73 played Special Red Card."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "retreat",
+          "line": 235,
+          "subs": [],
+          "text": "33838f43a80b2a73 retreated Mega Lopunny ex to the Bench."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "promote",
+          "line": 236,
+          "subs": [],
+          "text": "33838f43a80b2a73's Mega Lopunny ex is now in the Active Spot."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "damage": 230,
+            "move": "Gale Thrust",
+            "pokemon": "Mega Lopunny ex",
+            "target": "Mega Starmie ex",
+            "targetOwner": "2aed844ba14ce9d7",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 237,
+          "subs": [
+            {
+              "details": [
+                "Base damage: 60 damage",
+                "Damage: 170 damage",
+                "Damage: 170 damage",
+                "Total damage: 230 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 238,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex used Gale Thrust on 2aed844ba14ce9d7\u2019s Mega Starmie ex for 230 damage."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mega Starmie ex"
+          },
+          "kind": "knockout",
+          "line": 244,
+          "subs": [
+            {
+              "actor": "2aed844ba14ce9d7",
+              "details": [
+                "Legacy Energy, Staryu"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "2aed844ba14ce9d7",
+                "pokemon": "Mega Starmie ex"
+              },
+              "kind": "discard_from",
+              "line": 245,
+              "text": "2 cards were discarded from 2aed844ba14ce9d7's Mega Starmie ex."
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mega Starmie ex was Knocked Out!"
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "n": 2
+          },
+          "kind": "prize",
+          "line": 247,
+          "subs": [],
+          "text": "33838f43a80b2a73 took 2 Prize cards."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Pok\u00e9gear 3.0",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 248,
+          "subs": [],
+          "text": "Pok\u00e9gear 3.0 was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "card": "Lillie's Determination",
+            "owner": "33838f43a80b2a73"
+          },
+          "kind": "to_hand",
+          "line": 249,
+          "subs": [],
+          "text": "Lillie's Determination was added to 33838f43a80b2a73's hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "pokemon": "Mew ex"
+          },
+          "kind": "promote",
+          "line": 250,
+          "subs": [],
+          "text": "2aed844ba14ce9d7's Mew ex is now in the Active Spot."
+        }
+      ],
+      "kind": "turn",
+      "player": "33838f43a80b2a73",
+      "title": "33838f43a80b2a73's Turn",
+      "turnNumber": 13
+    },
+    {
+      "entries": [
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 1
+          },
+          "kind": "draw",
+          "line": 253,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 drew a card."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "Basic Water Energy",
+            "energy": true,
+            "target": "Mew ex"
+          },
+          "kind": "attach",
+          "line": 254,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 attached Basic Water Energy to Mew ex in the Active Spot."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "damage": 250,
+            "move": "Resentful Refrain",
+            "pokemon": "Mew ex",
+            "target": "Mega Lopunny ex",
+            "targetOwner": "33838f43a80b2a73",
+            "weakness": ""
+          },
+          "kind": "attack",
+          "line": 255,
+          "subs": [
+            {
+              "details": [
+                "5 cards in hand: 250 damage"
+              ],
+              "fields": {},
+              "kind": "breakdown",
+              "line": 256,
+              "text": "Damage breakdown:"
+            }
+          ],
+          "text": "2aed844ba14ce9d7's Mew ex used Resentful Refrain on 33838f43a80b2a73\u2019s Mega Lopunny ex for 250 damage."
+        },
+        {
+          "actor": "33838f43a80b2a73",
+          "fields": {
+            "pokemon": "Mega Lopunny ex"
+          },
+          "kind": "knockout",
+          "line": 259,
+          "subs": [
+            {
+              "actor": "33838f43a80b2a73",
+              "details": [
+                "Mist Energy, Buneary"
+              ],
+              "fields": {
+                "n": 2,
+                "owner": "33838f43a80b2a73",
+                "pokemon": "Mega Lopunny ex"
+              },
+              "kind": "discard_from",
+              "line": 260,
+              "text": "2 cards were discarded from 33838f43a80b2a73's Mega Lopunny ex."
+            }
+          ],
+          "text": "33838f43a80b2a73's Mega Lopunny ex was Knocked Out!"
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "n": 3
+          },
+          "kind": "prize",
+          "line": 262,
+          "subs": [],
+          "text": "2aed844ba14ce9d7 took 3 Prize cards."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 263,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 264,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "card": "A card",
+            "owner": "2aed844ba14ce9d7"
+          },
+          "kind": "to_hand",
+          "line": 265,
+          "subs": [],
+          "text": "A card was added to 2aed844ba14ce9d7's hand."
+        },
+        {
+          "actor": "2aed844ba14ce9d7",
+          "fields": {
+            "reason": "Opponent took all of their Prize cards",
+            "winner": "2aed844ba14ce9d7"
+          },
+          "kind": "win",
+          "line": 266,
+          "subs": [],
+          "text": "Opponent took all of their Prize cards. 2aed844ba14ce9d7 wins."
+        }
+      ],
+      "kind": "turn",
+      "player": "2aed844ba14ce9d7",
+      "title": "2aed844ba14ce9d7's Turn",
+      "turnNumber": 14
+    }
+  ],
+  "statsByPlayer": {
+    "2aed844ba14ce9d7": {
+      "attacks": [
+        "Chilly",
+        "Jetting Blow",
+        "Resentful Refrain"
+      ],
+      "cardsDrawn": 39,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Ultra Ball",
+        "Lillie's Determination",
+        "Buddy-Buddy Poffin",
+        "Ultra Ball",
+        "Hilda",
+        "Wally's Compassion",
+        "Lillie's Determination",
+        "Night Stretcher",
+        "Buddy-Buddy Poffin",
+        "Boss's Orders"
+      ],
+      "damageDealt": 860,
+      "energyAttached": 6,
+      "evolutions": [
+        "Mega Starmie ex",
+        "Mega Froslass ex"
+      ],
+      "knockouts": 4,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Snorunt",
+        "Mew ex"
+      ],
+      "prizesTaken": 6,
+      "turnsTaken": 7
+    },
+    "33838f43a80b2a73": {
+      "attacks": [
+        "Gale Thrust"
+      ],
+      "cardsDrawn": 36,
+      "cardsPlayed": [
+        "Buddy-Buddy Poffin",
+        "Hilda",
+        "Dudunsparce",
+        "Dudunsparce",
+        "Wally's Compassion",
+        "Battle Cage",
+        "Boss's Orders",
+        "Boss's Orders",
+        "Pok\u00e9 Pad",
+        "Hilda",
+        "Lillie's Determination",
+        "Special Red Card"
+      ],
+      "damageDealt": 1210,
+      "energyAttached": 6,
+      "evolutions": [
+        "Dudunsparce",
+        "Mega Lopunny ex",
+        "Mega Lopunny ex",
+        "Dudunsparce"
+      ],
+      "knockouts": 2,
+      "mulligans": 0,
+      "pokemonPlayed": [
+        "Chien-Pao",
+        "Dunsparce",
+        "Dunsparce",
+        "Buneary",
+        "Abra",
+        "Lillie's Clefairy ex",
+        "Dunsparce",
+        "Mew ex"
+      ],
+      "prizesTaken": 3,
+      "turnsTaken": 7
+    }
+  },
+  "summary": {
+    "endReason": "other",
+    "exportVariant": "stock",
+    "gameId": "173ca7b1886d1053",
+    "hasFullDecklists": false,
+    "mySide": 1,
+    "mySideSource": "user",
+    "observedCards": {
+      "me": [
+        {
+          "count": 1,
+          "name": "Abra"
+        },
+        {
+          "count": 1,
+          "name": "Air Balloon"
+        },
+        {
+          "count": 1,
+          "name": "Basic Fire Energy"
+        },
+        {
+          "count": 1,
+          "name": "Battle Cage"
+        },
+        {
+          "count": 2,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 1,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Buneary"
+        },
+        {
+          "count": 1,
+          "name": "Chien-Pao"
+        },
+        {
+          "count": 4,
+          "name": "Dudunsparce"
+        },
+        {
+          "count": 3,
+          "name": "Dunsparce"
+        },
+        {
+          "count": 2,
+          "name": "Hilda"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Clefairy ex"
+        },
+        {
+          "count": 1,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 2,
+          "name": "Mega Lopunny ex"
+        },
+        {
+          "count": 1,
+          "name": "Mew ex"
+        },
+        {
+          "count": 4,
+          "name": "Mist Energy"
+        },
+        {
+          "count": 1,
+          "name": "Pok\u00e9 Pad"
+        },
+        {
+          "count": 1,
+          "name": "Special Red Card"
+        },
+        {
+          "count": 1,
+          "name": "Wally's Compassion"
+        }
+      ],
+      "opponent": [
+        {
+          "count": 5,
+          "name": "Basic Water Energy"
+        },
+        {
+          "count": 1,
+          "name": "Boss's Orders"
+        },
+        {
+          "count": 3,
+          "name": "Buddy-Buddy Poffin"
+        },
+        {
+          "count": 1,
+          "name": "Hilda"
+        },
+        {
+          "count": 2,
+          "name": "Ignition Energy"
+        },
+        {
+          "count": 2,
+          "name": "Legacy Energy"
+        },
+        {
+          "count": 2,
+          "name": "Lillie's Determination"
+        },
+        {
+          "count": 1,
+          "name": "Mega Froslass ex"
+        },
+        {
+          "count": 1,
+          "name": "Mega Starmie ex"
+        },
+        {
+          "count": 1,
+          "name": "Mew ex"
+        },
+        {
+          "count": 1,
+          "name": "Night Stretcher"
+        },
+        {
+          "count": 1,
+          "name": "Snorunt"
+        },
+        {
+          "count": 2,
+          "name": "Ultra Ball"
+        },
+        {
+          "count": 1,
+          "name": "Wally's Compassion"
+        }
+      ]
+    },
+    "opponentArchetype": "Mega Starmie ex / Mega Froslass ex",
+    "opponentArchetypeId": "01M2PQ2CKZWQJC8NFPJFH72RSQ",
+    "opponentArchetypeResolution": "exact",
+    "opponentArchetypeSource": "auto",
+    "opponentName": "2aed844ba14ce9d7",
+    "parserVersion": 1,
+    "playedAt": "2026-09-17T03:37:51.237Z",
+    "players": [
+      "2aed844ba14ce9d7",
+      "33838f43a80b2a73"
+    ],
+    "result": "loss",
+    "stats": {
+      "me": {
+        "attacks": [
+          "Gale Thrust"
+        ],
+        "cardsDrawn": 36,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Hilda",
+          "Dudunsparce",
+          "Dudunsparce",
+          "Wally's Compassion",
+          "Battle Cage",
+          "Boss's Orders",
+          "Boss's Orders",
+          "Pok\u00e9 Pad",
+          "Hilda",
+          "Lillie's Determination",
+          "Special Red Card"
+        ],
+        "damageDealt": 1210,
+        "energyAttached": 6,
+        "evolutions": [
+          "Dudunsparce",
+          "Mega Lopunny ex",
+          "Mega Lopunny ex",
+          "Dudunsparce"
+        ],
+        "knockouts": 2,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Chien-Pao",
+          "Dunsparce",
+          "Dunsparce",
+          "Buneary",
+          "Abra",
+          "Lillie's Clefairy ex",
+          "Dunsparce",
+          "Mew ex"
+        ],
+        "prizesTaken": 3,
+        "turnsTaken": 7
+      },
+      "opponent": {
+        "attacks": [
+          "Chilly",
+          "Jetting Blow",
+          "Resentful Refrain"
+        ],
+        "cardsDrawn": 39,
+        "cardsPlayed": [
+          "Buddy-Buddy Poffin",
+          "Ultra Ball",
+          "Lillie's Determination",
+          "Buddy-Buddy Poffin",
+          "Ultra Ball",
+          "Hilda",
+          "Wally's Compassion",
+          "Lillie's Determination",
+          "Night Stretcher",
+          "Buddy-Buddy Poffin",
+          "Boss's Orders"
+        ],
+        "damageDealt": 860,
+        "energyAttached": 6,
+        "evolutions": [
+          "Mega Starmie ex",
+          "Mega Froslass ex"
+        ],
+        "knockouts": 4,
+        "mulligans": 0,
+        "pokemonPlayed": [
+          "Snorunt",
+          "Mew ex"
+        ],
+        "prizesTaken": 6,
+        "turnsTaken": 7
+      }
+    },
+    "turnCount": 14,
+    "unparsedCount": 4,
+    "uploadSource": "unknown",
+    "uploadedAt": "2026-09-17T03:37:51.237Z",
+    "userId": "user-3b6b89eb",
+    "wentFirst": true,
+    "winner": "2aed844ba14ce9d7",
+    "wonCoinToss": false
+  },
+  "unparsedLines": [
+    "- 33838f43a80b2a73's Mega Lopunny ex healed 120 damage.",
+    "- 2aed844ba14ce9d7's Mega Starmie ex healed 230 damage.",
+    "- 2aed844ba14ce9d7 shuffled their hand.",
+    "- 2aed844ba14ce9d7 put 6 cards on the bottom of their deck."
+  ]
+}
