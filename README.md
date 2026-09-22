@@ -31,14 +31,16 @@ flowchart LR
     BRZ["Bronze Parquet"]
     SLV["Spark silver"]
     GLD["dbt gold on DuckDB"]
-    SRV["MLflow model plus FastAPI"]
+    MDL["LightGBM under MLflow"]
+    SRV["FastAPI serving"]
     AGT["LangChain agent"]
     AIR["Airflow orchestration"]
     BF --> BRZ
     SQS --> BRZ
     BRZ --> SLV
     SLV --> GLD
-    GLD --> SRV
+    GLD --> MDL
+    MDL --> SRV
     GLD --> AGT
     AIR -.-> BRZ
     AIR -.-> SLV
@@ -55,8 +57,8 @@ flowchart LR
   SRV --> PUB
   classDef done fill:#d6f5e3,stroke:#1e8449,color:#0b3d24
   classDef planned fill:#eceff1,stroke:#90a4ae,stroke-dasharray:4 3,color:#37474f
-  class UP,API,S3,DDB,BF,BRZ,SLV,GLD done
-  class SQS,SRV,AGT,AIR,PUB,DASH planned
+  class UP,API,S3,DDB,BF,BRZ,SLV,GLD,MDL,SRV done
+  class SQS,AGT,AIR,PUB,DASH planned
 ```
 
 Legend: green solid nodes exist and run today; grey dashed nodes are planned.
@@ -88,18 +90,104 @@ Gold is real. `python -m pipeline.gold` runs a dbt project on DuckDB over
 those silver files, read in place with no load step, and builds a star schema
 at the (game, seat) grain: `fct_game_side`, six dimensions and four marts
 (matchups, archetype by week, cards seen, player summary). It ends with
-`dbt test`, 67 key, relationship, accepted-value and singular tests, and exits
+`dbt test`, 105 key, relationship, accepted-value and singular tests, and exits
 non-zero if any of them fail.
+
+The model stage is real, and small. The same dbt run builds `features_turn`,
+one row per (game, seat, turn) holding the board at the **start** of that turn,
+and `python -m pipeline.train` trains a LightGBM classifier on it inside an
+MLflow run: hyperparameters, log loss and area under the curve on train and
+holdout, a calibration plot, feature importances, the feature list and the
+model with its signature. A second run in the same experiment is the baseline
+it has to beat, the archetype pair's historical win rate, and `beats_baseline`
+is logged as a metric either way. The split is by date, never random. The
+honest size of it: 128 games land in bronze, 28 carry an archetype on both
+seats, and `features_turn` is **596 rows**. That demonstrates the loop; it does
+not make a good predictor, and [docs/features.md](docs/features.md) says so
+column by column.
+
+The registry and the serving stage are real too. Every training run registers a
+new version of the `win-probability` model, tagged with its holdout numbers, and
+serves nothing: `python -m pipeline.promote` is the gate. It compares the
+candidate with whatever holds the `production` alias and moves the alias only if
+the candidate beats the win-rate baseline **and** is at least as good on holdout
+log loss; otherwise the version stays at `staging` with the reason written onto
+it. `python -m pipeline.serve` is a FastAPI service that loads
+`models:/win-probability@production` and answers `POST /predict`, so promoting a
+model is a pointer move rather than a deploy.
+
+A model is a claim about a distribution, and the claim expires quietly, so
+`python -m pipeline.drift` compares the training window against the most recent
+window of `features_turn`: a population stability index per numeric feature
+over ten quantile bins fitted on the reference, the two archetype columns
+pooled into one metagame mix with a chi-square test and a PSI of its own, and
+the win rate of both windows as a concept-drift hint. It writes
+`drift_report.md` and `drift_summary.json`, logs both as artifacts of a run in
+the `win-probability-drift` experiment, prints one verdict line and exits 0
+whether or not it flagged. It never retrains: on a corpus this small the flag
+is a prompt to look, and `train` then `promote` is what acts on it.
 
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
 uv run python -m pipeline.silver                               # bronze -> silver, needs Java
 uv run python -m pipeline.gold                                 # silver -> gold, dbt on DuckDB
+uv run python -m pipeline.train                                # gold -> model, tracked in MLflow
+uv run python -m pipeline.promote                              # judge the newest version
+uv run python -m pipeline.serve                                # serve the promoted one, port 8000
+uv run python -m pipeline.drift                                # feature drift against the train window
 uv run pytest                                                  # fast suite, no JVM
 uv run pytest -m spark                                         # silver tests, needs Java 17+
 uv run pytest -m dbt                                           # gold tests, silver then dbt
+uv run pytest -m ml                                            # model, promotion and drift, no JVM
 ```
+
+`promote` prints one line and exits 0 whether or not it promoted, because a
+refusal is the gate working:
+
+```
+promoted: version 3 improves holdout logloss to 0.1987 from 0.2510 at version 1.
+rejected: version 4 has holdout logloss 0.3682 against 0.1987 at version 3.
+```
+
+With a version promoted, the service answers:
+
+```bash
+uv run python -m pipeline.serve &
+curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
+  "turn_number": 8, "went_first": true,
+  "archetype_key": "name:charizard-ex", "opponent_archetype_key": "name:gardevoir-ex",
+  "prizes_taken_self": 3, "prizes_taken_opp": 1,
+  "knockouts_self": 3, "knockouts_opp": 1, "cards_drawn_self": 26,
+  "energy_attached_self": 5, "pokemon_played_self": 6, "trainers_played_self": 15,
+  "evolutions_self": 2, "attacks_self": 4, "turns_played_self": 4 }'
+# {"win_probability":0.4469,"model_name":"win-probability","model_version":"3",
+#  "model_alias":"production","features_used":[...],"unknown_archetypes":[]}
+```
+
+`GET /health` says whether a model is loaded, `GET /model` says which version
+and how it scored, `POST /reload` picks up a promotion without a restart, and
+`/docs` is the generated schema. An archetype the model never trained on is
+answered and named in `unknown_archetypes` rather than refused, and a service
+that starts before anything is promoted stays up and reports
+`model_loaded: false`.
+
+Training records its runs, and the registry its versions, in a plain
+directory, `data/mlruns`, unless `MLFLOW_TRACKING_URI` says otherwise. To read
+them in a browser:
+
+```bash
+MLFLOW_ALLOW_FILE_STORE=true uv run mlflow ui --backend-store-uri data/mlruns
+docker compose up -d mlflow   # or a real server, SQLite-backed, on port 5000
+export MLFLOW_TRACKING_URI=http://localhost:5000
+```
+
+MLflow 3 keeps the plain directory store behind that opt-in variable, which
+the three model commands set for themselves and the user interface does not.
+The compose service is the version with a database behind it, and it is what a
+registry shared by more than one machine needs; `docker compose up -d predict`
+runs the serving container beside it. On macOS LightGBM also needs the OpenMP
+runtime, which is `brew install libomp`.
 
 `op run` is the 1Password command-line interface; it injects `HANDLE_HMAC_KEY`
 from the vault so the key never lands on disk. Without 1Password, export the
@@ -113,17 +201,19 @@ Query the result with DuckDB, which reads the Parquet files in place:
 uv run python -c "import duckdb; duckdb.sql(\"select play_date, count(*) games from read_parquet('data/lake/bronze/**/*.parquet', hive_partitioning=true) group by 1 order by 1\").show()"
 ```
 
-The three test commands are one suite split by cost: the default run skips
-anything marked `spark` or `dbt`, `-m spark` runs the silver tests, each of
-which starts a Java Virtual Machine (JVM), and `-m dbt` builds silver from the
-committed games and then runs the whole dbt project over it. CI runs all three
-and gates on their combined coverage. `scripts/fetch_catalog.py` downloads the
+The four test commands are one suite split by cost: the default run skips
+anything marked `spark`, `dbt` or `ml`, `-m spark` runs the silver tests, each
+of which starts a Java Virtual Machine (JVM), `-m dbt` builds silver from the
+committed games and then runs the whole dbt project over it, and `-m ml` trains
+a real model on a synthetic feature table it writes into a temporary DuckDB
+file, so it needs no Java at all. CI runs all four and gates on their combined
+coverage. `scripts/fetch_catalog.py` downloads the
 card catalog silver joins against; the stage runs without it, with null catalog
 columns.
 
 Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
-disallowed, all three pytest runs with a 70% coverage floor on the combined
+disallowed, all four pytest runs with a 70% coverage floor on the combined
 number, and the checked-in contract file tested against the reader.
 
 ## Roadmap
@@ -140,7 +230,13 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
       (SQS) queue with a dead-letter queue, drained by a consumer
 - [x] Silver in PySpark: typed tables, cards exploded, archetypes resolved
 - [x] Gold in dbt on DuckDB: star schema and marts, with dbt tests
-- [ ] Win-probability model in MLflow, FastAPI serving, drift report
+- [x] Per-turn feature table in dbt, with a date-based train and holdout split
+- [x] Win-probability model in LightGBM, tracked in MLflow against a baseline
+- [x] Model registry with a promotion step: aliases, not stages, and a rule
+      that refuses a worse candidate and says why
+- [x] FastAPI serving of whichever version holds the `production` alias
+- [x] Drift report: population stability index per feature and an archetype-mix
+      comparison, written to a report and logged as an MLflow run
 - [ ] LangChain agent: structured query language (SQL) over the marts and
       card-text retrieval, scored against a golden question set
 - [ ] Airflow directed acyclic graph (DAG) with structured logs and metrics
@@ -184,8 +280,10 @@ Each limit is a deliberate choice, with the reason and what changes at scale.
   generated lineage, and DuckDB queries the Parquet files in place with no
   server. Swapping the adapter moves the same models to a warehouse.
 - **MLflow for the model.** Every training run's parameters, metrics and
-  artifacts are recorded, and the registry adds a promotion step. It replaces a
-  hand-kept experiment log, the thing that always goes stale first.
+  artifacts are recorded, and the registry adds a promotion step with a rule
+  that can refuse. It replaces a hand-kept experiment log, the thing that
+  always goes stale first, and a deploy that is somebody remembering which run
+  was the good one.
 - **DuckDB as the engine.** An in-process analytics engine over Parquet means
   zero infrastructure for a corpus this size, and the same SQL runs in tests,
   in dbt and in the agent's read-only connection.
@@ -208,6 +306,7 @@ AWS_REGION        bucket region, default us-west-2
 AWS_PROFILE       optional named AWS profile
 HANDLE_HMAC_KEY   secret used to anonymize player handles; never commit it
 PIPELINE_DATA_DIR where the lake and warehouse are written, default ./data
+MLFLOW_TRACKING_URI where runs and registered versions live, default file:./data/mlruns
 ```
 
 One run reads every blob under the prefix, lands the valid ones in bronze and
@@ -227,6 +326,10 @@ data/              local lake and warehouse output (gitignored)
 data/catalog/      card catalog fetched from the bucket, not committed
 dbt/               dbt project (DuckDB): sources, staging views, star schema,
                    marts, its own tests, and the committed profiles.yml
+dbt/models/ml/     the model's training data: scope rules, split cutoff,
+                   features_turn
+compose.yaml       local services: the MLflow tracking server and the predict API
+Dockerfile.serve   image for the predict service; carries no model, loads the alias
 dags/              planned: Airflow DAG definitions
 ```
 
@@ -236,6 +339,8 @@ dags/              planned: Airflow DAG definitions
 - [discovery.md](docs/discovery.md) what the source contains, and what follows
 - [schema.md](docs/schema.md) the contract field by field, and the bronze tables
 - [stages.md](docs/stages.md) the stage plan: inputs, outputs, status, scale
+- [features.md](docs/features.md) every model feature, its source, and the
+  things the battle log cannot say
 - [data-handling.md](docs/data-handling.md) collection, anonymization, what is
   never published, deletion and key rotation
 - [demo.md](docs/demo.md) running the pipeline on the fixtures, no AWS account

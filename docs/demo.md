@@ -190,7 +190,7 @@ detail.
   it needs the Spark run above to have produced silver first. After the Spark
   run: `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.gold`, which
   builds the star schema and the marts into `/tmp/demo/warehouse/meta.duckdb`
-  and then runs the 67 dbt tests, followed by
+  and then runs the 105 dbt tests, followed by
   `uv run dbt docs generate --project-dir dbt --profiles-dir dbt` and
   `uv run dbt docs serve --project-dir dbt --profiles-dir dbt` for the lineage
   graph and the column descriptions. Query the result with the DuckDB snippet
@@ -200,10 +200,50 @@ detail.
   becomes a star schema, every model and column is documented, and the tests
   (keys, relationships, accepted values, two sides per game, matchup symmetry)
   run as part of the build rather than beside it.
-- **MLflow UI**: not yet. Placeholder for the tracked win-probability runs and
-  the registered model.
-- **FastAPI predict**: not yet. Placeholder for a `POST /predict` call against
-  the served model.
+- **MLflow UI**: runs today, after the gold step above, because the model needs
+  the `features_turn` that dbt run built. `PIPELINE_DATA_DIR=/tmp/demo uv run
+  python -m pipeline.train` trains the model and the baseline it is scored
+  against and registers the result, then `PIPELINE_DATA_DIR=/tmp/demo uv run
+  python -m pipeline.promote` judges that version against whatever holds the
+  `production` alias and prints its one-line decision. Read both in a browser
+  with `MLFLOW_ALLOW_FILE_STORE=true uv run mlflow ui --backend-store-uri
+  /tmp/demo/mlruns`: the Experiments tab puts the model run next to the
+  baseline run on the same holdout, and the Models tab shows the version, its
+  holdout tags and which alias it holds. What it proves: the comparison is
+  recorded rather than asserted, and nothing is served because a training run
+  happened.
+- **FastAPI predict**: runs today, with a version promoted.
+  `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.serve` loads
+  `models:/win-probability@production`, and then:
+
+  ```bash
+  curl -s localhost:8000/health
+  curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
+    "turn_number": 8, "went_first": true,
+    "archetype_key": "name:charizard-ex", "opponent_archetype_key": "name:gardevoir-ex",
+    "prizes_taken_self": 3, "prizes_taken_opp": 1,
+    "knockouts_self": 3, "knockouts_opp": 1, "cards_drawn_self": 26,
+    "energy_attached_self": 5, "pokemon_played_self": 6, "trainers_played_self": 15,
+    "evolutions_self": 2, "attacks_self": 4, "turns_played_self": 4 }'
+  ```
+
+  The reply carries the probability and the version that produced it, and
+  `localhost:8000/docs` is the generated schema with a description on every
+  field. What it proves: the service loads by alias rather than by version, so
+  the deployment is the promotion; and an archetype the fixtures never trained
+  on comes back named in `unknown_archetypes` rather than as an error.
+- **Drift report**: runs today, after the gold step, and it needs no model at
+  all: the default reference is the training split of the feature table.
+  `PIPELINE_DATA_DIR=/tmp/demo uv run python -m pipeline.drift --window-days 3`
+  compares the last three days of `features_turn` against the training window,
+  prints the verdict line, and writes `/tmp/demo/drift/drift_report.md` beside
+  a JSON summary, both logged as artifacts of a run in the
+  `win-probability-drift` experiment. Three days rather than the default
+  thirty because the corpus spans ten, and a thirty-day window would contain
+  the training window whole and compare it with itself. What it proves: the
+  expiry of a model is measured rather than assumed, the archetype mix is
+  where a set release shows up first, and the command flags and exits 0
+  instead of retraining anything.
 - **Agent question**: not yet. Placeholder for asking the agent a matchup
   question and watching it write the mart query.
 - **Airflow DAG**: not yet. Placeholder for the scheduled

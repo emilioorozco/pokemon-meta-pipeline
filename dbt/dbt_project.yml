@@ -23,6 +23,14 @@ vars:
   # so every mart that aggregates by archetype carries the flag rather than
   # filtering: a reader can see the thin cells and choose.
   min_games: 5
+  # Where the model's training data stops and its holdout begins. Empty means
+  # "compute it", which `ml_split_cutoff` does as a percentile over play dates;
+  # a date here pins it instead, which is what reproducing an older experiment
+  # needs (`--vars '{holdout_start: 2026-09-01}'`).
+  holdout_start: ""
+  # The share of games the computed cutoff aims to leave in the holdout. It can
+  # only be approximated, because the boundary falls between two days.
+  holdout_fraction: 0.25
 
 models:
   play_rough_pipeline:
@@ -32,3 +40,10 @@ models:
       +materialized: view
     marts:
       +materialized: table
+    ml:
+      # Tables, and tagged so `dbt run --select tag:ml` rebuilds the training
+      # data without rebuilding the marts. A feature table is read row by row
+      # by a trainer rather than scanned once by a report, so materializing it
+      # is worth the disk it costs.
+      +materialized: table
+      +tags: ["ml"]

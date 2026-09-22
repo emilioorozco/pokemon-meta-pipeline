@@ -1,0 +1,158 @@
+version: 2
+
+models:
+  - name: ml_split_cutoff
+    description: >
+      One row holding the date that separates training data from holdout data,
+      so that the boundary is computed in one place and read by everything
+      else. The split is by date and never random: rows from one game share a
+      label and differ only by a turn, so a random split would score the model
+      on games it had already partly seen. The default is a percentile over the
+      distinct play dates, weighted by games, chosen so that roughly
+      `holdout_fraction` of the in-scope games fall on or after it; the
+      `holdout_start` project variable overrides it with a fixed date when an
+      older experiment has to be reproduced.
+    columns:
+      - name: holdout_start
+        description: >
+          The first day of the holdout. A game played before it is training
+          data, a game played on it or after it is holdout. This is the
+          `holdout_start` variable when one was passed and the computed date
+          otherwise.
+        data_tests: [not_null, unique]
+      - name: computed_start
+        description: The date the percentile rule picked, kept beside the effective one so an override is visible rather than silent.
+        data_tests: [not_null]
+      - name: computed_holdout_games
+        description: How many in-scope games fall on or after `computed_start`. This is why the share is described as roughly a quarter rather than exactly one, since the boundary can only fall between two days and the closest day is the best it can do.
+        data_tests: [not_null]
+      - name: games_total
+        description: In-scope games in the whole corpus, the denominator of that share.
+        data_tests: [not_null]
+
+  - name: features_turn
+    description: >
+      The training table for the win-probability model, one row per (game,
+      seat, turn number), holding the state of the game as it was known at the
+      START of that turn and the label of how it ended.
+
+      Two properties define it. Every counter is summed over turns strictly
+      before `turn_number`, so no row contains the turn it is asked about and
+      turn 1 is all zeros; and both seats get a row at every turn number, not
+      only at their own turns, so the two seats of a game are snapshots of the
+      same moment and `prizes_taken_self` and `prizes_taken_opp` are read at
+      the same instant.
+
+      What is excluded, and why, is in `ml_labeled_side`: seats with no
+      archetype on either side, results that are not a win or a loss,
+      hand-logged games with no turns, games the uploader excluded from
+      statistics, and games whose first player could not be resolved. What
+      cannot be built from the log counters at all, bench size above all, is in
+      docs/features.md, which also gives every column below a definition, a
+      source and a reason to matter.
+    columns:
+      - name: feature_key
+        description: Surrogate key, the game identifier, the seat and the turn number joined by hyphens. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: game_id
+        description: The game this row describes a moment of. Not a feature, and here only so a prediction can be traced back and so a split can be checked for games spanning it.
+        data_tests: [not_null]
+      - name: seat
+        description: >
+          Seat index within the game, 0 or 1, following the contract's
+          `players` array. Carried for the grain and for joining back, and not
+          fed to the model: which end of an array a player landed on is not a
+          property of how they played. `is_uploader` and `went_first` are the
+          two asymmetries between the seats that are real.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: turn_number
+        description: The turn this row is the start of, from 1 to the game's `turn_count`. A feature in its own right, because the base rate of winning changes over the course of a game.
+        data_tests: [not_null]
+      - name: play_date
+        description: The day the game was played. Not a feature, and the thing `split` is computed from. Feeding the date itself to the model would let it learn the calendar rather than the game.
+        data_tests: [not_null]
+      - name: turn_count
+        description: Turns in the whole game. Not a feature, because it is the future of this row. A game that lasted thirty turns was a different game from one that ended on turn six, and at turn four nobody knows which this is. Kept so a test can assert `turn_number <= turn_count`.
+        data_tests: [not_null]
+      - name: went_first
+        description: This seat took the first turn. Going first is the oldest known advantage in the game, and it is fixed before the first card is played, which makes it the one feature available in full at turn 1.
+        data_tests: [not_null]
+      - name: is_uploader
+        description: This seat belongs to the member who uploaded the game. A feature about the corpus rather than the game, and it is here to be measurable. If it carries weight, the corpus is biased toward its uploaders and the model is partly learning who kept the log.
+        data_tests: [not_null]
+      - name: archetype_key
+        description: Foreign key to dim_archetype for this seat's deck. Never null here, because a seat with no named deck is out of scope. The single most informative feature a pre-game predictor has.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: opponent_archetype_key
+        description: Foreign key to dim_archetype for the other seat's deck. With `archetype_key` it forms the matchup, which is the pairwise structure the whole metagame is described by.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: prizes_taken_self
+        description: Prize cards this seat had taken before this turn began, cumulative `n_prize_taken` over its own earlier turns. Taking six prizes is one of the two ways to win, so this is the score line.
+        data_tests: [not_null]
+      - name: prizes_taken_opp
+        description: The same count for the other seat, read at the same moment.
+        data_tests: [not_null]
+      - name: prizes_remaining_self
+        description: Six minus `prizes_taken_self`, floored at zero. The same quantity counted the way a player reads the board, kept for legibility in a served payload; the model is not given it, because it is an exact function of the column above and a duplicate feature only splits an importance score in two.
+        data_tests: [not_null]
+      - name: prizes_remaining_opp
+        description: Six minus `prizes_taken_opp`, floored at zero. Kept and excluded from the model for the same reason.
+        data_tests: [not_null]
+      - name: prize_diff
+        description: This seat's prizes taken minus the other seat's. The race, as one number. Prizes are taken by knocking Pokemon out, so the difference summarises who is ahead better than either count alone, and it is the feature a human would read first.
+        data_tests: [not_null]
+      - name: knockouts_self
+        description: Opposing Pokemon this seat had knocked out before this turn, cumulative `n_knockout`. Close to the prize count but not equal to it, because a two-prize Pokemon pays two prizes for one knockout, so the gap between the two columns carries how expensive the board is.
+        data_tests: [not_null]
+      - name: knockouts_opp
+        description: The same count for the other seat.
+        data_tests: [not_null]
+      - name: cards_drawn_self
+        description: Cards this seat had drawn before this turn, cumulative `n_draw`, opening hand and mulligan draws included. A proxy for how well the deck is running, since a stalled hand does not draw.
+        data_tests: [not_null]
+      - name: energy_attached_self
+        description: Energy this seat had attached before this turn, cumulative `n_attach`. Attachments are rationed to roughly one a turn, so this tracks whether the seat has been able to power an attacker on schedule.
+        data_tests: [not_null]
+      - name: pokemon_played_self
+        description: Pokemon this seat had put into play before this turn, cumulative `n_play_pokemon`. It is a count of an action, not a board state, which is exactly why it is not a bench size; see docs/features.md.
+        data_tests: [not_null]
+      - name: trainers_played_self
+        description: Trainer and stadium cards this seat had played before this turn, cumulative `n_play_trainer`. The clearest signal of tempo in a format where a turn is mostly trainers.
+        data_tests: [not_null]
+      - name: evolutions_self
+        description: Evolutions this seat had made before this turn, cumulative `n_evolve`. Separates a deck that has set up its main attacker from one still playing basics.
+        data_tests: [not_null]
+      - name: attacks_self
+        description: Attacks this seat had declared before this turn, cumulative `n_attack`. A seat that has not attacked by turn six is either the control deck or the one that is losing.
+        data_tests: [not_null]
+      - name: turns_played_self
+        description: How many of this seat's own turns had happened before this one. This is what tells the model whose turn it is about to be, which `turn_number` alone cannot say, and it is also the denominator a reader needs to turn any counter above into a per-turn rate.
+        data_tests: [not_null]
+      - name: won
+        description: The label. True when this seat won the game. Ties and unresolved results are out of scope rather than encoded, because neither is a zero and neither is a one.
+        data_tests: [not_null]
+      - name: split
+        description: >
+          `train` for a game played before `ml_split_cutoff.holdout_start`,
+          `holdout` for one played on or after it. Assigned by date, so every
+          row of a game lands on the same side and no game is partly seen.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [train, holdout]

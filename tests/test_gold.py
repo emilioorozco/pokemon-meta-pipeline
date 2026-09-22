@@ -72,6 +72,8 @@ def test_the_build_produced_every_model(warehouse: duckdb.DuckDBPyConnection) ->
         "mart_archetype_weekly",
         "mart_cards_seen",
         "mart_player_summary",
+        "ml_split_cutoff",
+        "features_turn",
     }
     assert expected <= built
 
@@ -158,3 +160,75 @@ def test_the_weekly_mart_counts_every_in_scope_seat_once(
         "where not excluded_from_stats and archetype_key is not null",
     )
     assert weekly_games == in_scope
+
+
+def test_features_turn_has_a_row_per_seat_per_turn(warehouse: duckdb.DuckDBPyConnection) -> None:
+    """The grain, checked against the games it was built from rather than a constant.
+
+    The fixture corpus is small and most of its seats carry no archetype, so
+    the number here is whatever the scope rules leave; what has to hold is the
+    shape. Every in-scope game contributes two rows per turn, every turn number
+    is inside the game, and turn 1 is the empty board.
+    """
+    games = scalar(warehouse, "select count(distinct game_id) from features_turn")
+    assert games > 0
+    expected = scalar(
+        warehouse,
+        "select coalesce(sum(turn_count), 0) * 2 from ("
+        "select distinct game_id, turn_count from features_turn)",
+    )
+    assert scalar(warehouse, "select count(*) from features_turn") == expected
+    outside = scalar(
+        warehouse,
+        "select count(*) from features_turn where turn_number > turn_count or turn_number < 1",
+    )
+    assert outside == 0
+    assert (
+        scalar(
+            warehouse,
+            "select count(*) from features_turn "
+            "where turn_number = 1 and (prize_diff <> 0 or turns_played_self <> 0 "
+            "or cards_drawn_self <> 0 or attacks_self <> 0)",
+        )
+        == 0
+    )
+
+
+def test_features_turn_has_no_nulls_in_any_feature(warehouse: duckdb.DuckDBPyConnection) -> None:
+    """Every column of the table is non-null, asserted by reading the columns back.
+
+    dbt already runs a `not_null` test on each of them, and this repeats the
+    claim in a form that cannot fall out of step with the model: the column
+    list comes from the built table, so a feature added in SQL and forgotten in
+    schema.yml is still covered here.
+    """
+    columns = [
+        name
+        for (name,) in warehouse.sql(
+            "select column_name from information_schema.columns where table_name = 'features_turn'"
+        ).fetchall()
+    ]
+    assert len(columns) > 20
+    predicate = " or ".join(f'"{name}" is null' for name in columns)
+    assert scalar(warehouse, f"select count(*) from features_turn where {predicate}") == 0
+
+
+def test_the_split_is_a_date_split(warehouse: duckdb.DuckDBPyConnection) -> None:
+    """No game straddles the cutoff, and no training row is on the holdout side of it.
+
+    A random split would pass a null check and fail this, which is the point:
+    the rows of one game are near duplicates of each other, so a game on both
+    sides of the boundary turns the holdout score into a memory test.
+    """
+    straddling = scalar(
+        warehouse,
+        "select count(*) from (select game_id from features_turn "
+        "group by game_id having count(distinct split) > 1)",
+    )
+    assert straddling == 0
+    misplaced = scalar(
+        warehouse,
+        "select count(*) from features_turn f, ml_split_cutoff c "
+        "where (f.play_date >= c.holdout_start) <> (f.split = 'holdout')",
+    )
+    assert misplaced == 0

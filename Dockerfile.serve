@@ -1,0 +1,45 @@
+# The serving stage as a container: FastAPI, the model it loads out of the
+# registry, and nothing else from the pipeline.
+#
+#   docker compose up -d mlflow predict
+#   curl localhost:8000/health
+#
+# A file of its own rather than a stage in a shared Dockerfile, because there is
+# no shared Dockerfile: the other stages run as commands on a laptop or as tasks
+# under a scheduler, and the only thing here that has to be a long-running
+# process is this one. A multi-stage build would be a base image with a single
+# consumer.
+#
+# The image carries no model. It loads whichever version holds the `production`
+# alias when it starts, from the tracking server `MLFLOW_TRACKING_URI` points
+# at, which is what makes promoting a new version a registry change rather than
+# a rebuild. It also means an image that starts against an empty registry
+# answers `/health` with `model_loaded: false` instead of exiting.
+FROM python:3.12-slim
+
+# LightGBM links against the OpenMP runtime; the slim image does not ship it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/usr/local
+
+# The dependency layer first, so editing `pipeline/` does not reinstall MLflow.
+# `--locked` fails rather than resolving: the image gets the versions uv.lock
+# pins, or the build stops.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --locked --extra ml --no-install-project --no-dev
+
+COPY pipeline ./pipeline
+RUN uv sync --locked --extra ml --no-dev
+
+EXPOSE 8000
+
+# 0.0.0.0 because the port is published out of the container; the command's own
+# default is loopback, which is the right default for a laptop and useless here.
+CMD ["python", "-m", "pipeline.serve", "--host", "0.0.0.0", "--port", "8000"]
