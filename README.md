@@ -1,5 +1,7 @@
 # pokemon-meta-pipeline
 
+![CI](https://github.com/emilioorozco/pokemon-meta-pipeline/actions/workflows/ci.yml/badge.svg)
+
 A batch data-engineering pipeline that turns a corpus of Pokémon TCG AI-battle
 replays (from the Kaggle "Pokémon TCG AI Battle" competition, now finished) into a
 metagame analytics warehouse: archetype win rates, card inclusion rates, and a

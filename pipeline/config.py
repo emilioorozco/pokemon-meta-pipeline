@@ -9,6 +9,7 @@ variable is an error, never a silent fallback to someone's laptop layout.
 Source paths are resolved lazily so importing the package (e.g. in tests or CI)
 never requires the corpus to be present.
 """
+
 import os
 from pathlib import Path
 

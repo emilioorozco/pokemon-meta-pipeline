@@ -1,5 +1,6 @@
 """Unit tests for the ingest transforms, on a minimal synthetic replay that
 mirrors the real Kaggle episode structure (see docs in the source repo)."""
+
 from datetime import UTC
 
 import pytest
@@ -7,7 +8,11 @@ import pytest
 from pipeline.ingest import DECK_SIZE, extract_game, to_rows
 
 
-def make_replay(rewards=(-1, 1), statuses=("DONE", "DONE"), deck_sizes=(60, 60)):
+def make_replay(
+    rewards: tuple[int, int] = (-1, 1),
+    statuses: tuple[str, str] = ("DONE", "DONE"),
+    deck_sizes: tuple[int, int] = (60, 60),
+) -> dict:
     decks = [[100 + i] * n for i, n in enumerate(deck_sizes)]
     step0 = [
         {"observation": {"current": None, "logs": []}, "visualize": [{"action": decks}]},
@@ -23,7 +28,14 @@ def make_replay(rewards=(-1, 1), statuses=("DONE", "DONE"), deck_sizes=(60, 60))
             "observation": {
                 "current": {"firstPlayer": 1},
                 "logs": [
-                    {"cardId": 100, "fromArea": 1, "playerIndex": 0, "serial": 3, "toArea": 2, "type": 6},
+                    {
+                        "cardId": 100,
+                        "fromArea": 1,
+                        "playerIndex": 0,
+                        "serial": 3,
+                        "toArea": 2,
+                        "type": 6,
+                    },
                     {"playerIndex": 0, "type": 0},
                 ],
             }
@@ -38,7 +50,7 @@ def make_replay(rewards=(-1, 1), statuses=("DONE", "DONE"), deck_sizes=(60, 60))
     }
 
 
-def test_extract_happy_path():
+def test_extract_happy_path() -> None:
     g = extract_game(make_replay(), batch="corpus")
     assert g["episode_id"] == 12345
     assert g["first_player"] == 1
@@ -53,17 +65,17 @@ def test_extract_happy_path():
 @pytest.mark.parametrize(
     "kwargs,match",
     [
-        ({"rewards": (0, 0)}, "winner"),          # tie / errored game
+        ({"rewards": (0, 0)}, "winner"),  # tie / errored game
         ({"statuses": ("DONE", "TIMEOUT")}, "DONE"),
         ({"deck_sizes": (59, 60)}, "decklists"),
     ],
 )
-def test_extract_rejects_contract_violations(kwargs, match):
+def test_extract_rejects_contract_violations(kwargs: dict, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         extract_game(make_replay(**kwargs), batch="corpus")
 
 
-def test_to_rows_grain_and_winner():
+def test_to_rows_grain_and_winner() -> None:
     g = extract_game(make_replay(), batch="corpus")
     game_row, seat_rows, event_rows = to_rows(g, meta=None)
 
@@ -76,7 +88,7 @@ def test_to_rows_grain_and_winner():
     assert all(r["play_date"] == "unknown" for r in seat_rows + event_rows)
 
 
-def test_to_rows_joins_metadata():
+def test_to_rows_joins_metadata() -> None:
     from datetime import datetime
 
     g = extract_game(make_replay(), batch="corpus")
