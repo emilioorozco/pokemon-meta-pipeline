@@ -931,6 +931,19 @@ existed. A JSON log line per tool call carries the tool, the row count and the
 input length, and one per answer carries the model, the tool-call count and the
 usage. Nothing logs the question, the answer or the SQL.
 
+### The SQL gate
+
+Behind the denylist, and off unless `PRA_SQL_GATE=jev`, a second opinion from
+TypeSafe's Jev: one typed Choice question per statement, "is this SQL a
+read-only SELECT over the marts schema that answers the user's question?",
+answered with a confidence, refused below a threshold and refused on any
+error. It exists for the injection the denylist cannot see, a legal `SELECT`
+that reads what the question never asked for. The provider is OpenRouter's
+Decisions endpoint with TypeSafe's direct API as a drop-in swap, the decision
+is on the tool-call span and in a `gate` label on `agent_tool_calls_total`, and
+the golden set shows gate hits and cost per run. Written up in
+[sql-gate.md](sql-gate.md).
+
 ### The golden question set
 
 `evals/golden.yaml` and `python -m pipeline.eval`, written up in full in

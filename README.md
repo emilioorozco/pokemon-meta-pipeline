@@ -167,10 +167,15 @@ DuckDB has of reading a file, and that names the rule it broke so the model can
 write a better query. `dim_player` and `fct_game_side` are off that list on
 purpose, so there is no question the agent can be asked that reaches a raw log
 line or a handle. A missing `LIMIT` becomes 50, a large one is cut to 200, and
-the connection is read-only with a five-second timeout. `lookup_cards` searches
-the printed text of about 25,000 cards, embedded locally with
-`sentence-transformers` and searched with a numpy cosine over a Parquet of
-vectors, which at this size is exact, instant and needs no index to tune. The
+the connection is read-only with a five-second timeout. Behind that denylist,
+and off unless `PRA_SQL_GATE=jev`, a typed decision model (TypeSafe's Jev,
+through OpenRouter) gives a second opinion with a confidence on whether the
+statement answers the question at all, and refuses on any error
+(`docs/sql-gate.md`). `lookup_cards` searches the printed text of the Standard
+format, about 1,500 distinct cards, embedded locally per attack, ability and
+rule with `sentence-transformers`, fused with BM25 by reciprocal rank, and
+aggregated to the card, which at this size is exact, instant and needs no index
+to tune. The
 system prompt is generated from `dbt/models/marts/schema.yml` at import, so it
 cannot drift from the models, and the rules in it are the ones this corpus
 needs: cite the `games` count, say when `min_games_met` is false, and never

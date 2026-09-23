@@ -11,15 +11,18 @@ a golden file with a duplicate id or an unknown tool in it is refused at load
 rather than silently scoring nothing.
 
 The committed set is checked here too, because `evals/golden.yaml` is data and
-data rots: ten questions, unique ids, every tool name real, every question
+data rots: twelve questions, unique ids, every tool name real, every question
 answerable, every question forbidding the player-token shape, and a recorded
 run in `evals/transcript.yaml` for each one.
 
 The `dbt` half runs the loop for real over the fixture warehouse, and it is
-the one that would catch a harness that scores nothing: ten out of ten with the
-recorded turns replayed through the real tools, fewer than ten when the answers
-stop carrying the facts, and fewer than ten when the system prompt is replaced
-with the deliberately broken one.
+the one that would catch a harness that scores nothing: twelve out of twelve
+with the recorded turns replayed through the real tools, fewer when the answers
+stop carrying the facts, and fewer when the system prompt is replaced with the
+deliberately broken one. It is also where the optional SQL gate is driven end to
+end, with `FakeGate` in the provider's place: the same set, once with the gate
+off and once with a gate that refuses everything, so that "the flag changes
+nothing when it is off" is a measurement rather than a claim.
 """
 
 import json
@@ -31,6 +34,7 @@ import pytest
 
 from pipeline import card_index
 from pipeline import eval as evals
+from pipeline.agent import ToolCall
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from tests.agent_fakes import final, scripted, tool_call
 
@@ -121,8 +125,8 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_ten_questions_with_unique_identifiers(golden: evals.Golden) -> None:
-    assert len(golden.questions) == 10
+def test_the_golden_set_is_twelve_questions_with_unique_identifiers(golden: evals.Golden) -> None:
+    assert len(golden.questions) == 12
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
@@ -306,6 +310,13 @@ def report_of(*results: evals.Result) -> evals.Report:
     )
 
 
+def call(gate: str = "off", cost: float = 0.0) -> ToolCall:
+    """One recorded tool call, with whatever the gate said about it."""
+    return ToolCall(
+        tool=evals.SQL_TOOL, input_summary="select ...", rows=3, gate=gate, gate_cost_usd=cost
+    )
+
+
 def test_the_table_names_the_failure_and_ends_with_the_score() -> None:
     report = report_of(
         evals.score(question(id="good"), "12 games", [evals.SQL_TOOL]),
@@ -431,11 +442,19 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 10, evals.render(report)
+    assert report.passed == report.total == 12, evals.render(report)
     assert report.model == "replay"
-    # Every question really called something, and the card tool was really used.
+    # Both tools were really used. The two injection questions call nothing, on
+    # purpose: a model that has been told which seven tables it may read does
+    # not write a query against an eighth, so the recorded competent run for
+    # them is the one that declines.
     called = {tool for result in report.results for tool in result.tools_called}
     assert called == {evals.SQL_TOOL, evals.CARD_TOOL}
+    # With no gate configured the column is empty on every row and the run is
+    # free, which is the "nothing changed" half of the flag.
+    assert {result.gate for result in report.results} == {evals.GATE_NONE}
+    assert report.gate_calls == 0
+    assert report.gate_cost_usd == 0.0
 
 
 @pytest.mark.dbt
@@ -489,7 +508,7 @@ def test_the_broken_prompt_drops_the_score(
             card_index=index,
             prompt_override=evals.BROKEN_PROMPT_PATH,
         )
-    assert report.passed < 10
+    assert report.passed < 12
     assert report.prompt_sha256 != _good_prompt_sha()
     assert report.prompt_override is not None
 
@@ -511,7 +530,7 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "10/10 passed" in printed
+    assert "12/12 passed" in printed
     assert "matchup_win_rate" in printed
 
 
@@ -532,7 +551,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 10
+    assert payload["total"] == 12
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed

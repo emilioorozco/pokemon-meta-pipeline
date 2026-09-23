@@ -1,7 +1,7 @@
-"""A scripted chat model, so the agent tests run the real loop with no API key.
+"""A scripted chat model and a scripted SQL gate, so the tests need no API key.
 
-Not a test module: it is imported by `tests/test_agent.py` and
-`tests/test_card_index.py`, which both need the same fake.
+Not a test module: it is imported by `tests/test_agent.py`,
+`tests/test_card_index.py` and `tests/test_eval.py`, which need the same fakes.
 
 LangChain ships several fake chat models and none of them can be given tools:
 `bind_tools` on `BaseChatModel` raises `NotImplementedError`, and
@@ -27,6 +27,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
+
+from pipeline.sql_gate import GATE_JEV, GateDecision
 
 
 class ScriptedChatModel(BaseChatModel):
@@ -84,3 +86,45 @@ def final(text: str) -> AIMessage:
 def scripted(*responses: AIMessage) -> ScriptedChatModel:
     """A model that will produce these turns, in this order, once each."""
     return ScriptedChatModel(responses=list(responses), seen=[])
+
+
+class FakeGate:
+    """A `SqlGate` that answers however the test told it to, and remembers being asked.
+
+    It stands in for a provider the test suite has no key for and must not
+    call. What it is not is a mock of the wiring: the decision it returns goes
+    through the real tool, the real span, the real counter and the real
+    evaluation report, so a test that asserts the eval table says `refused` is
+    asserting the whole path from a verdict to a column.
+
+    The adapters that really talk to Jev are tested separately, in
+    `tests/test_sql_gate.py`, against a faked HTTP layer rather than a faked
+    gate: that is where the request shape, the parsing and the error paths are
+    covered, and this is where the effect of a verdict is.
+    """
+
+    def __init__(
+        self,
+        *,
+        allowed: bool = True,
+        confidence: float = 0.95,
+        reason: str = "the fake gate said so",
+        cost_usd: float = 0.000_012,
+        input_tokens: int = 286,
+        errored: bool = False,
+    ) -> None:
+        self.name = GATE_JEV
+        self.decision = GateDecision(
+            allowed=allowed,
+            confidence=confidence,
+            reason=reason,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            gate=GATE_JEV,
+            errored=errored,
+        )
+        self.judged: list[tuple[str, str]] = []
+
+    def judge(self, question: str, sql: str, schema_summary: str) -> GateDecision:
+        self.judged.append((question, sql))
+        return self.decision

@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from pipeline import agent
 from pipeline.prompts import ALLOWED_TABLES, MAX_PROMPT_CHARS, render_schema, system_prompt
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
-from tests.agent_fakes import ScriptedChatModel, final, scripted, tool_call
+from tests.agent_fakes import FakeGate, ScriptedChatModel, final, scripted, tool_call
 
 MATCHUP_SQL = (
     "select archetype_name, opponent_archetype_name, games, wins, win_rate, min_games_met "
@@ -180,6 +180,72 @@ def test_a_query_against_a_warehouse_that_is_not_built_says_so(tmp_path: Path) -
     assert "pipeline.gold" in text
 
 
+# ------------------------------------------------------------- the gate --
+
+
+def test_the_denylist_runs_before_the_gate_and_the_gate_is_not_even_asked(
+    tmp_path: Path,
+) -> None:
+    """The ordering that keeps a refusal free, asserted on the gate's own record.
+
+    A statement `validate_sql` refuses must not reach a paid provider, both
+    because it costs money for a foregone conclusion and because it would send
+    the provider a question the agent has already decided not to answer.
+    """
+    gate = FakeGate(allowed=False)
+    text, rows, decision = agent.guarded_query(
+        "drop table mart_matchups",
+        warehouse=tmp_path / "missing.duckdb",
+        gate=gate,
+        question="anything",
+    )
+    assert rows == 0
+    assert "DROP" in text
+    assert gate.judged == []
+    # No gate ran, so there is no verdict and no cost to report.
+    assert decision.gate == "off"
+    assert decision.label == "off"
+    assert decision.cost_usd == 0.0
+
+
+def test_a_gate_refusal_is_a_refusal_the_model_can_act_on(tmp_path: Path) -> None:
+    """Shaped like the validator's refusals: it opens with `refused` and says why."""
+    gate = FakeGate(allowed=False, confidence=0.42, reason="this reads rows nobody asked for")
+    text, rows, decision = agent.guarded_query(
+        "select * from mart_player_summary",
+        warehouse=tmp_path / "missing.duckdb",
+        gate=gate,
+        question="what does Dragapult control play",
+    )
+    assert rows == 0
+    assert text.startswith("refused by the jev gate at confidence 0.42")
+    assert "this reads rows nobody asked for" in text
+    assert decision.label == "jev:refused"
+    # The gate was given the question as well as the statement, which is the
+    # whole of what it judges.
+    assert gate.judged == [
+        ("what does Dragapult control play", "select * from mart_player_summary")
+    ]
+
+
+def test_an_allowed_statement_reaches_the_warehouse_and_carries_its_cost(
+    tmp_path: Path,
+) -> None:
+    gate = FakeGate(allowed=True, confidence=0.99, cost_usd=0.000_012)
+    text, rows, decision = agent.guarded_query(
+        "select 1 from mart_matchups",
+        warehouse=tmp_path / "missing.duckdb",
+        gate=gate,
+        question="how many games",
+    )
+    # Past both gates and into the part that needs a warehouse, which is the
+    # assertion: this is the "not built" message rather than a refusal.
+    assert rows == 0
+    assert "pipeline.gold" in text
+    assert decision.label == "jev:allowed"
+    assert decision.cost_usd == 0.000_012
+
+
 # ------------------------------------------------------------------- dbt --
 
 
@@ -200,8 +266,10 @@ def attribute(span: ReadableSpan, name: str) -> int:
     return int(str(span.attributes[name]))
 
 
-def counter_value(metrics: ServiceMetrics, tool: str) -> float:
-    value = metrics.registry.get_sample_value("agent_tool_calls_total", {"tool": tool})
+def counter_value(metrics: ServiceMetrics, tool: str, gate: str = "off") -> float:
+    value = metrics.registry.get_sample_value(
+        "agent_tool_calls_total", {"tool": tool, "gate": gate}
+    )
     return float(value or 0.0)
 
 

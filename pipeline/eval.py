@@ -3,11 +3,19 @@
     uv run python -m pipeline.eval --fake evals/transcript.yaml
     op run --env-file=.env.op -- uv run python -m pipeline.eval
 
-Ten questions in `evals/golden.yaml`, each with the tools its answer has to
+Twelve questions in `evals/golden.yaml`, each with the tools its answer has to
 call and the facts its answer has to contain. The command runs them through the
 real `Agent`, scores three checks per question, prints a table and exits
 non-zero when anything failed. The score of a run is logged to MLflow, so a
 prompt change is tracked the way a model change is.
+
+**The gate is reported, not scored.** With `PRA_SQL_GATE=jev` the optional
+second gate in `pipeline.sql_gate` judges every statement the denylist let
+through, and the table grows a `gate` column saying what it said per question,
+with the total cost of the run under it and `gate_calls`, `gate_refusals` and
+`gate_cost_usd` in MLflow beside the score. It is a column rather than a check
+because what a question asserts is the answer, and a run with the gate on and a
+run with it off have to be comparable question by question.
 
 **It grades facts, not prose.** Every assertion is a substring or a regular
 expression naming a number, an archetype, a card or a sample size, because two
@@ -78,6 +86,7 @@ from pipeline.agent import (
     CARD_TOOL,
     SQL_TOOL,
     Agent,
+    ToolCall,
     build_agent,
     chat_model,
     default_card_index,
@@ -86,6 +95,7 @@ from pipeline.agent import (
 from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
+from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +132,21 @@ CHECK_TOOLS: Final = "tools"
 CHECK_REQUIRE: Final = "require"
 CHECK_FORBID: Final = "forbid"
 CHECK_ERROR: Final = "error"
+
+# What the `gate` column says. `-` is "no gate judged anything on this
+# question", which is every question of a run with the flag off and also a
+# question whose only query the always-on denylist refused before the gate was
+# reached. The other three are the gate's own verdicts, and a question with
+# several queries in it reports the worst one: a single refusal is the news.
+GATE_NONE: Final = "-"
+GATE_ALLOWED: Final = "allowed"
+GATE_REFUSED: Final = "refused"
+GATE_ERRORED: Final = "error"
+# One cent, the ceiling the ticket set for a whole run. Printed beside the
+# total rather than enforced: a run that cost more is worth seeing, and a
+# harness that exits non-zero on a price is a harness that fails on a rate
+# change rather than on a regression.
+CENT_USD: Final = 0.01
 
 
 class GoldenError(ValueError):
@@ -259,6 +284,9 @@ class Result:
     missing_required: tuple[str, ...] = ()
     present_forbidden: tuple[str, ...] = ()
     error: str | None = None
+    gate: str = GATE_NONE
+    gate_calls: int = 0
+    gate_cost_usd: float = 0.0
 
     @property
     def failed_checks(self) -> tuple[str, ...]:
@@ -289,19 +317,57 @@ class Result:
             "missing_required": list(self.missing_required),
             "present_forbidden": list(self.present_forbidden),
             "error": self.error,
+            "gate": self.gate,
+            "gate_calls": self.gate_calls,
+            "gate_cost_usd": self.gate_cost_usd,
             "answer": self.answer,
         }
 
 
-def score(question: Question, answer: str, tools_called: Sequence[str]) -> Result:
+def gate_summary(calls: Sequence[ToolCall]) -> tuple[str, int, float]:
+    """One question's gate column, its judged calls and what they cost.
+
+    The worst verdict wins, in the order refused, error, allowed, because a
+    question whose second query was waved through after the first was refused
+    is a question where the gate did something, and a column that reported the
+    last call would hide it.
+    """
+    judged = [call for call in calls if call.gate != GATE_OFF]
+    cost = round(sum(call.gate_cost_usd for call in judged), 10)
+    labels = {call.gate for call in judged}
+    if not judged:
+        return GATE_NONE, 0, cost
+    for label, column in (
+        (GATE_REFUSED, GATE_REFUSED),
+        (GATE_ERRORED, GATE_ERRORED),
+        (GATE_ALLOWED, GATE_ALLOWED),
+    ):
+        if any(name.endswith(f":{label}") for name in labels):
+            return column, len(judged), cost
+    return GATE_NONE, len(judged), cost
+
+
+def score(
+    question: Question,
+    answer: str,
+    tools_called: Sequence[str],
+    *,
+    calls: Sequence[ToolCall] = (),
+) -> Result:
     """Score one answer against one question. Pure, and the unit the tests hit.
 
     A tool is expected or it is not; a tool called and not expected is recorded
     as unexpected and costs nothing, because the golden set says what an answer
     must be built from and not what it may not look at along the way.
+
+    `calls` is the same run's tool calls with the gate verdicts still on them,
+    and it changes no check: the gate is reported so that two runs can be
+    compared, and scoring a question on what a paid provider said about it
+    would make the golden set a measurement of two models rather than one.
     """
     called = tuple(tools_called)
     unique = set(called)
+    gate, gate_calls, gate_cost = gate_summary(calls)
     return Result(
         question=question,
         answer=answer,
@@ -314,6 +380,9 @@ def score(question: Question, answer: str, tools_called: Sequence[str]) -> Resul
             pattern for pattern in question.require if not matches(pattern, answer)
         ),
         present_forbidden=tuple(pattern for pattern in question.forbid if matches(pattern, answer)),
+        gate=gate,
+        gate_calls=gate_calls,
+        gate_cost_usd=gate_cost,
     )
 
 
@@ -330,6 +399,7 @@ class Report:
     warehouse: str = ""
     card_index: str | None = None
     commit: str | None = None
+    gate_name: str = GATE_OFF
 
     @property
     def total(self) -> int:
@@ -343,6 +413,21 @@ class Report:
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
 
+    @property
+    def gate_calls(self) -> int:
+        """Statements the gate really judged, over the whole run."""
+        return sum(result.gate_calls for result in self.results)
+
+    @property
+    def gate_refusals(self) -> int:
+        """Questions on which the gate refused at least one statement."""
+        return sum(1 for result in self.results if result.gate == GATE_REFUSED)
+
+    @property
+    def gate_cost_usd(self) -> float:
+        """What the gate cost for this whole run, in dollars."""
+        return round(sum(result.gate_cost_usd for result in self.results), 10)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "golden_version": self.golden.version,
@@ -354,9 +439,13 @@ class Report:
             "warehouse": self.warehouse,
             "card_index": self.card_index,
             "git_commit": self.commit,
+            "gate": self.gate_name,
             "passed": self.passed,
             "total": self.total,
             "pass_rate": round(self.pass_rate, 4),
+            "gate_calls": self.gate_calls,
+            "gate_refusals": self.gate_refusals,
+            "gate_cost_usd": self.gate_cost_usd,
             "questions": [result.as_dict() for result in self.results],
         }
 
@@ -509,9 +598,17 @@ def _one(message: AIMessage) -> ChatResult:
 AgentFactory = Callable[[Question], Agent]
 
 
-def live_factory(*, warehouse: Path, card_index: Path | None, model: str | None) -> AgentFactory:
+def live_factory(
+    *,
+    warehouse: Path,
+    card_index: Path | None,
+    model: str | None,
+    gate: SqlGate | None = None,
+) -> AgentFactory:
     """One real agent, built once, asked every question. Needs a provider key."""
-    built = build_agent(model=chat_model(model), warehouse=warehouse, card_index=card_index)
+    built = build_agent(
+        model=chat_model(model), warehouse=warehouse, card_index=card_index, gate=gate
+    )
 
     def factory(question: Question) -> Agent:
         return built
@@ -520,13 +617,20 @@ def live_factory(*, warehouse: Path, card_index: Path | None, model: str | None)
 
 
 def replay_factory(
-    transcript: Transcript, *, warehouse: Path, card_index: Path | None
+    transcript: Transcript,
+    *,
+    warehouse: Path,
+    card_index: Path | None,
+    gate: SqlGate | None = None,
 ) -> AgentFactory:
     """A fresh agent per question, with that question's recorded run behind it.
 
     Per question rather than once, because a replay model carries its position
     in the script and two questions must not share one. Everything else the
-    agent is made of is the same object the live path builds.
+    agent is made of is the same object the live path builds, the SQL gate
+    included: `gate` is injected so a test can replay the whole set through a
+    gate that refuses without a key, and left alone it is whatever
+    `PRA_SQL_GATE` asks for.
     """
 
     def factory(question: Question) -> Agent:
@@ -535,6 +639,7 @@ def replay_factory(
             model=ReplayChatModel(turns=list(turns), answer=answer),
             warehouse=warehouse,
             card_index=card_index,
+            gate=gate,
         )
 
     return factory
@@ -553,7 +658,12 @@ def run_question(question: Question, agent: Agent) -> Result:
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
         return Result(question=question, answer="", error=f"{type(failure).__name__}: {failure}")
-    return score(question, answer.answer, [call.tool for call in answer.tool_calls])
+    return score(
+        question,
+        answer.answer,
+        [call.tool for call in answer.tool_calls],
+        calls=answer.tool_calls,
+    )
 
 
 def run_evals(
@@ -564,6 +674,7 @@ def run_evals(
     card_index: Path | None = None,
     prompt_override: Path | None = None,
     fake: Path | None = None,
+    gate_name: str = GATE_OFF,
 ) -> Report:
     """Every question, in file order, with one report at the end."""
     results: list[Result] = []
@@ -596,6 +707,7 @@ def run_evals(
         warehouse=str(warehouse),
         card_index=str(card_index) if card_index else None,
         commit=git_commit(),
+        gate_name=gate_name,
     )
 
 
@@ -616,11 +728,13 @@ def render(report: Report) -> str:
             "pass" if result.passed else "FAIL",
             ",".join(result.failed_checks) or "-",
             ",".join(result.tools_called) or "-",
+            result.gate,
         )
         for result in report.results
     ]
-    headers = ("question", "result", "failed", "tools called")
-    widths = [max(len(row[column]) for row in (*rows, headers)) for column in range(4)]
+    headers = ("question", "result", "failed", "tools called", "gate")
+    columns = len(headers)
+    widths = [max(len(row[column]) for row in (*rows, headers)) for column in range(columns)]
     lines = [
         "  ".join(header.ljust(width) for header, width in zip(headers, widths, strict=True)),
         "  ".join("-" * width for width in widths),
@@ -631,6 +745,7 @@ def render(report: Report) -> str:
     ]
     lines.append("")
     lines.append(f"{report.passed}/{report.total} passed")
+    lines.append(render_gate_cost(report))
     for result in report.results:
         if result.passed:
             continue
@@ -644,6 +759,20 @@ def render(report: Report) -> str:
         for pattern in result.present_forbidden:
             lines.append(f"    forbidden: {pattern}")
     return "\n".join(lines)
+
+
+def render_gate_cost(report: Report) -> str:
+    """The one line that says what the optional gate cost this run.
+
+    Printed whether or not a gate ran, because "the gate was off" is a fact
+    about a run whose score is being compared with another run's, and a line
+    that appears only sometimes is a line nobody notices is missing. Six
+    decimal places because a whole run is expected to be a small fraction of a
+    cent, and the ceiling is stated beside it rather than enforced.
+    """
+    spent = report.gate_cost_usd
+    line = f"gate cost: ${spent:.6f} ({report.gate_calls} calls, {report.gate_refusals} refused)"
+    return f"{line}, under a cent" if spent < CENT_USD else f"{line}, OVER a cent"
 
 
 def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str | None:
@@ -680,6 +809,7 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 "prompt_override": report.prompt_override or "none",
                 "golden_version": report.golden.version,
                 "fake": report.fake or "none",
+                "sql_gate": report.gate_name,
                 "git_commit": report.commit or "unknown",
             }
         )
@@ -688,6 +818,9 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 "passed": float(report.passed),
                 "total": float(report.total),
                 "pass_rate": report.pass_rate,
+                "gate_calls": float(report.gate_calls),
+                "gate_refusals": float(report.gate_refusals),
+                "gate_cost_usd": report.gate_cost_usd,
                 **{f"q.{result.question.id}": float(result.passed) for result in report.results},
             }
         )
@@ -788,13 +921,20 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         golden = load_golden(args.golden)
+        # Built once for the whole run rather than per agent, so a run with the
+        # flag set to something unreadable fails before the first question and
+        # so the cost of the run is the cost of one configured gate.
+        gate = gate_from_env()
         if args.fake is not None:
             factory = replay_factory(
-                load_transcript(args.fake), warehouse=args.warehouse, card_index=card_index
+                load_transcript(args.fake),
+                warehouse=args.warehouse,
+                card_index=card_index,
+                gate=gate,
             )
         else:
             factory = live_factory(
-                warehouse=args.warehouse, card_index=card_index, model=args.model
+                warehouse=args.warehouse, card_index=card_index, model=args.model, gate=gate
             )
     except GoldenError as failure:
         sys.stderr.write(f"{parser.prog}: {failure}\n")
@@ -812,6 +952,7 @@ def main(argv: list[str] | None = None) -> int:
             card_index=card_index,
             prompt_override=args.prompt_override,
             fake=args.fake,
+            gate_name=gate.name,
         )
         metrics.rows_in = report.total
         metrics.rows_out = report.passed
@@ -821,6 +962,10 @@ def main(argv: list[str] | None = None) -> int:
             "pass_rate": report.pass_rate,
             "model": report.model,
             "prompt_sha256": report.prompt_sha256,
+            "gate": report.gate_name,
+            "gate_calls": report.gate_calls,
+            "gate_refusals": report.gate_refusals,
+            "gate_cost_usd": report.gate_cost_usd,
             "failed": [result.question.id for result in report.results if not result.passed],
         }
         if not args.no_mlflow:
@@ -842,6 +987,8 @@ def main(argv: list[str] | None = None) -> int:
                 "total": report.total,
                 "pass_rate": round(report.pass_rate, 4),
                 "model": report.model,
+                "gate": report.gate_name,
+                "gate_cost_usd": report.gate_cost_usd,
             },
             text=render(report),
         )

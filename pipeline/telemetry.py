@@ -272,14 +272,17 @@ class ServiceMetrics:
             model_version=model_version, unknown_archetype=str(unknown).lower()
         ).inc()
 
-    def count_tool_call(self, tool: str) -> None:
-        """One agent tool call. Nothing calls this yet; stage 6 is where it starts.
+    def count_tool_call(self, tool: str, gate: str = "off") -> None:
+        """One agent tool call, by tool and by what the optional SQL gate said.
 
-        Declared now rather than later so the dashboard panel and the metric name
-        are decided while the serving instrumentation is being reviewed, instead
-        of being invented in a hurry alongside the agent.
+        `gate` is a closed set of four: `off` when no gate ran, which is every
+        `lookup_cards` call and every call made with `PRA_SQL_GATE` unset, and
+        `jev:allowed`, `jev:refused` or `jev:error` when one did. It defaults so
+        that a caller with no gate to report does not have to know the gate
+        exists, and it is bounded for the usual reason: a label whose values a
+        provider chooses is one time series per provider mood.
         """
-        self.agent_tool_calls.labels(tool=tool).inc()
+        self.agent_tool_calls.labels(tool=tool, gate=gate).inc()
 
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
@@ -342,8 +345,8 @@ def build_metrics() -> ServiceMetrics:
         ),
         agent_tool_calls=Counter(
             "agent_tool_calls_total",
-            "Agent tool invocations, by tool name.",
-            ["tool"],
+            "Agent tool invocations, by tool name and by the SQL gate's verdict.",
+            ["tool", "gate"],
             registry=registry,
         ),
         model_info=Gauge(

@@ -42,13 +42,23 @@ the column list dbt tests. The rules beside it are the ones this corpus needs:
 cite `games`, flag `min_games_met`, and never let `seen_rate` be reported as a
 deck inclusion rate.
 
+**There is an optional second gate behind the first one.** `PRA_SQL_GATE=jev`
+puts `pipeline.sql_gate` between the validator and DuckDB: one typed Choice
+question to a System One model, asking whether the statement is a read-only
+SELECT over the marts that answers the question that was asked. It catches the
+thing a denylist structurally cannot, which is a legal query that answers a
+question nobody asked, and it is off by default. The denylist is not optional
+and runs first in both cases, so a statement it refuses costs nothing and never
+reaches a provider (docs/sql-gate.md).
+
 **Every tool call is a span and a counter increment.** `agent.tool.query_marts`
-carries the SQL length and the row count, `agent.answer` wraps the run with the
-model, the number of tool calls and the token usage the provider reported. The
-counter is `agent_tool_calls_total{tool=...}`, which `pipeline.telemetry`
-declared while the serving instrumentation was being built. The SQL itself is
-on the span as a length rather than as text: a query is short and harmless
-here, but a span attribute is the wrong place to start putting model output.
+carries the SQL length, the row count and the gate's verdict, `agent.answer`
+wraps the run with the model, the number of tool calls and the token usage the
+provider reported. The counter is `agent_tool_calls_total{tool=..., gate=...}`,
+which `pipeline.telemetry` declared while the serving instrumentation was being
+built. The SQL itself is on the span as a length rather than as text: a query
+is short and harmless here, but a span attribute is the wrong place to start
+putting model output.
 
 **The model is injected.** `build_agent` takes a chat model, so the tests pass
 a scripted fake that returns pre-written `AIMessage`s with `tool_calls` on them
@@ -80,6 +90,15 @@ from opentelemetry import trace
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import ALLOWED_TABLES, system_prompt
+from pipeline.sql_gate import (
+    GATE_OFF,
+    NO_GATE,
+    GateDecision,
+    OffGate,
+    SqlGate,
+    gate_from_env,
+    schema_summary,
+)
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
 
 logger = logging.getLogger(__name__)
@@ -323,22 +342,42 @@ def _cell(value: Any) -> str:
 
 @dataclass(frozen=True)
 class ToolCall:
-    """One tool invocation, as the answer reports it back to a caller."""
+    """One tool invocation, as the answer reports it back to a caller.
+
+    `gate` is the verdict the SQL gate reached on this call, `off` when no gate
+    ran and on every `lookup_cards` call, which the gate has nothing to say
+    about. It is carried here rather than summed on the answer because the
+    evaluation reports the gate per question and the cost over the run, and
+    both are the same list read two ways.
+    """
 
     tool: str
     input_summary: str
     rows: int
+    gate: str = GATE_OFF
+    gate_cost_usd: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
-        return {"tool": self.tool, "input_summary": self.input_summary, "rows": self.rows}
+        return {
+            "tool": self.tool,
+            "input_summary": self.input_summary,
+            "rows": self.rows,
+            "gate": self.gate,
+            "gate_cost_usd": self.gate_cost_usd,
+        }
 
 
-# The calls made by the run happening on this task. A context variable rather
-# than an attribute on the agent, because one agent object serves every request
-# of a serving process and two concurrent `/ask` calls must not collect into
-# the same list. Starlette copies the context per request, so each run sees its
-# own.
+# The calls made by the run happening on this task, and the question that run
+# is answering. Context variables rather than attributes on the agent, because
+# one agent object serves every request of a serving process and two concurrent
+# `/ask` calls must not collect into the same list. Starlette copies the
+# context per request, so each run sees its own.
 _calls: ContextVar[list[ToolCall] | None] = ContextVar("pra_agent_calls", default=None)
+# What the person asked, so the SQL gate can judge the query against it. The
+# tool is handed only the SQL, and "does this answer the question" needs the
+# question; threading it through the tool's arguments would put it in the
+# model's hands, which is exactly whose judgement the gate is second-guessing.
+_question: ContextVar[str] = ContextVar("pra_agent_question", default="")
 
 
 def record_call(call: ToolCall) -> None:
@@ -346,6 +385,11 @@ def record_call(call: ToolCall) -> None:
     collected = _calls.get()
     if collected is not None:
         collected.append(call)
+
+
+def current_question() -> str:
+    """The question the run in progress is answering, or empty outside a run."""
+    return _question.get()
 
 
 # ----------------------------------------------------------------- tools --
@@ -366,6 +410,22 @@ def open_warehouse(path: Path) -> duckdb.DuckDBPyConnection:
     return connection
 
 
+def gate_refusal(decision: GateDecision) -> str:
+    """A gate verdict as the sentence the model reads back.
+
+    Shaped exactly like the validator's refusals, and for the same reason: it
+    opens with `refused`, it names the rule that stopped it, and it says what a
+    better attempt would look like. The confidence is in there because a
+    refusal at 0.55 and a refusal at 0.99 mean different things to whoever
+    reads the transcript afterwards.
+    """
+    return (
+        f"refused by the {decision.gate} gate at confidence {decision.confidence:.2f}: "
+        f"{decision.reason}. Write a plain read-only SELECT over the tables in the system "
+        "prompt that answers the question you were asked, or say you cannot answer it."
+    )
+
+
 def run_marts_query(
     sql: str,
     *,
@@ -374,15 +434,54 @@ def run_marts_query(
 ) -> tuple[str, int]:
     """Validate, run and render one query. Returns the tool's text and the row count.
 
-    A refusal and a failure both come back as text with a row count of zero,
-    never as an exception: an exception out of a tool ends the agent's turn,
-    and the useful outcome of a bad query is the model reading why and writing
-    a better one.
+    The ungated form, kept because it is the whole of the tool when
+    `PRA_SQL_GATE` is unset and because a caller that has no question to judge
+    a query against has nothing to give a gate. `guarded_query` is this with a
+    gate in the middle.
+    """
+    answer, rows, _ = guarded_query(sql, warehouse=warehouse, allowed_tables=allowed_tables)
+    return answer, rows
+
+
+def guarded_query(
+    sql: str,
+    *,
+    warehouse: Path,
+    allowed_tables: Sequence[str] = ALLOWED_TABLES,
+    gate: SqlGate | None = None,
+    question: str = "",
+) -> tuple[str, int, GateDecision]:
+    """The denylist, then the gate, then DuckDB. Text, row count, and the verdict.
+
+    The order is the point. `validate_sql` is free, deterministic and always
+    on, so a statement it refuses is refused before anything is paid for and
+    before a provider is told what the agent was asked. The gate only ever sees
+    statements that already passed, which is what keeps a run's gate bill
+    proportional to the queries that were going to run anyway.
+
+    A refusal from either, and a failure from DuckDB, all come back as text
+    with a row count of zero, never as an exception: an exception out of a tool
+    ends the agent's turn, and the useful outcome of a bad query is the model
+    reading why and writing a better one.
     """
     refusal = validate_sql(sql, allowed_tables)
     if refusal is not None:
         logger.info("tool call refused", extra={"tool": SQL_TOOL, "reason": refusal})
-        return refusal, 0
+        return refusal, 0, NO_GATE
+    decision = NO_GATE if gate is None else gate.judge(question, sql, schema_summary())
+    if not decision.allowed:
+        return gate_refusal(decision), 0, decision
+    answer, rows = execute_marts_query(sql, warehouse=warehouse)
+    return answer, rows, decision
+
+
+def execute_marts_query(sql: str, *, warehouse: Path) -> tuple[str, int]:
+    """Run one already-checked statement and render what came back.
+
+    Split out of `guarded_query` so that "is this allowed" and "what does it
+    return" are two functions rather than two halves of one: nothing here
+    checks anything, and nothing above here touches a connection.
+    """
     limited = with_limit(sql)
     if not warehouse.is_file():
         return (
@@ -412,19 +511,47 @@ def make_query_marts_tool(
     tracer: trace.Tracer,
     metrics: ServiceMetrics,
     allowed_tables: Sequence[str] = ALLOWED_TABLES,
+    gate: SqlGate | None = None,
 ) -> BaseTool:
-    """The SQL tool, bound to one warehouse and one set of instruments."""
+    """The SQL tool, bound to one warehouse, one set of instruments and one gate."""
+    resolved_gate = gate if gate is not None else OffGate()
 
     def query_marts(sql: str) -> str:
         """Run one read-only SELECT against the gold marts and return the rows."""
         with tracer.start_as_current_span(f"{TOOL_SPAN_PREFIX}{SQL_TOOL}") as span:
             span.set_attribute("agent.tool", SQL_TOOL)
             span.set_attribute("agent.sql.length", len(sql))
-            answer, rows = run_marts_query(sql, warehouse=warehouse, allowed_tables=allowed_tables)
+            answer, rows, decision = guarded_query(
+                sql,
+                warehouse=warehouse,
+                allowed_tables=allowed_tables,
+                gate=resolved_gate,
+                question=current_question(),
+            )
             span.set_attribute("agent.rows", rows)
-        metrics.count_tool_call(SQL_TOOL)
-        record_call(ToolCall(tool=SQL_TOOL, input_summary=summarize(sql), rows=rows))
-        logger.info("tool call", extra={"tool": SQL_TOOL, "rows": rows, "sql_length": len(sql)})
+            span.set_attribute("gate.name", decision.gate)
+            span.set_attribute("gate.allowed", decision.allowed)
+            span.set_attribute("gate.confidence", decision.confidence)
+            span.set_attribute("gate.cost_usd", decision.cost_usd)
+        metrics.count_tool_call(SQL_TOOL, gate=decision.label)
+        record_call(
+            ToolCall(
+                tool=SQL_TOOL,
+                input_summary=summarize(sql),
+                rows=rows,
+                gate=decision.label,
+                gate_cost_usd=decision.cost_usd,
+            )
+        )
+        logger.info(
+            "tool call",
+            extra={
+                "tool": SQL_TOOL,
+                "rows": rows,
+                "sql_length": len(sql),
+                "gate": decision.label,
+            },
+        )
         return answer
 
     return StructuredTool.from_function(
@@ -451,6 +578,7 @@ def marts_tools(
     tracer: trace.Tracer,
     metrics: ServiceMetrics,
     card_index: Path | None = None,
+    gate: SqlGate | None = None,
 ) -> list[BaseTool]:
     """Every tool the agent gets: the SQL one always, the card one when there is an index.
 
@@ -461,7 +589,7 @@ def marts_tools(
     SQL half of the agent works perfectly well without the card text.
     """
     tools = [
-        make_query_marts_tool(warehouse=warehouse, tracer=tracer, metrics=metrics),
+        make_query_marts_tool(warehouse=warehouse, tracer=tracer, metrics=metrics, gate=gate),
     ]
     if card_index is None:
         return tools
@@ -543,6 +671,7 @@ class Agent:
         """Run the loop on one question and collect what it did."""
         collected: list[ToolCall] = []
         token = _calls.set(collected)
+        asked = _question.set(question)
         try:
             with self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
@@ -553,6 +682,7 @@ class Agent:
                 for name, value in usage.items():
                     span.set_attribute(f"agent.usage.{name}", value)
         finally:
+            _question.reset(asked)
             _calls.reset(token)
         answer = Answer(
             answer=final_text(messages),
@@ -624,22 +754,30 @@ def build_agent(
     card_index: Path | None = None,
     tracer: trace.Tracer | None = None,
     metrics: ServiceMetrics | None = None,
+    gate: SqlGate | None = None,
 ) -> Agent:
-    """The agent, with its model, its warehouse and its instruments injected.
+    """The agent, with its model, its warehouse, its instruments and its gate injected.
 
     Every argument has a default that is the real thing, and every one of them
     is replaceable, which is the same shape `pipeline.serve` gives its model
     loader. The tests pass a scripted chat model and a fixture warehouse and
     exercise everything else for real.
+
+    The gate defaults to whatever `PRA_SQL_GATE` asks for, which is `OffGate`
+    unless something has turned it on, and is read here rather than inside the
+    tool so that a misconfigured gate fails while the agent is being built
+    instead of in the middle of a question.
     """
     resolved_metrics = metrics if metrics is not None else build_metrics()
     resolved_tracer = tracer or build_tracer_provider(SERVICE_NAME).get_tracer(__name__)
+    resolved_gate = gate if gate is not None else gate_from_env()
     chat = model if model is not None else chat_model()
     tools = marts_tools(
         warehouse=warehouse,
         tracer=resolved_tracer,
         metrics=resolved_metrics,
         card_index=card_index,
+        gate=resolved_gate,
     )
     graph = create_agent(
         model=chat,
@@ -668,7 +806,12 @@ def render(answer: Answer) -> str:
     """One answer as the block the command line prints."""
     lines = [answer.answer, ""]
     for call in answer.tool_calls:
-        lines.append(f"  [{call.tool}] {call.rows} row(s): {call.input_summary}")
+        gate = "" if call.gate == GATE_OFF else f" [gate: {call.gate}]"
+        lines.append(f"  [{call.tool}] {call.rows} row(s):{gate} {call.input_summary}")
+    judged = [call for call in answer.tool_calls if call.gate != GATE_OFF]
+    if judged:
+        spent = sum(call.gate_cost_usd for call in judged)
+        lines.append(f"  gate cost: ${spent:.6f} ({len(judged)} call(s))")
     if answer.usage:
         counts = ", ".join(f"{name}={value}" for name, value in sorted(answer.usage.items()))
         lines.append(f"  tokens: {counts}")

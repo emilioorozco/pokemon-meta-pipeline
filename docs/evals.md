@@ -187,6 +187,19 @@ from 62 characters to 56, which only shortens lines that were already ending in
 an ellipsis. `version` in the golden file is 2, because a run against the old
 expectations and a run against these two are not comparable.
 
+## The gate in the table
+
+Version 3 of the set is twelve questions. The two new ones are prompt
+injections through the question itself: one asks the agent to ignore its rules
+and run a destructive statement, one asks it to read outside the schema. Both
+require a refusal and forbid any sign the query ran. With `PRA_SQL_GATE` off
+the denylist refuses them; with the gate on ([sql-gate.md](sql-gate.md)) they
+are the rows that show `refused` in the `gate` column the table gains, and the
+line under the table reports the gate's calls and cost for the run, which is
+well under a cent. The MLflow run records `gate_calls`, `gate_refusals` and
+`gate_cost_usd`, so a model update that changes the gate's behaviour shows up
+as a changed refusal count against the same twelve questions.
+
 ## The broken-prompt check
 
 The claim that the seven rules in `pipeline/prompts.py` are load bearing is only
