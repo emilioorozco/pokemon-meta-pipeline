@@ -834,9 +834,35 @@ naming the project.
 
 ### Embeddings and the index
 
-`python -m pipeline.card_index build` embeds each card as one document and
-writes `data/catalog/card_index/`: a `vectors.parquet` holding the card, the
-document and its vector, and a `meta.json` naming the embedder that built it.
+`python -m pipeline.card_index build` writes `data/catalog/card_index/`: a
+`cards.parquet` of distinct cards with their printings, a `vectors.parquet` of
+passages with their vectors, and a `meta.json` naming the embedder and the
+index format version that built it, so an index from an older layout is
+rebuilt rather than misread.
+
+A card is indexed as several passages rather than one document: an identity
+line (name, stage, types, hit points) and one passage per ability, attack and
+rule, each prefixed with the card's name so it is self-describing. Passages are
+scored and the scores are aggregated to the card by their maximum, so a card
+comes back once, with the passage that matched it. One blob per card was the
+first design, and on the real corpus it ranked Dragapult ex around sixtieth
+for a verbatim quote of its own attack: the name, the stage, the hit points and
+the other attack diluted the text against short single-effect trainer cards.
+Reprints are collapsed the same way: 2,264 Standard printings are 1,552
+distinct cards, and before the collapse three copies of one Supporter could
+fill a top five.
+
+The ranking is hybrid. A small embedder is weakest on exact game vocabulary,
+where "Benched", "damage counters" and "Prize cards" are the whole meaning of a
+line, so the same passages are scored with BM25 over a hand-rolled index and
+the two rankings are fused by reciprocal rank (k=60). RRF rather than a
+weighted sum because a cosine and a BM25 score are not on the same scale. On
+the real corpus a verbatim quote of Phantom Dive ranks Dragapult ex first, "put
+damage counters on the bench" third; the two-word "bench damage" still ranks it
+outside the top fifteen, behind cards whose entire text is a shorter sentence
+about bench damage, which is what a two-word query deserves and why the agent
+is told to name the card or archetype it is asking about. Model load is about
+seven seconds once per process, and a search is under twenty milliseconds.
 
 The vectors come from `sentence-transformers` with `BAAI/bge-small-en-v1.5`,
 384 dimensions, running locally on a CPU. Local rather than an embedding API
@@ -849,9 +875,9 @@ accuracy: without it, "put damage counters on the bench" does not rank the card
 that does exactly that first, and with it, it does.
 
 Storage is a Parquet of vectors and a numpy dot product, not DuckDB's `vss`
-extension. Twenty-five thousand cards at 384 float32 is 38 MB and one
-matrix-vector product per query: exact rather than approximate, well under a
-millisecond, with no recall parameter to tune. `vss` would add an extension to
+extension. A few thousand passages at 384 float32 is a few megabytes and one
+matrix-vector product per query: exact rather than approximate, with no recall
+parameter to tune. `vss` would add an extension to
 install at build time, an HNSW index whose persistence in a file-backed
 database is still behind an experimental flag, and a second copy of the card
 text inside the warehouse the SQL tool is deliberately restricted from reading.
@@ -868,8 +894,8 @@ fast test suite with nothing fetched from anywhere.
 
 ```bash
 uv run python scripts/fetch_card_text.py            # corpus from TCGdex
-uv run python -m pipeline.card_index build          # embed it, ~25k cards
-uv run python -m pipeline.card_index query "bench damage" -k 5
+uv run python -m pipeline.card_index build          # embed it, the Standard format
+uv run python -m pipeline.card_index query "put damage counters on the bench" -k 5
 op run --env-file=.env.op -- uv run python -m pipeline.agent \
   "how does Dragapult ex do against Gholdengo ex"
 op run --env-file=.env.op -- uv run python -m pipeline.agent --repl

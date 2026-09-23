@@ -92,10 +92,12 @@ def test_an_index_reloads_without_being_told_which_embedder_built_it(
     loaded = card_index.CardIndex.load(hashed_index)
     assert len(loaded.cards) == len(cards)
     assert loaded.embedder.name.startswith(card_index.HASHING_NAME)
-    # The whole record survives the round trip, not just the name.
-    dragapult = next(card for card in loaded.cards if card.name == BENCH_CARD)
-    assert dragapult.attacks[0]["name"] == "Phantom Dive"
-    assert dragapult.rules
+    # The whole record survives the round trip, not just the name. A loaded
+    # entry is one distinct card with its printings, so the text is under `card`.
+    dragapult = next(entry for entry in loaded.cards if entry.name == BENCH_CARD)
+    assert dragapult.card.attacks[0]["name"] == "Phantom Dive"
+    assert dragapult.card.rules
+    assert dragapult.printings and dragapult.printings[0].where
 
 
 def test_a_missing_index_says_how_to_build_one(tmp_path: Path) -> None:
@@ -130,8 +132,10 @@ def test_the_tool_returns_readable_card_text_and_counts_its_call(
     spans = {span.name: span for span in exporter.get_finished_spans()}
     tool_span = spans[f"{card_index.TOOL_SPAN_PREFIX}{card_index.CARD_TOOL}"]
     assert attribute(tool_span, "agent.rows") == 2
+    # `gate` is `off` on every card lookup: the SQL gate judges statements, and
+    # this tool sends none, so there is no verdict to report.
     value = metrics.registry.get_sample_value(
-        "agent_tool_calls_total", {"tool": card_index.CARD_TOOL}
+        "agent_tool_calls_total", {"tool": card_index.CARD_TOOL, "gate": "off"}
     )
     assert value == 1.0
 
