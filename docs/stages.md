@@ -808,6 +808,21 @@ against the whole database third. A card that matches nothing is counted and
 skipped rather than guessed at, because a wrong card's text in a retriever is
 worse than a missing one.
 
+The two sources spell a set differently, and the spelling is the whole match:
+the client writes `SV6`, `SV8-5` and `MEBSP` where TCGdex writes `sv06`,
+`sv08.5` and `mep`. A code becomes a candidate identifier through a normalizer
+(the series number padded to two digits, a `-5` tail written as the `.5` of a
+special set) plus a small table for the codes no rule reaches, including the
+client's `RSV10-5` and `ZSV10-5`, which are the two halves of one special set
+that TCGdex serves as White Flare and Black Bolt. Candidates are checked
+against the live set list before they are used, and a code that resolves to
+nothing is logged at WARNING, because it is a whole set of the current format
+about to be missing. An entry whose set never resolved is counted as unmatched
+and broken down by set code in the run's `extra`, rather than being dropped in
+silence: the name query that would otherwise answer for it searches every set
+TCGdex has and returns the oldest printing of that name, which is a card from
+another era or another game.
+
 The card names and rules text are Pokemon Trading Card Game content owned by
 Nintendo, Creatures Inc. and GAME FREAK, and this project is not affiliated
 with any of them. What the script writes is a local working copy for a local
