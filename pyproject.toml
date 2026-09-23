@@ -34,6 +34,24 @@ ml = [
     "prometheus-client>=0.20",
 ]
 orchestration = ["apache-airflow>=2.9"]
+agent = [
+    # The agent stage: a tool-calling loop over the gold marts and the card
+    # text. `langchain` carries the agent constructor, `langchain-core` the
+    # message and tool types the fake model in the tests subclasses, and
+    # `langchain-anthropic` the one provider this project talks to.
+    # `langchain-community` is deliberately absent: nothing here needs it.
+    "langchain>=1.0",
+    "langchain-core>=1.0",
+    "langchain-anthropic>=1.0",
+    # The retriever embeds card text locally rather than through an API, so the
+    # index costs nothing per query and works with no key at all. It pulls
+    # torch, which is most of the install.
+    "sentence-transformers>=3",
+    # The agent reads the marts through the same engine dbt wrote them with,
+    # and the SQL tool opens that file read-only. Already a core dependency;
+    # named here so the extra is installable on its own.
+    "duckdb>=1.0",
+]
 
 [dependency-groups]
 dev = [
@@ -46,6 +64,9 @@ dev = [
     "pyarrow-stubs>=17",
     "jsonschema>=4.21",
     "types-jsonschema>=4.21",
+    # PyYAML arrives with dbt and langchain-core; `pipeline.prompts` reads the
+    # dbt schema file with it, so the stubs are a dev dependency of their own.
+    "types-PyYAML>=6.0",
     # The silver tests run a real local SparkSession, so the engine is a dev
     # dependency as well as the optional `spark` extra the command line needs.
     "pyspark>=3.5",
@@ -73,6 +94,15 @@ dev = [
     "opentelemetry-instrumentation-fastapi>=0.46b0",
     "opentelemetry-exporter-otlp-proto-http>=1.25",
     "prometheus-client>=0.20",
+    # And once more for the agent tests. They run the real agent loop and the
+    # real SQL tool against a fake chat model, so the framework is a dev
+    # dependency as well as the `agent` extra; no key is needed for any of them.
+    "langchain>=1.0",
+    "langchain-core>=1.0",
+    "langchain-anthropic>=1.0",
+    # The retriever's embedder. The fast suite swaps in a hashing embedder and
+    # never loads it; `pytest -m ml` builds the index with the real one.
+    "sentence-transformers>=3",
 ]
 
 [build-system]
@@ -124,7 +154,7 @@ filterwarnings = ["ignore:pipeline.legacy.kaggle is deprecated:DeprecationWarnin
 markers = [
     "spark: needs a JVM",
     "dbt: builds the dbt models; needs a JVM for the silver input it reads",
-    "ml: trains a model into a real MLflow run; no JVM, but slow",
+    "ml: trains a model into a real MLflow run, or downloads the embedding model; no JVM, but slow",
 ]
 # The Spark tests start a Java Virtual Machine, which costs seconds and a Java
 # install, and the dbt tests build silver first and then run dbt over it, so

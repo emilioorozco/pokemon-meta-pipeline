@@ -36,9 +36,11 @@ Stages are skipped rather than dropped, each with a logged reason:
   themselves when they are called directly, which is what the DAG does; the
   check here saves three process starts and keeps the summary honest about
   what actually ran.
-- `build_card_index`, until `pipeline.card_index` exists. The retriever index
-  is a later ticket. The step is listed rather than left out so the shape of
-  the finished pipeline is visible in the one place that runs it.
+- `build_card_index`, when there is no card-text corpus to index. The corpus is
+  downloaded from a public card database by `scripts/fetch_card_text.py` and is
+  not committed, so a clone that has not fetched it has nothing to embed. That
+  is the same kind of nothing a missing card catalog is, and it is a skip with
+  a reason rather than a failed run.
 - `publish`, when `PRA_INSIGHTS_TABLE` is unset. A clone with no table named
   has nowhere to publish to, which is the normal state of a reviewer's laptop
   and of every test in this repository; naming the variable in the reason is
@@ -46,7 +48,6 @@ Stages are skipped rather than dropped, each with a logged reason:
 """
 
 import argparse
-import importlib.util
 import logging
 import os
 import subprocess
@@ -78,7 +79,8 @@ INGEST_MODE_VAR: Final = "PRA_INGEST_MODE"
 CONSUMER_MODE: Final = "consumer"
 DATA_DIR_VAR: Final = "PIPELINE_DATA_DIR"
 FEATURE_TABLE: Final = "features_turn"
-CARD_INDEX_MODULE: Final = "pipeline.card_index"
+# The retriever's corpus, relative to the data directory the run is pointed at.
+CARD_TEXT_NAME: Final = "card_text.jsonl"
 
 STATUS_SKIPPED: Final = "skipped"
 
@@ -90,8 +92,10 @@ class Stage:
     Every conditional here is one a stage would make for itself if it were
     started, so the flags save a process start rather than deciding anything the
     command would not: three commands read `features_turn` and have nothing to
-    do when it is empty, and the publish has nowhere to write when no table is
-    named.
+    do when it is empty, one reads the card-text corpus and has nothing to do
+    when it was never fetched, and the publish has nowhere to write when no
+    table is named. Anything more conditional than that belongs in the stage,
+    not in the runner.
     """
 
     name: str
@@ -101,9 +105,8 @@ class Stage:
     takes_source_dir: bool = False
     #: Skipped when `features_turn` holds no rows.
     needs_features: bool = False
-    #: Skipped when its module is not importable, which is how an unbuilt
-    #: stage stays visible in the list instead of being absent from it.
-    optional_module: bool = False
+    #: Skipped when `data/catalog/card_text.jsonl` has not been fetched.
+    needs_card_text: bool = False
     #: Skipped when no insights table is named, because there is nowhere to write.
     needs_insights_table: bool = False
 
@@ -124,7 +127,12 @@ STAGES: Final[tuple[Stage, ...]] = (
         needs_features=True,
     ),
     Stage(name="drift", module="pipeline.drift", needs_features=True),
-    Stage(name="build_card_index", module=CARD_INDEX_MODULE, optional_module=True),
+    Stage(
+        name="build_card_index",
+        module="pipeline.card_index",
+        args=("build",),
+        needs_card_text=True,
+    ),
     Stage(name="quality_gate", module="pipeline.quality_gate"),
     # After the gate, not before it: publishing numbers the gate was about to
     # refuse would put a known-bad matchup matrix in front of every reader of
@@ -224,15 +232,18 @@ def feature_rows(warehouse: Path) -> int:
     return int(row[0]) if row else 0
 
 
-def module_exists(module: str) -> bool:
-    """Whether a stage's module is importable, without importing it."""
-    try:
-        return importlib.util.find_spec(module) is not None
-    except (ImportError, ValueError):
-        return False
+def card_text_path(data_dir: Path) -> Path:
+    """Where the retriever's corpus lives under a given data directory."""
+    return data_dir / "catalog" / CARD_TEXT_NAME
 
 
-def skip_reason(stage: Stage, *, skipped: Sequence[str], features: int | None) -> str | None:
+def skip_reason(
+    stage: Stage,
+    *,
+    skipped: Sequence[str],
+    features: int | None,
+    card_text: Path | None = None,
+) -> str | None:
     """Why this stage should not run, or None to run it.
 
     `features` is None until something has needed the count, so a run that
@@ -242,10 +253,10 @@ def skip_reason(stage: Stage, *, skipped: Sequence[str], features: int | None) -
         return "skipped by --skip"
     if stage.name == "backfill" and os.environ.get(INGEST_MODE_VAR, "").strip() == CONSUMER_MODE:
         return f"{INGEST_MODE_VAR}={CONSUMER_MODE}: the consumer is the live ingest"
-    if stage.optional_module and not module_exists(stage.module):
-        return f"{stage.module} is not implemented yet"
     if stage.needs_features and features == 0:
         return f"{FEATURE_TABLE} holds no rows"
+    if stage.needs_card_text and (card_text is None or not card_text.is_file()):
+        return f"no card text at {card_text}: run scripts/fetch_card_text.py"
     if stage.needs_insights_table and not os.environ.get(INSIGHTS_TABLE_VAR, "").strip():
         return f"{INSIGHTS_TABLE_VAR} is unset: there is no table to publish to"
     return None
@@ -296,7 +307,9 @@ def run_all(
                 "feature rows counted",
                 extra={"rows": features, "warehouse": str(warehouse)},
             )
-        reason = skip_reason(stage, skipped=skip, features=features)
+        reason = skip_reason(
+            stage, skipped=skip, features=features, card_text=card_text_path(data_dir)
+        )
         if reason is not None:
             logger.info("stage skipped", extra={"stage_name": stage.name, "reason": reason})
             summary.results.append(

@@ -160,6 +160,44 @@ def _exporter() -> SpanExporter | None:
     return OTLPSpanExporter()
 
 
+def build_tracer_provider(
+    service_name: str = SERVICE_NAME,
+    *,
+    exporter: SpanExporter | None = None,
+    span_processor: SpanProcessor | None = None,
+) -> trace.TracerProvider:
+    """A provider that exports if it can and is a genuine no-op if it cannot.
+
+    Separate from `setup_tracing` because the agent's command line has spans to
+    emit and no FastAPI application to hang them off: `python -m pipeline.agent`
+    wants the same provider and none of the HTTP instrumentation. Both callers
+    go through here so there is one answer to "is there a collector".
+    """
+    processor = span_processor
+    if processor is None and exporter is not None:
+        # An injected exporter is a caller that wants to read the spans back,
+        # which a batching processor would hand over some time later or never.
+        processor = SimpleSpanProcessor(exporter)
+    if processor is None:
+        configured = _exporter()
+        # Batched for the real one: a span per request sent as its own HTTP
+        # request would put the collector on the serving path.
+        processor = BatchSpanProcessor(configured) if configured is not None else None
+
+    if processor is None:
+        # Nothing to export to: a real no-op, not a provider quietly recording
+        # and dropping. `with tracer.start_as_current_span(...)` still works, on
+        # a non-recording span that costs nothing.
+        return trace.NoOpTracerProvider()
+    sdk_provider = TracerProvider(
+        resource=Resource.create(
+            {"service.name": service_name, "service.version": service_version()}
+        )
+    )
+    sdk_provider.add_span_processor(processor)
+    return sdk_provider
+
+
 def setup_tracing(
     app: FastAPI,
     service_name: str = SERVICE_NAME,
@@ -176,31 +214,7 @@ def setup_tracing(
     the request's application is what keeps two applications in one process from
     sharing a provider.
     """
-    processor = span_processor
-    if processor is None and exporter is not None:
-        # An injected exporter is a caller that wants to read the spans back,
-        # which a batching processor would hand over some time later or never.
-        processor = SimpleSpanProcessor(exporter)
-    if processor is None:
-        configured = _exporter()
-        # Batched for the real one: a span per request sent as its own HTTP
-        # request would put the collector on the serving path.
-        processor = BatchSpanProcessor(configured) if configured is not None else None
-
-    provider: trace.TracerProvider
-    if processor is None:
-        # Nothing to export to: a real no-op, not a provider quietly recording
-        # and dropping. `with tracer.start_as_current_span(...)` still works, on
-        # a non-recording span that costs nothing.
-        provider = trace.NoOpTracerProvider()
-    else:
-        sdk_provider = TracerProvider(
-            resource=Resource.create(
-                {"service.name": service_name, "service.version": service_version()}
-            )
-        )
-        sdk_provider.add_span_processor(processor)
-        provider = sdk_provider
+    provider = build_tracer_provider(service_name, exporter=exporter, span_processor=span_processor)
 
     FastAPIInstrumentor.instrument_app(
         app,
@@ -258,14 +272,17 @@ class ServiceMetrics:
             model_version=model_version, unknown_archetype=str(unknown).lower()
         ).inc()
 
-    def count_tool_call(self, tool: str) -> None:
-        """One agent tool call. Nothing calls this yet; stage 6 is where it starts.
+    def count_tool_call(self, tool: str, gate: str = "off") -> None:
+        """One agent tool call, by tool and by what the optional SQL gate said.
 
-        Declared now rather than later so the dashboard panel and the metric name
-        are decided while the serving instrumentation is being reviewed, instead
-        of being invented in a hurry alongside the agent.
+        `gate` is a closed set of four: `off` when no gate ran, which is every
+        `lookup_cards` call and every call made with `PRA_SQL_GATE` unset, and
+        `jev:allowed`, `jev:refused` or `jev:error` when one did. It defaults so
+        that a caller with no gate to report does not have to know the gate
+        exists, and it is bounded for the usual reason: a label whose values a
+        provider chooses is one time series per provider mood.
         """
-        self.agent_tool_calls.labels(tool=tool).inc()
+        self.agent_tool_calls.labels(tool=tool, gate=gate).inc()
 
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
@@ -291,12 +308,12 @@ def route_label(request: Request) -> str:
     return str(path) if path else UNMATCHED_ROUTE
 
 
-def setup_metrics(app: FastAPI) -> ServiceMetrics:
-    """Build the instruments, mount `GET /metrics`, and return them.
+def build_metrics() -> ServiceMetrics:
+    """The instruments and their private registry, with nothing mounted.
 
-    Mounting the endpoint here rather than in `serve.py` keeps the exposition
-    format, the registry and the content type in one module: the service's
-    endpoints are about win probabilities, and this one is about the process.
+    The agent's command line increments the tool-call counter with no HTTP
+    server to scrape it, and the agent tests read the counter back without
+    building an application, so the construction is separate from the mounting.
     """
     registry = CollectorRegistry()
     metrics = ServiceMetrics(
@@ -328,8 +345,8 @@ def setup_metrics(app: FastAPI) -> ServiceMetrics:
         ),
         agent_tool_calls=Counter(
             "agent_tool_calls_total",
-            "Agent tool invocations, by tool name. Unused until stage 6 exists.",
-            ["tool"],
+            "Agent tool invocations, by tool name and by the SQL gate's verdict.",
+            ["tool", "gate"],
             registry=registry,
         ),
         model_info=Gauge(
@@ -339,6 +356,18 @@ def setup_metrics(app: FastAPI) -> ServiceMetrics:
             registry=registry,
         ),
     )
+    return metrics
+
+
+def setup_metrics(app: FastAPI) -> ServiceMetrics:
+    """Build the instruments, mount `GET /metrics`, and return them.
+
+    Mounting the endpoint here rather than in `serve.py` keeps the exposition
+    format, the registry and the content type in one module: the service's
+    endpoints are about win probabilities, and this one is about the process.
+    """
+    metrics = build_metrics()
+    registry = metrics.registry
 
     @app.get(
         "/metrics",
