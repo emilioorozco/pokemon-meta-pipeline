@@ -94,7 +94,7 @@ from pipeline.observability import (
     stage_run,
 )
 from pipeline.settings import Settings, SettingsError
-from pipeline.storage import AnyLocation, local_file, location, tracking_store
+from pipeline.storage import AnyLocation, duckdb_connect, location, tracking_store
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_dynamodb.service_resource import Table
@@ -221,7 +221,7 @@ def read_marts(warehouse: AnyLocation) -> Marts:
     if not target.is_file():
         raise PublishError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     try:
-        connection = duckdb.connect(str(local_file(target)), read_only=True)
+        connection = duckdb_connect(target)
     except duckdb.Error as unreadable:
         raise PublishError(f"{target} could not be opened: {unreadable}") from unreadable
     try:

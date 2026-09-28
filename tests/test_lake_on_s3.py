@@ -48,7 +48,7 @@ from pipeline.observability import RunMetrics, write_run_metrics
 from pipeline.quarantine import INVALID_JSON, write_quarantine
 from pipeline.settings import Settings
 from pipeline.source import LocalSource
-from pipeline.storage import Location, local_file, location
+from pipeline.storage import Location, duckdb_connect, local_file, location
 from tests.conftest import FIXTURES_DIR, INGESTED_AT, TEST_HMAC_KEY
 from tests.test_bronze import make_blob
 
@@ -419,3 +419,43 @@ def test_training_syncs_the_mlflow_store_into_an_s3_root(s3_lake: Location, tmp_
     landed = [item.key for item in (s3_lake / "mlruns").iter_files()]
     assert any(key.endswith("meta.yaml") for key in landed)
     assert any("/models/" in key or "/win-probability/" in key for key in landed)
+
+
+@pytest.mark.dbt
+def test_gold_builds_over_an_s3_lake_and_publishes_back(
+    s3_lake_server: Location, silver_from_fixtures: Path
+) -> None:
+    """The real dbt build with the sources on S3, against moto's threaded server.
+
+    Possible only through the server: dbt reads silver with DuckDB's `httpfs`,
+    which makes its own HTTP calls and never touches botocore, so the in-process
+    fake is invisible to it. The fixture silver is uploaded rather than rebuilt,
+    because what is under test here is the gold stage over an S3 root and not
+    Spark's write to one.
+
+    The last assertion is the one that caught a real bug: the ops models are
+    views over the run-metrics Parquet, so a reader of the published warehouse
+    has to resolve `s3://` too, and the downloaded copy has to keep the file's
+    name or every `meta.main.x` in those views fails to bind.
+    """
+    pytest.importorskip("dbt.adapters.duckdb", reason="dbt-duckdb is not installed")
+    for item in sorted(Path(silver_from_fixtures).rglob("*")):
+        if item.is_file():
+            relative = item.relative_to(silver_from_fixtures).as_posix()
+            (s3_lake_server / relative).upload_file(item)
+    # One run-metrics row, so the ops views have something to read.
+    metrics = RunMetrics(stage="silver", run_id="abc123", started_at=NOW)
+    metrics.finished_at = NOW
+    write_run_metrics(metrics, s3_lake_server / "lake" / "run_metrics")
+
+    summary = gold.GoldSummary()
+    assert gold.run_gold(data_dir=s3_lake_server, summary=summary) == 0
+
+    assert "mart_matchups" in summary.marts
+    assert (s3_lake_server / "warehouse" / "marts" / "mart_matchups.parquet").is_file()
+    assert (s3_lake_server / "warehouse" / "meta.duckdb").is_file()
+    connection = duckdb_connect(s3_lake_server / "warehouse" / "meta.duckdb")
+    try:
+        assert connection.sql("select count(*) from mart_pipeline_health").fetchone() is not None
+    finally:
+        connection.close()

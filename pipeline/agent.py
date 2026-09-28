@@ -98,7 +98,7 @@ from pipeline.sql_gate import (
     gate_from_env,
     schema_summary,
 )
-from pipeline.storage import AnyLocation, Location, local_file, location
+from pipeline.storage import AnyLocation, Location, duckdb_connect, location
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
 
 logger = logging.getLogger(__name__)
@@ -404,12 +404,13 @@ def open_warehouse(path: AnyLocation) -> duckdb.DuckDBPyConnection:
     parameter and is tolerated if this DuckDB build does not have it: a version
     without the setting should serve queries, not refuse to start.
 
-    A warehouse on S3 is downloaded first: DuckDB opens a database file, not a
-    stream, and `httpfs` gives it `read_parquet` over object storage and not an
-    attachable database. `pipeline.storage.local_file` does that once per
-    process, which for a service is once per start and not once per question.
+    A warehouse on S3 is downloaded first and opened with `httpfs` loaded, both
+    through `pipeline.storage.duckdb_connect`: DuckDB opens a database file, not
+    a stream, and the ops views inside that file read the lake. The download
+    happens once per process, which for a service is once per start and not once
+    per question.
     """
-    connection = duckdb.connect(str(local_file(path)), read_only=True)
+    connection = duckdb_connect(path)
     with contextlib.suppress(duckdb.Error):
         connection.execute(f"SET statement_timeout = '{STATEMENT_TIMEOUT_S}s'")
     return connection

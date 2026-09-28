@@ -71,7 +71,7 @@ from pipeline.observability import (
     stage_run,
 )
 from pipeline.settings import INSIGHTS_TABLE_VAR, DataRootError, validate_data_root
-from pipeline.storage import AnyLocation, Location, local_file, location
+from pipeline.storage import AnyLocation, Location, duckdb_connect, location
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +223,7 @@ def feature_rows(warehouse: AnyLocation) -> int:
     if not target.is_file():
         return 0
     try:
-        connection = duckdb.connect(str(local_file(target)), read_only=True)
+        connection = duckdb_connect(target)
     except duckdb.Error:
         return 0
     try:

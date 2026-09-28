@@ -57,7 +57,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-import duckdb
 import lightgbm as lgb
 import mlflow
 import numpy as np
@@ -83,7 +82,7 @@ from pipeline.observability import (
     git_commit,
     stage_run,
 )
-from pipeline.storage import AnyLocation, local_file, location, tracking_store
+from pipeline.storage import AnyLocation, duckdb_connect, location, tracking_store
 
 logger = logging.getLogger(__name__)
 STAGE: Final = "train"
@@ -207,9 +206,9 @@ def load_features(warehouse: AnyLocation) -> pd.DataFrame:
     if not target.is_file():
         raise TrainingDataError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     columns = ", ".join((*CARRIED, *MODEL_FEATURES, LABEL))
-    # A warehouse on S3 is downloaded first: DuckDB opens a database file, and
-    # `pipeline.storage.local_file` does that once for the process.
-    connection = duckdb.connect(str(local_file(target)), read_only=True)
+    # A warehouse on S3 is downloaded first and opened with httpfs loaded; see
+    # `pipeline.storage.duckdb_connect`.
+    connection = duckdb_connect(target)
     try:
         table = connection.sql(
             f"select {columns} from {FEATURE_TABLE} order by game_id, seat, turn_number"

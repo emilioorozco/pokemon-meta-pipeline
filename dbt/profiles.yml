@@ -35,7 +35,17 @@ play_rough_pipeline:
         - aws
       # The same chain boto3 walks: environment, profile, container and instance
       # metadata. No key is named here and none should ever be.
+      #
+      #
+      # dbt parses this file as YAML and only then renders each value, so the
+      # three keys below cannot be written conditionally. They are exported by
+      # `python -m pipeline.gold` from `pipeline.storage.duckdb_s3_profile`,
+      # whose defaults are the regional AWS endpoint over TLS; an endpoint in
+      # the environment (moto, LocalStack, MinIO) replaces them.
       secrets:
         - type: s3
           provider: credential_chain
           region: "{{ env_var('AWS_REGION', 'us-west-2') }}"
+          endpoint: "{{ env_var('PRA_DUCKDB_S3_ENDPOINT', 's3.' ~ env_var('AWS_REGION', 'us-west-2') ~ '.amazonaws.com') }}"
+          url_style: "{{ env_var('PRA_DUCKDB_S3_URL_STYLE', 'vhost') }}"
+          use_ssl: "{{ env_var('PRA_DUCKDB_S3_USE_SSL', 'true') }}"

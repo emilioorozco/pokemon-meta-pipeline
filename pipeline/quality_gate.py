@@ -46,7 +46,7 @@ from pipeline.observability import (
     emit_summary,
     stage_run,
 )
-from pipeline.storage import AnyLocation, local_file, location
+from pipeline.storage import AnyLocation, duckdb_connect, location
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +109,16 @@ class StageHealth:
 def read_health(warehouse: AnyLocation) -> list[StageHealth]:
     """The mart, one object per stage, from a read-only connection.
 
-    A warehouse on S3 is downloaded first, for the reason `pipeline.storage`
-    gives: DuckDB opens a database file and there is no such thing over object
-    storage.
+    A warehouse on S3 is downloaded first and opened with `httpfs` loaded:
+    `mart_pipeline_health` is a view over the run-metrics Parquet, so reading it
+    means reading the lake, not just the file. `pipeline.storage.duckdb_connect`
+    is where both halves live.
     """
     target = location(warehouse)
     if not target.is_file():
         raise QualityGateError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     try:
-        connection = duckdb.connect(str(local_file(target)), read_only=True)
+        connection = duckdb_connect(target)
     except duckdb.Error as unreadable:
         raise QualityGateError(f"{target} could not be opened: {unreadable}") from unreadable
     try:

@@ -20,7 +20,7 @@ from pipeline.settings import DATA_DIR_VAR, DataRootError, validate_data_root
 from pipeline.storage import (
     Location,
     StorageError,
-    duckdb_settings,
+    duckdb_s3_profile,
     local_file,
     location,
     spark_configuration,
@@ -252,20 +252,28 @@ def test_spark_uris_use_the_s3a_scheme() -> None:
     assert location("/tmp/silver").spark_uri == "/tmp/silver"
 
 
-def test_duckdb_is_told_nothing_extra_for_a_local_root(tmp_path: Path) -> None:
-    assert duckdb_settings(tmp_path) == []
-
-
-def test_duckdb_loads_httpfs_and_a_credential_chain_secret_for_an_s3_root(
+def test_duckdb_reaches_the_regional_endpoint_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("AWS_REGION", "us-west-2")
+    monkeypatch.setenv("AWS_REGION", "eu-west-1")
     monkeypatch.delenv("AWS_ENDPOINT_URL_S3", raising=False)
     monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
-    statements = duckdb_settings("s3://a-bucket/lake")
-    assert "LOAD httpfs" in statements
-    assert any("credential_chain" in item.lower() for item in statements)
-    assert any("us-west-2" in item for item in statements)
+
+    assert duckdb_s3_profile() == {
+        "endpoint": "s3.eu-west-1.amazonaws.com",
+        "url_style": "vhost",
+        "use_ssl": "true",
+    }
+
+
+def test_duckdb_uses_path_style_against_a_local_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "http://127.0.0.1:5555")
+
+    assert duckdb_s3_profile() == {
+        "endpoint": "127.0.0.1:5555",
+        "url_style": "path",
+        "use_ssl": "false",
+    }
 
 
 def test_table_bytes_is_a_parquet_file(tmp_path: Path) -> None:

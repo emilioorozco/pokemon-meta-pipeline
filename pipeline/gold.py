@@ -60,7 +60,7 @@ import duckdb
 
 from pipeline.config import PIPELINE_DATA_DIR, REPO_ROOT
 from pipeline.observability import STATUS_FAILED, configure_logging, emit_summary, stage_run
-from pipeline.storage import AnyLocation, Location, location
+from pipeline.storage import AnyLocation, Location, duckdb_s3_profile, location
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,15 @@ MARTS_DIR = "marts"
 # because on an S3 root the two are not the same place: the lake is the bucket
 # and the database file is the task's disk.
 WAREHOUSE_VAR = "PRA_WAREHOUSE_PATH"
+# The three values the `s3` target's DuckDB secret interpolates. They are
+# exported rather than written into the profile because dbt parses the YAML
+# before it renders any value, so a key cannot be left out conditionally;
+# `pipeline.storage.duckdb_s3_profile` says what they default to and why.
+DUCKDB_S3_VARS = {
+    "endpoint": "PRA_DUCKDB_S3_ENDPOINT",
+    "url_style": "PRA_DUCKDB_S3_URL_STYLE",
+    "use_ssl": "PRA_DUCKDB_S3_USE_SSL",
+}
 
 
 @dataclass
@@ -177,6 +186,7 @@ def run_gold(
             **os.environ,
             "PIPELINE_DATA_DIR": str(root),
             WAREHOUSE_VAR: str(built),
+            **{DUCKDB_S3_VARS[key]: value for key, value in duckdb_s3_profile().items()},
         }
         wanted = list(steps)
         if (dbt_dir / "packages.yml").is_file():

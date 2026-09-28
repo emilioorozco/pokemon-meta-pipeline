@@ -86,6 +86,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
+    from duckdb import DuckDBPyConnection
     from mypy_boto3_s3.client import S3Client
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,9 @@ DELETE_BATCH: Final = 1000
 # The Hadoop S3 connector, matched to the Hadoop client PySpark 4 ships.
 # Overridable, because the pairing is a property of the image and not of this code.
 DEFAULT_SPARK_PACKAGES: Final = "org.apache.hadoop:hadoop-aws:3.4.2"
+# Only used to spell an endpoint when `AWS_REGION` is unset; every client here
+# resolves its own region from the environment the same way boto3 does.
+DEFAULT_REGION: Final = "us-west-2"
 
 _client: "S3Client | None" = None
 # Files pulled down by `local_file`, and the directory they live in. Both are
@@ -538,7 +542,13 @@ def local_file(target: AnyLocation) -> Path:
     cached = _downloads.get(str(resolved))
     if cached is not None and cached.is_file():
         return cached
-    local = Path(_scratch_dir()) / f"{uuid.uuid4().hex[:8]}-{resolved.name or 'download'}"
+    # The basename is kept exactly, in a directory of its own rather than with a
+    # unique prefix, because DuckDB names a database after the file's stem: a
+    # copy called `a1b2-meta.duckdb` is a catalog called `a1b2-meta`, and every
+    # view dbt wrote as `meta.main.x` then fails to bind.
+    holder = Path(_scratch_dir()) / uuid.uuid4().hex[:8]
+    holder.mkdir(parents=True, exist_ok=True)
+    local = holder / (resolved.name or "download")
     logger.info("downloading a copy to read locally", extra={"source": str(resolved)})
     resolved.download_file(local)
     _downloads[str(resolved)] = local
@@ -657,29 +667,67 @@ def spark_configuration(*targets: AnyLocation) -> dict[str, str]:
     return settings
 
 
-def duckdb_settings(root: AnyLocation) -> list[str]:
-    """The statements a DuckDB connection needs before it can read an S3 root.
+def duckdb_s3_profile() -> dict[str, str]:
+    """The three values a DuckDB S3 secret needs beyond the credential chain.
 
-    Empty for a local root. For an S3 one, `httpfs` is the extension that
-    teaches DuckDB to read `s3://`, `aws` is the one that resolves credentials
-    from the same chain everything else uses, and the secret ties the two
-    together. An endpoint override is honoured so a test server can be pointed
-    at; a real bucket needs none.
+    dbt parses `profiles.yml` as YAML and only then renders each value, so the
+    profile cannot decide whether to write an endpoint: every key it names has
+    to be there with a usable value. This computes those values in one place
+    instead, and `pipeline.gold` exports them for the profile to interpolate.
+
+    The defaults are the production ones, the regional AWS endpoint over TLS
+    with virtual-host addressing, so a real bucket needs nothing set. An
+    endpoint in the environment (`AWS_ENDPOINT_URL_S3`, else `AWS_ENDPOINT_URL`,
+    the same two boto3 reads) replaces them with path-style access, which is
+    what a local S3 stand-in such as moto, LocalStack or MinIO needs and what a
+    real bucket never does.
     """
-    resolved = location(root)
-    if not resolved.is_s3:
-        return []
-    statements = ["INSTALL httpfs", "LOAD httpfs", "INSTALL aws", "LOAD aws"]
-    region = os.environ.get("AWS_REGION", "").strip()
-    endpoint = os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_ENDPOINT_URL")
-    secret = ["TYPE s3", "PROVIDER credential_chain"]
-    if region:
-        secret.append(f"REGION '{region}'")
-    if endpoint:
-        host = endpoint.split("://", 1)[-1]
-        secret += [f"ENDPOINT '{host}'", "URL_STYLE 'path'", "USE_SSL false"]
-    statements.append("CREATE OR REPLACE SECRET pra_lake (" + ", ".join(secret) + ")")
-    return statements
+    region = os.environ.get("AWS_REGION", "").strip() or DEFAULT_REGION
+    endpoint = os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_ENDPOINT_URL") or ""
+    if not endpoint:
+        return {
+            "endpoint": f"s3.{region}.amazonaws.com",
+            "url_style": "vhost",
+            "use_ssl": "true",
+        }
+    return {
+        "endpoint": endpoint.split("://", 1)[-1],
+        "url_style": "path",
+        "use_ssl": "true" if endpoint.startswith("https") else "false",
+    }
+
+
+def duckdb_connect(warehouse: AnyLocation, *, read_only: bool = True) -> "DuckDBPyConnection":
+    """Open the warehouse, downloading it and teaching DuckDB about S3 if it has to.
+
+    Every reader of the warehouse goes through here, and the reason is a case
+    that is easy to miss: the gold build over an S3 lake leaves views in
+    `meta.duckdb` whose definitions are `read_parquet('s3://...')`. The
+    `mart_pipeline_health` the quality gate reads is one of them. Downloading the
+    file is therefore not enough; the connection that opens it needs `httpfs` and
+    the same credential-chain secret dbt used, or the view resolves to a
+    permission error and the gate reports a warehouse that was built correctly as
+    unreadable.
+
+    The extensions are loaded only when the warehouse is on S3, so a local read
+    stays offline and starts as fast as it did.
+    """
+    import duckdb
+
+    target = location(warehouse)
+    connection = duckdb.connect(str(local_file(target)), read_only=read_only)
+    if not target.is_s3:
+        return connection
+    profile = duckdb_s3_profile()
+    region = os.environ.get("AWS_REGION", "").strip() or DEFAULT_REGION
+    connection.execute("INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws")
+    connection.execute(
+        "CREATE OR REPLACE SECRET pra_lake ("
+        "TYPE s3, PROVIDER credential_chain, "
+        f"REGION '{region}', ENDPOINT '{profile['endpoint']}', "
+        f"URL_STYLE '{profile['url_style']}', USE_SSL {profile['use_ssl']})"
+    )
+    return connection
 
 
 def describe(root: AnyLocation) -> dict[str, Any]:
