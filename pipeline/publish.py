@@ -94,6 +94,7 @@ from pipeline.observability import (
     stage_run,
 )
 from pipeline.settings import Settings, SettingsError
+from pipeline.storage import AnyLocation, local_file, location, tracking_store
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_dynamodb.service_resource import Table
@@ -208,26 +209,28 @@ def _rows(connection: duckdb.DuckDBPyConnection, sql: str) -> list[dict[str, Any
     return [dict(zip(names, values, strict=True)) for values in result.fetchall()]
 
 
-def read_marts(warehouse: Path) -> Marts:
+def read_marts(warehouse: AnyLocation) -> Marts:
     """The two marts and the game count, from a read-only connection.
 
     Read-only because a publish must never be the thing that changes the
     warehouse, and because the gate that ran just before it may still be
-    holding the file.
+    holding the file. A warehouse on S3 is downloaded first: DuckDB opens a
+    file, so the only way to read a published one is to have a copy of it.
     """
-    if not warehouse.is_file():
-        raise PublishError(f"no warehouse at {warehouse}; run `python -m pipeline.gold` first")
+    target = location(warehouse)
+    if not target.is_file():
+        raise PublishError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     try:
-        connection = duckdb.connect(str(warehouse), read_only=True)
+        connection = duckdb.connect(str(local_file(target)), read_only=True)
     except duckdb.Error as unreadable:
-        raise PublishError(f"{warehouse} could not be opened: {unreadable}") from unreadable
+        raise PublishError(f"{target} could not be opened: {unreadable}") from unreadable
     try:
         matchups = _rows(connection, MATCHUP_QUERY)
         weekly = _rows(connection, WEEKLY_QUERY)
         total = connection.sql(GAMES_TOTAL_QUERY).fetchone()
     except duckdb.Error as missing:
         raise PublishError(
-            f"{warehouse} has no readable marts; run `python -m pipeline.gold` first ({missing})"
+            f"{target} has no readable marts; run `python -m pipeline.gold` first ({missing})"
         ) from missing
     finally:
         connection.close()
@@ -782,10 +785,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help="the DuckDB warehouse to read the marts from (default: the configured one)",
+        help="the DuckDB warehouse to read the marts from, a file or an s3:// object "
+        "that is downloaded to read (default: the configured one)",
     )
     parser.add_argument(
         "--table",
@@ -818,12 +822,20 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(2, f"{parser.prog}: {unset}\n")
 
     try:
-        with stage_run(STAGE) as metrics:
+        # Read-only against the registry, so the synced store is not uploaded
+        # back: this command looks up which version is serving and writes
+        # nothing to MLflow.
+        with (
+            tracking_store(
+                args.tracking_uri or default_tracking_uri(), write_back=False
+            ) as tracking_uri,
+            stage_run(STAGE) as metrics,
+        ):
             summary = run_publish(
                 warehouse=args.warehouse,
                 table_name=args.table or settings.insights_table,
                 region=settings.region,
-                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                tracking_uri=tracking_uri,
                 run_id=current_run_id(),
                 dry_run=args.dry_run,
                 metrics=metrics,

@@ -71,6 +71,7 @@ from pipeline.config import (
 )
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
+from pipeline.storage import tracking_store
 from pipeline.telemetry import INFERENCE_SPAN, route_label, setup_metrics, setup_tracing
 
 logger = logging.getLogger(__name__)
@@ -400,19 +401,23 @@ def mlflow_loader(*, tracking_uri: str | None = None, alias: str = PRODUCTION_AL
         from mlflow.artifacts import download_artifacts
         from mlflow.tracking import MlflowClient
 
-        uri = tracking_uri or default_tracking_uri()
-        if uri.startswith("file:"):
-            os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
-        mlflow.set_tracking_uri(uri)
-        client = MlflowClient(tracking_uri=uri)
-        version = client.get_model_version_by_alias(REGISTERED_MODEL_NAME, alias)
-        model = mlflow.lightgbm.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")
-        # The codes travel with the run rather than with the model, because they
-        # are how a request is turned into the integers the model was fitted on.
-        # A model loaded without them would still predict, on the wrong numbers.
-        local = download_artifacts(run_id=version.run_id, artifact_path=CODES_ARTIFACT)
-        with open(local) as handle:
-            codes: ArchetypeCodes = json.load(handle)
+        # A store in the lake is pulled down for the length of the load and not
+        # written back: the service reads the registry and never changes it.
+        with tracking_store(tracking_uri or default_tracking_uri(), write_back=False) as uri:
+            if uri.startswith("file:"):
+                os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+            mlflow.set_tracking_uri(uri)
+            client = MlflowClient(tracking_uri=uri)
+            version = client.get_model_version_by_alias(REGISTERED_MODEL_NAME, alias)
+            model = mlflow.lightgbm.load_model(f"models:/{REGISTERED_MODEL_NAME}@{alias}")
+            # The codes travel with the run rather than with the model, because
+            # they are how a request is turned into the integers the model was
+            # fitted on. A model loaded without them would still predict, on the
+            # wrong numbers. Read inside the block, because a synced store is
+            # gone once it closes.
+            local = download_artifacts(run_id=version.run_id, artifact_path=CODES_ARTIFACT)
+            with open(local) as handle:
+                codes: ArchetypeCodes = json.load(handle)
         metrics: dict[str, float] = {}
         for tag in METRIC_TAGS:
             raw = version.tags.get(tag)

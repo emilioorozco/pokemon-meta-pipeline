@@ -554,12 +554,22 @@ def _scratch_dir() -> str:
 
 
 @contextlib.contextmanager
-def synced_dir(target: AnyLocation) -> Iterator[Path]:
+def synced_dir(target: AnyLocation, *, write_back: bool = True) -> Iterator[Path]:
     """A local directory backed by `target`, downloaded on entry and uploaded on exit.
 
     The MLflow store, and nothing else. See `tracking_store` for why a synced
     directory rather than a tracking server, and for the single-writer
     assumption that makes it safe.
+
+    `write_back=False` skips the upload, for the commands that only read the
+    registry (`publish`, and the serving application loading the aliased model).
+    A reader that uploaded the store back would be a second writer for the
+    length of its own upload, which is exactly the thing the single-writer
+    assumption asks nobody to be.
+
+    Nothing is uploaded when the block raises either: a stage that died halfway
+    has a half-written store, and the copy in the lake is the last one that a
+    command finished.
     """
     resolved = location(target)
     if not resolved.is_s3:
@@ -571,12 +581,13 @@ def synced_dir(target: AnyLocation) -> Iterator[Path]:
         resolved.download_tree(local)
         logger.info("mlflow store downloaded", extra={"source": str(resolved)})
         yield local
-        resolved.upload_tree(local)
-        logger.info("mlflow store uploaded", extra={"target": str(resolved)})
+        if write_back:
+            resolved.upload_tree(local)
+            logger.info("mlflow store uploaded", extra={"target": str(resolved)})
 
 
 @contextlib.contextmanager
-def tracking_store(uri: str) -> Iterator[str]:
+def tracking_store(uri: str, *, write_back: bool = True) -> Iterator[str]:
     """An MLflow tracking URI usable from here, syncing an `s3://` file store around the run.
 
     A tracking URI that is not an S3 location is yielded unchanged: a local
@@ -607,7 +618,7 @@ def tracking_store(uri: str) -> Iterator[str]:
     if not uri.startswith(S3_SCHEME):
         yield uri
         return
-    with synced_dir(uri) as local:
+    with synced_dir(uri, write_back=write_back) as local:
         yield f"file:{local}"
 
 

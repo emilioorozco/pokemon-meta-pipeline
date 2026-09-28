@@ -11,7 +11,6 @@ statements derived for Spark and DuckDB, which are strings this module owns and
 neither engine is started here to check.
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pyarrow as pa
@@ -31,15 +30,6 @@ from pipeline.storage import (
 )
 
 TABLE = pa.table({"game_id": ["g1", "g2"], "rows": [1, 2]})
-
-
-@pytest.fixture(params=["local", "s3"])
-def root(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Location]:
-    """A lake root of each kind, so every test below runs twice."""
-    if request.param == "local":
-        yield location(tmp_path / "lake")
-        return
-    yield request.getfixturevalue("s3_lake")
 
 
 # ------------------------------------------------------------- the parsing --
@@ -201,6 +191,28 @@ def test_a_synced_directory_comes_back_with_what_was_written(root: Location) -> 
         (working / "0" / "a-run" / "metrics").parent.mkdir(parents=True, exist_ok=True)
         (working / "0" / "a-run" / "metrics").write_text("logloss 0.5\n")
     assert (store / "0" / "a-run" / "metrics").read_text() == "logloss 0.5\n"
+
+
+def test_a_reader_does_not_write_the_synced_store_back(s3_lake: Location) -> None:
+    """`write_back=False` is what keeps a read-only command from being a second writer."""
+    store = s3_lake / "mlruns"
+    (store / "0" / "meta.yaml").write_text("experiment_id: 0\n")
+
+    with synced_dir(store, write_back=False) as working:
+        (working / "0" / "scratch").write_text("nothing anyone asked for\n")
+
+    assert not (store / "0" / "scratch").is_file()
+
+
+def test_a_failed_block_uploads_nothing(s3_lake: Location) -> None:
+    store = s3_lake / "mlruns"
+    (store / "0" / "meta.yaml").write_text("experiment_id: 0\n")
+
+    with pytest.raises(RuntimeError), synced_dir(store) as working:
+        (working / "0" / "half-written").write_text("a stage that died\n")
+        raise RuntimeError("the stage failed")
+
+    assert not (store / "0" / "half-written").is_file()
 
 
 def test_the_tracking_store_yields_a_file_uri_for_an_s3_store(s3_lake: Location) -> None:

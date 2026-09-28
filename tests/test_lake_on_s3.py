@@ -32,7 +32,7 @@ import duckdb
 import pytest
 
 from pipeline import backfill as backfill_module
-from pipeline import gold
+from pipeline import gold, train
 from pipeline import run_all as run_all_module
 from pipeline.backfill import run_backfill
 from pipeline.bronze import (
@@ -376,3 +376,46 @@ def test_run_all_refuses_an_s3_root_with_no_bucket(capsys: pytest.CaptureFixture
 
     assert raised.value.code == 2
     assert "PIPELINE_DATA_DIR" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------- mlflow store --
+
+
+@pytest.mark.ml
+def test_training_syncs_the_mlflow_store_into_an_s3_root(s3_lake: Location, tmp_path: Path) -> None:
+    """A real training run with the store in the lake: it comes back down and goes back up.
+
+    The store is a directory MLflow stats, lists and renames, none of which
+    object storage has, so `pipeline.storage.tracking_store` works on a local
+    copy and uploads it at the end. What this asserts is the part that matters
+    to the next command: after the stage, the runs and the registered version
+    are in the lake and not on a disk that went away with the task.
+    """
+    from tests.test_train import synthetic_features
+
+    warehouse = tmp_path / "meta.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    try:
+        connection.register("frame", synthetic_features())
+        connection.execute("create table features_turn as select * from frame")
+    finally:
+        connection.close()
+
+    code = train.main(
+        [
+            "--warehouse",
+            str(warehouse),
+            "--tracking-uri",
+            str(s3_lake / "mlruns"),
+            "--experiment",
+            "s3-win-probability",
+            "--params",
+            "num_boost_round=40",
+            "min_data_in_leaf=10",
+        ]
+    )
+
+    assert code == 0
+    landed = [item.key for item in (s3_lake / "mlruns").iter_files()]
+    assert any(key.endswith("meta.yaml") for key in landed)
+    assert any("/models/" in key or "/win-probability/" in key for key in landed)

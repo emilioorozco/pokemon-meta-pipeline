@@ -98,6 +98,7 @@ from pipeline.ml_features import CATEGORICAL, LABEL, MODEL_FEATURES
 # explicit column list, and a drift report built from a second copy of that
 # list would be a report about a table nobody trains on.
 from pipeline.observability import RunMetrics, configure_logging, emit_summary, stage_run
+from pipeline.storage import AnyLocation, Location, local_file, location, tracking_store
 from pipeline.train import FEATURE_TABLE, TrainingDataError, load_features
 
 logger = logging.getLogger(__name__)
@@ -711,20 +712,28 @@ def summary(report: DriftReport) -> dict[str, Any]:
     }
 
 
-def write_outputs(report: DriftReport, out_dir: Path) -> tuple[Path, Path]:
-    """Both files on disk, and where they went."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    report_path = out_dir / REPORT_NAME
-    summary_path = out_dir / SUMMARY_NAME
-    report_path.write_text(markdown(report), encoding="utf-8")
-    summary_path.write_text(
-        json.dumps(summary(report), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+def write_outputs(report: DriftReport, out_dir: AnyLocation) -> tuple[Location, Location]:
+    """Both files in the lake, and where they went.
+
+    Through `pipeline.storage`, so a drift report written by a container lands
+    where the next reader can find it rather than in a filesystem that goes away
+    with the task.
+    """
+    target = location(out_dir)
+    target.mkdir()
+    report_path = target / REPORT_NAME
+    summary_path = target / SUMMARY_NAME
+    report_path.write_text(markdown(report))
+    summary_path.write_text(json.dumps(summary(report), indent=2, sort_keys=True) + "\n")
     return report_path, summary_path
 
 
 def log_run(
-    report: DriftReport, reference: str, report_path: Path, summary_path: Path, experiment: str
+    report: DriftReport,
+    reference: str,
+    report_path: Location,
+    summary_path: Location,
+    experiment: str,
 ) -> None:
     """One MLflow run carrying the two files, the windows as parameters and the verdict as metrics.
 
@@ -766,11 +775,14 @@ def log_run(
         # One metric per feature as well, so a run table sorts on the feature
         # that moved rather than only on the loudest one.
         mlflow.log_metrics({f"psi_{drift.feature}": drift.psi for drift in report.features})
-        mlflow.log_artifact(str(report_path))
-        mlflow.log_artifact(str(summary_path))
+        # MLflow uploads a local file, so an output that went to the lake comes
+        # back down first. It is a few kilobytes and it has just been written,
+        # so the round trip costs nothing worth avoiding.
+        mlflow.log_artifact(str(local_file(report_path)))
+        mlflow.log_artifact(str(local_file(summary_path)))
 
 
-def console(report: DriftReport, report_path: Path, summary_path: Path) -> str:
+def console(report: DriftReport, report_path: Location, summary_path: Location) -> str:
     """The block the command prints: the windows, the numbers, the verdict, the paths."""
     lines = [
         f"reference: {report.reference.rows:>5} rows, {report.reference.games} games, "
@@ -821,7 +833,7 @@ def run_drift(
     threshold: float,
     tracking_uri: str,
     experiment: str,
-    out_dir: Path,
+    out_dir: AnyLocation,
     metrics: RunMetrics | None = None,
 ) -> int:
     """The whole comparison. Returns 0 whether or not it flagged, 3 with nothing to compare."""
@@ -977,14 +989,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help="DuckDB warehouse holding features_turn",
+        help="DuckDB warehouse holding features_turn, a file or an s3:// object",
     )
     parser.add_argument(
         "--out-dir",
-        type=Path,
+        type=location,
         default=DEFAULT_OUT_DIR,
         metavar="PATH",
         help=f"where {REPORT_NAME} and {SUMMARY_NAME} are written (default: {DEFAULT_OUT_DIR})",
@@ -994,14 +1006,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(2, f"{parser.prog}: --window-days must be at least 1\n")
     configure_logging(STAGE)
     try:
-        with stage_run(STAGE) as metrics:
+        with (
+            tracking_store(args.tracking_uri or default_tracking_uri()) as tracking_uri,
+            stage_run(STAGE) as metrics,
+        ):
             return run_drift(
                 warehouse=args.warehouse,
                 reference=args.reference,
                 window_days=args.window_days,
                 as_of=args.as_of,
                 threshold=args.psi_threshold,
-                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                tracking_uri=tracking_uri,
                 experiment=args.experiment,
                 out_dir=args.out_dir,
                 metrics=metrics,

@@ -96,7 +96,7 @@ from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
-from pipeline.storage import AnyLocation, location
+from pipeline.storage import AnyLocation, location, tracking_store
 
 logger = logging.getLogger(__name__)
 
@@ -950,7 +950,13 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{parser.prog}: {type(failure).__name__}: {failure}\n")
         return 2
 
-    with stage_run(STAGE) as metrics:
+    # The store is synced around the whole stage: the report is logged as an
+    # artifact at the end, and an upload that happened before it would put a run
+    # in the lake with nothing in it.
+    with (
+        tracking_store(args.tracking_uri or default_tracking_uri()) as tracking_uri,
+        stage_run(STAGE) as metrics,
+    ):
         report = run_evals(
             golden,
             factory,
@@ -977,7 +983,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_mlflow:
             metrics.extra["mlflow_run_id"] = log_to_mlflow(
                 report,
-                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                tracking_uri=tracking_uri,
                 experiment=args.experiment,
             )
 

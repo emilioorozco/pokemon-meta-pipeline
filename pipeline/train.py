@@ -55,7 +55,6 @@ import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Final
 
 import duckdb
@@ -84,6 +83,7 @@ from pipeline.observability import (
     git_commit,
     stage_run,
 )
+from pipeline.storage import AnyLocation, local_file, location, tracking_store
 
 logger = logging.getLogger(__name__)
 STAGE: Final = "train"
@@ -192,7 +192,7 @@ def parse_params(pairs: Sequence[str]) -> dict[str, Any]:
     return parsed
 
 
-def load_features(warehouse: Path) -> pd.DataFrame:
+def load_features(warehouse: AnyLocation) -> pd.DataFrame:
     """Read `features_turn` out of the warehouse, DuckDB to Arrow to pandas.
 
     Read only, and by an explicit column list rather than a star, so a column
@@ -203,10 +203,13 @@ def load_features(warehouse: Path) -> pd.DataFrame:
     A rebuilt DuckDB table does not promise an order, so the query asks for one
     and two runs over the same warehouse then produce the same numbers.
     """
-    if not warehouse.is_file():
-        raise TrainingDataError(f"no warehouse at {warehouse}; run `python -m pipeline.gold` first")
+    target = location(warehouse)
+    if not target.is_file():
+        raise TrainingDataError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     columns = ", ".join((*CARRIED, *MODEL_FEATURES, LABEL))
-    connection = duckdb.connect(str(warehouse), read_only=True)
+    # A warehouse on S3 is downloaded first: DuckDB opens a database file, and
+    # `pipeline.storage.local_file` does that once for the process.
+    connection = duckdb.connect(str(local_file(target)), read_only=True)
     try:
         table = connection.sql(
             f"select {columns} from {FEATURE_TABLE} order by game_id, seat, turn_number"
@@ -570,7 +573,7 @@ def report(
 
 def run_training(
     *,
-    warehouse: Path,
+    warehouse: AnyLocation,
     experiment: str,
     tracking_uri: str,
     overrides: dict[str, Any],
@@ -717,19 +720,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help="DuckDB warehouse holding features_turn",
+        help="DuckDB warehouse holding features_turn, a file or an s3:// object",
     )
     args = parser.parse_args(argv)
     configure_logging(STAGE)
     try:
-        with stage_run(STAGE) as metrics:
+        # The tracking store is synced around the whole stage rather than around
+        # the run: the registry write at the end is part of what has to come
+        # back up, and a sync that stopped at the last `log_metric` would upload
+        # a store with a version nobody can resolve.
+        with (
+            tracking_store(args.tracking_uri or default_tracking_uri()) as tracking_uri,
+            stage_run(STAGE) as metrics,
+        ):
             return run_training(
                 warehouse=args.warehouse,
                 experiment=args.experiment,
-                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                tracking_uri=tracking_uri,
                 overrides=parse_params(args.params),
                 metrics=metrics,
             )
