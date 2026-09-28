@@ -8,11 +8,15 @@ concern, and keeping the nesting means a contract change shows up as a schema
 difference rather than as a lossy flatten nobody notices.
 
 Why partition replace: a run is identified by the days it touches, not by the
-objects it read. Each `play_date` directory is deleted and rewritten whole, so
-re-running the same games over the same day yields the same row count instead
-of appending duplicates, and there is no dedupe step downstream. Writes are
-atomic per partition: the file lands under a temporary name in the partition
-directory and is moved into place with `os.replace`.
+objects it read. Each `play_date` directory is replaced whole, so re-running the
+same games over the same day yields the same row count instead of appending
+duplicates, and there is no dedupe step downstream. The replace goes through
+`pipeline.storage`, which keeps the local behaviour it always had (the file lands
+under a temporary name in the partition directory and is moved into place with
+`os.replace`) and, on an `s3://` root, writes the new object before deleting any
+old one, because object storage has no rename. That module's docstring has the
+window that opens between the two steps and why the partition is still the unit
+of work.
 
 `write_partitions` is the batch write, for a caller that holds every game of a
 day at once (the backfill). `upsert_records` and `delete_game` are the
@@ -52,20 +56,16 @@ reaches this module.
 """
 
 import json
-import os
-import shutil
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from pathlib import Path
 from types import UnionType
 from typing import Any, Final, Literal, Union, get_args, get_origin
 
 import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from pipeline.anonymize import assert_no_handles
@@ -78,6 +78,7 @@ from pipeline.contract import (
     Segment,
     SideStats,
 )
+from pipeline.storage import AnyLocation, Location, location, table_bytes
 
 TIMESTAMP: Final = pa.timestamp("us", tz="UTC")
 PART_FILENAME: Final = "part-0.parquet"
@@ -165,7 +166,7 @@ def to_row(record: BronzeRecord, ingested_at: datetime) -> dict[str, Any]:
 
 def write_partitions(
     records: Iterable[BronzeRecord],
-    bronze_dir: Path,
+    bronze_dir: AnyLocation,
     ingested_at: datetime,
     *,
     real_handles: set[str] | None = None,
@@ -190,17 +191,18 @@ def write_partitions(
         row = to_row(record, ingested_at)
         by_date.setdefault(row["play_date"], []).append(row)
 
+    root = location(bronze_dir)
     written: dict[str, int] = {}
     for date in sorted(by_date):
         rows = by_date[date]
-        _write_partition(bronze_dir / f"play_date={date}", rows)
+        _write_partition(root / f"play_date={date}", rows)
         written[date] = len(rows)
     return written
 
 
 def upsert_records(
     records: Iterable[BronzeRecord],
-    bronze_dir: Path,
+    bronze_dir: AnyLocation,
     ingested_at: datetime,
     *,
     real_handles: set[str] | None = None,
@@ -230,10 +232,11 @@ def upsert_records(
         row = to_row(record, ingested_at)
         by_date.setdefault(row["play_date"], []).append(row)
 
+    root = location(bronze_dir)
     written: dict[str, int] = {}
     for date in sorted(by_date):
         rows = by_date[date]
-        partition_dir = bronze_dir / f"play_date={date}"
+        partition_dir = root / f"play_date={date}"
         fresh = pa.Table.from_pylist(rows, schema=bronze_schema())
         kept = _without_games(_partition_table(partition_dir), {row["game_id"] for row in rows})
         _write_partition_table(partition_dir, pa.concat_tables([kept, fresh]))
@@ -241,7 +244,7 @@ def upsert_records(
     return written
 
 
-def delete_game(bronze_dir: Path, play_date: str, game_id: str) -> int:
+def delete_game(bronze_dir: AnyLocation, play_date: str, game_id: str) -> int:
     """Remove one game from its partition; returns the rows removed (0 or 1).
 
     The partition is rewritten without the game, and a partition left with no
@@ -249,7 +252,7 @@ def delete_game(bronze_dir: Path, play_date: str, game_id: str) -> int:
     has been fully deleted upstream disappears from the dataset instead of
     reading back as a day with no games.
     """
-    partition_dir = bronze_dir / f"play_date={play_date}"
+    partition_dir = location(bronze_dir) / f"play_date={play_date}"
     existing = _partition_table(partition_dir)
     if existing is None:
         return 0
@@ -260,11 +263,11 @@ def delete_game(bronze_dir: Path, play_date: str, game_id: str) -> int:
     if kept.num_rows:
         _write_partition_table(partition_dir, kept)
     else:
-        shutil.rmtree(partition_dir, ignore_errors=True)
+        partition_dir.delete_prefix()
     return removed
 
 
-def find_by_source_key(bronze_dir: Path, source_key: str) -> LandedGame | None:
+def find_by_source_key(bronze_dir: AnyLocation, source_key: str) -> LandedGame | None:
     """The game landed from `source_key`, found by scanning every partition.
 
     The lookup a delete event needs: the object is already gone from S3, so its
@@ -274,25 +277,41 @@ def find_by_source_key(bronze_dir: Path, source_key: str) -> LandedGame | None:
     fix is a small `game_id -> play_date` index (a sidecar table, or the
     warehouse) written alongside each partition and read here instead.
     """
-    for path in sorted(bronze_dir.glob(f"play_date=*/{PART_FILENAME}")):
-        table = pq.read_table(path, columns=["game_id", "source_key", "play_date"])
+    for path in location(bronze_dir).iter_files(PART_FILENAME):
+        table = path.read_table(columns=["game_id", "source_key", "play_date"])
         for row in table.to_pylist():
             if row["source_key"] == source_key:
                 return LandedGame(game_id=str(row["game_id"]), play_date=str(row["play_date"]))
     return None
 
 
-def read_smoke(bronze_dir: Path) -> list[tuple[str, int]]:
+def read_smoke(bronze_dir: AnyLocation) -> list[tuple[str, int]]:
     """Games per play date, read back out of the written Parquet with DuckDB.
 
     Proves the output is readable as one hive-partitioned dataset rather than
     as a pile of files. An empty or absent directory reads as no rows.
+
+    On an `s3://` root DuckDB would need `httpfs` and a credential secret for
+    what is a two-column count, so the same answer is computed with Arrow
+    instead: the smoke test is about whether the files are there and readable,
+    and reading them through the same library that wrote them still answers
+    that. The DuckDB path stays for local roots because it is the one that
+    proves the hive partitioning is discoverable by a query engine.
     """
-    if not any(bronze_dir.glob("play_date=*/*.parquet")):
+    root = location(bronze_dir)
+    partitions = root.iter_files(PART_FILENAME)
+    if not partitions:
         return []
+    if root.is_s3:
+        counts: dict[str, int] = {}
+        for path in partitions:
+            table = path.read_table(columns=["play_date"])
+            for value in table.column("play_date").to_pylist():
+                counts[str(value)] = counts.get(str(value), 0) + 1
+        return sorted(counts.items())
     query = (
         "SELECT CAST(play_date AS VARCHAR), count(*) "
-        f"FROM read_parquet('{bronze_dir}/**/*.parquet', hive_partitioning=true) "
+        f"FROM read_parquet('{root}/**/*.parquet', hive_partitioning=true) "
         "GROUP BY 1 ORDER BY 1"
     )
     with duckdb.connect() as con:
@@ -328,17 +347,17 @@ def bronze_schema() -> pa.Schema:
     return pa.schema(columns)
 
 
-def _write_partition(partition_dir: Path, rows: list[dict[str, Any]]) -> None:
+def _write_partition(partition_dir: Location, rows: list[dict[str, Any]]) -> None:
     """Replace one partition directory with a single Parquet file."""
     _write_partition_table(partition_dir, pa.Table.from_pylist(rows, schema=bronze_schema()))
 
 
-def _partition_table(partition_dir: Path) -> pa.Table | None:
+def _partition_table(partition_dir: Location) -> pa.Table | None:
     """The partition as written, or None when the day holds nothing yet."""
     path = partition_dir / PART_FILENAME
     if not path.is_file():
         return None
-    return pq.read_table(path)
+    return path.read_table()
 
 
 def _without_games(table: pa.Table | None, game_ids: set[str]) -> pa.Table:
@@ -353,14 +372,15 @@ def _without_games(table: pa.Table | None, game_ids: set[str]) -> pa.Table:
     return table.filter(pc.invert(pc.is_in(table.column("game_id"), value_set=listed)))
 
 
-def _write_partition_table(partition_dir: Path, table: pa.Table) -> None:
-    """Replace one partition directory with a single Parquet file."""
-    shutil.rmtree(partition_dir, ignore_errors=True)
-    partition_dir.mkdir(parents=True, exist_ok=True)
-    target = partition_dir / PART_FILENAME
-    staged = partition_dir / f".{PART_FILENAME}.tmp"
-    pq.write_table(table, staged, compression=COMPRESSION)
-    os.replace(staged, target)
+def _write_partition_table(partition_dir: Location, table: pa.Table) -> None:
+    """Replace one partition directory with a single Parquet file.
+
+    One call, because the replace is the thing that has to be one step: the
+    storage layer knows whether that means a local directory rewritten behind an
+    `os.replace` or a `PutObject` followed by the deletion of whatever the new
+    file did not name.
+    """
+    partition_dir.replace_dir({PART_FILENAME: table_bytes(table, compression=COMPRESSION)})
 
 
 def _check_no_leaks(records: Sequence[BronzeRecord], real_handles: set[str]) -> None:

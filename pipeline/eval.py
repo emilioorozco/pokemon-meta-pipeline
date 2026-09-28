@@ -96,6 +96,7 @@ from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
+from pipeline.storage import AnyLocation, location
 
 logger = logging.getLogger(__name__)
 
@@ -605,7 +606,7 @@ AgentFactory = Callable[[Question], Agent]
 def live_factory(
     *,
     warehouse: Path,
-    card_index: Path | None,
+    card_index: AnyLocation | None,
     model: str | None,
     gate: SqlGate | None = None,
 ) -> AgentFactory:
@@ -624,7 +625,7 @@ def replay_factory(
     transcript: Transcript,
     *,
     warehouse: Path,
-    card_index: Path | None,
+    card_index: AnyLocation | None,
     gate: SqlGate | None = None,
 ) -> AgentFactory:
     """A fresh agent per question, with that question's recorded run behind it.
@@ -675,7 +676,7 @@ def run_evals(
     agent_factory: AgentFactory,
     *,
     warehouse: Path,
-    card_index: Path | None = None,
+    card_index: AnyLocation | None = None,
     prompt_override: Path | None = None,
     fake: Path | None = None,
     gate_name: str = GATE_OFF,
@@ -854,14 +855,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help="the DuckDB warehouse the questions are answered from",
+        help="the DuckDB warehouse the questions are answered from, a file or an "
+        "s3:// object that is downloaded to read",
     )
     parser.add_argument(
         "--card-index",
-        type=Path,
+        type=location,
         default=None,
         metavar="DIR",
         help=f"a built card index; without one the agent has no {CARD_TOOL} tool",

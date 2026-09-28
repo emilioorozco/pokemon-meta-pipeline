@@ -87,7 +87,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import unquote_plus
 
@@ -103,6 +102,7 @@ from pipeline.quarantine import (
 )
 from pipeline.settings import Settings
 from pipeline.source import BLOB_SUFFIX, S3Source, Source
+from pipeline.storage import AnyLocation, location
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_s3.client import S3Client
@@ -173,8 +173,8 @@ def run_consumer(
     settings: Settings,
     sqs: "SQSClient | None" = None,
     s3: "S3Client | None" = None,
-    bronze_dir: Path = BRONZE_DIR,
-    quarantine_dir: Path = QUARANTINE_DIR,
+    bronze_dir: AnyLocation = BRONZE_DIR,
+    quarantine_dir: AnyLocation = QUARANTINE_DIR,
     *,
     source: Source | None = None,
     now: datetime | None = None,
@@ -219,7 +219,7 @@ class _Consumer:
         settings: Settings,
         sqs: "SQSClient",
         source: Source,
-        bronze_dir: Path,
+        bronze_dir: AnyLocation,
         rejects: Quarantiner,
         now: datetime | None,
         max_messages: int,
@@ -229,7 +229,7 @@ class _Consumer:
         self.settings = settings
         self.sqs = sqs
         self.source = source
-        self.bronze_dir = bronze_dir
+        self.bronze_dir = location(bronze_dir)
         self.rejects = rejects
         self.now = now
         self.max_messages = max_messages
@@ -460,17 +460,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--bronze-dir",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
-        help="where the landed rows go (default: the configured bronze directory)",
+        help="where the landed rows go, a directory or an s3:// prefix "
+        "(default: the configured bronze directory)",
     )
     parser.add_argument(
         "--quarantine-dir",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
-        help="where rejected blobs go (default: the configured quarantine directory)",
+        help="where rejected blobs go, a directory or an s3:// prefix "
+        "(default: the configured quarantine directory)",
     )
     args = parser.parse_args(argv)
 
