@@ -1198,6 +1198,21 @@ what was skipped and how long each took. The same summary goes into a
 `run_metrics` row of its own, under the stage name `run_all`, with the per-stage
 durations in `extra_json`.
 
+Stages are skipped rather than dropped, each with its reason in that table and
+in the logs:
+
+- `backfill`, when `PRA_INGEST_MODE=consumer`: the consumer is already landing
+  bronze, so a backfill would read the same bucket twice.
+- `train`, `promote` and `drift`, when `features_turn` holds no rows.
+- `build_card_index`, when the card-text corpus has not been fetched.
+- `publish`, when `PRA_INSIGHTS_TABLE` is unset, which is the normal state of a
+  clone.
+- `publish`, when the run was fed from `--source-dir`. Those blobs came from a
+  directory on whichever machine ran the command, not from the bucket, and the
+  publish replaces the insights table whole rather than adding to it, so a
+  fixture run reaching it would swap the real rows for fixture ones. Pass
+  `--publish` alongside `--source-dir` for the rare run that means it.
+
 ### Parameters
 
 | parameter | default | what it does |
@@ -1206,7 +1221,8 @@ durations in `extra_json`.
 | `ingest_mode` | `backfill` | `consumer` means the event-driven ingest is already landing bronze, so the first task is a logged no-op |
 
 `run_all` takes the same two as `--source-dir` and the `PRA_INGEST_MODE`
-environment variable, plus `--skip`, `--stop-after`, `--data-dir` and `--run-id`.
+environment variable, plus `--publish`, `--skip`, `--stop-after`, `--data-dir`
+and `--run-id`.
 
 ### The run identifier
 
@@ -1288,7 +1304,9 @@ Command: `python -m pipeline.publish` (`--warehouse`, `--table`, `--dry-run`,
 than before it: a run whose gate refused must not put its numbers in front of
 the application's readers, and a failed task stops what follows it. The runner
 and the DAG both skip it with a logged reason when `PRA_INSIGHTS_TABLE` is
-unset, which is the normal state of a clone.
+unset, which is the normal state of a clone. The runner skips it a second way:
+a run given `--source-dir` read its blobs from a directory rather than from the
+bucket, and does not publish unless `--publish` is passed as well.
 
 ### The contract
 

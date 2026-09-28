@@ -45,6 +45,12 @@ Stages are skipped rather than dropped, each with a logged reason:
   has nowhere to publish to, which is the normal state of a reviewer's laptop
   and of every test in this repository; naming the variable in the reason is
   what turns "it did not publish" into "set this".
+- `publish`, when the run was fed from `--source-dir` and `--publish` was not
+  passed. A local directory of blobs is a demo or a fixture set, never the
+  bucket the real numbers come from, and the publish replaces the table whole
+  rather than adding to it, so one such run reaching it puts fixture rows in
+  front of every reader and sweeps the real ones away. Naming the flag in the
+  reason keeps the deliberate case one word away.
 """
 
 import argparse
@@ -97,6 +103,11 @@ class Stage:
     when it was never fetched, and the publish has nowhere to write when no
     table is named. Anything more conditional than that belongs in the stage,
     not in the runner.
+
+    The one flag that is not of that kind is `needs_bucket_source`. A stage
+    cannot tell what fed bronze, so the runner is the only place that knows the
+    rows came from a directory somebody pointed at, and the publish is the only
+    stage for which that changes the answer.
     """
 
     name: str
@@ -110,6 +121,8 @@ class Stage:
     needs_card_text: bool = False
     #: Skipped when no insights table is named, because there is nowhere to write.
     needs_insights_table: bool = False
+    #: Skipped when the run was fed from `--source-dir`, unless `--publish` says otherwise.
+    needs_bucket_source: bool = False
 
 
 # The order is the dependency order, and it is the DAG's order flattened: the
@@ -139,7 +152,12 @@ STAGES: Final[tuple[Stage, ...]] = (
     # refuse would put a known-bad matchup matrix in front of every reader of
     # the application, and the runner stops at the first failure, so a red gate
     # is also the thing that stops this.
-    Stage(name="publish", module="pipeline.publish", needs_insights_table=True),
+    Stage(
+        name="publish",
+        module="pipeline.publish",
+        needs_insights_table=True,
+        needs_bucket_source=True,
+    ),
 )
 STAGE_NAMES: Final[tuple[str, ...]] = tuple(stage.name for stage in STAGES)
 
@@ -246,6 +264,8 @@ def skip_reason(
     skipped: Sequence[str],
     features: int | None,
     card_text: Location | None = None,
+    source_dir: Path | None = None,
+    publish: bool = False,
 ) -> str | None:
     """Why this stage should not run, or None to run it.
 
@@ -262,6 +282,11 @@ def skip_reason(
         return f"no card text at {card_text}: run scripts/fetch_card_text.py"
     if stage.needs_insights_table and not os.environ.get(INSIGHTS_TABLE_VAR, "").strip():
         return f"{INSIGHTS_TABLE_VAR} is unset: there is no table to publish to"
+    if stage.needs_bucket_source and source_dir is not None and not publish:
+        return (
+            "the run was fed from a local source directory, not the bucket; "
+            "pass --publish to publish anyway"
+        )
     return None
 
 
@@ -291,6 +316,7 @@ def run_all(
     *,
     data_dir: AnyLocation,
     source_dir: Path | None = None,
+    publish: bool = False,
     skip: Sequence[str] = (),
     stop_after: str | None = None,
     stages: Sequence[Stage] = STAGES,
@@ -314,7 +340,14 @@ def run_all(
                 "feature rows counted",
                 extra={"rows": features, "warehouse": str(warehouse)},
             )
-        reason = skip_reason(stage, skipped=skip, features=features, card_text=card_text_path(root))
+        reason = skip_reason(
+            stage,
+            skipped=skip,
+            features=features,
+            card_text=card_text_path(root),
+            source_dir=source_dir,
+            publish=publish,
+        )
         if reason is not None:
             logger.info("stage skipped", extra={"stage_name": stage.name, "reason": reason})
             summary.results.append(
@@ -349,6 +382,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         metavar="PATH",
         help="read the blobs from a directory instead of S3, for example tests/fixtures",
+    )
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="publish even when the run was fed from --source-dir, which it does not by default",
     )
     parser.add_argument(
         "--data-dir",
@@ -404,6 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         summary = run_all(
             data_dir=data_dir,
             source_dir=args.source_dir,
+            publish=args.publish,
             skip=skip,
             stop_after=args.stop_after,
         )

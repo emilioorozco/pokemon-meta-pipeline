@@ -295,8 +295,11 @@ detail.
   `docker compose down` when finished. The quick version, with no Docker at
   all, is `uv run python -m pipeline.run_all --source-dir tests/fixtures
   --data-dir /tmp/demo`, which runs the same nine stages in about twenty
-  seconds and prints a table of what ran and how long each took. What it
-  proves: every stage is a command, one run identifier ties all of their
+  seconds and prints a table of what ran and how long each took. A fixture run
+  never publishes: `--source-dir` means the rows came from a directory on this
+  machine rather than from the bucket, and the publish replaces the insights
+  table whole, so it is skipped with that reason unless `--publish` is passed.
+  What it proves: every stage is a command, one run identifier ties all of their
   `run_metrics` rows together, and the last task reads those rows back and is
   allowed to fail the run.
 - **Publish**: runs today, and out of the timed sequence because it writes to

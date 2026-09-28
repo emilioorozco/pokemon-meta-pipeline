@@ -169,11 +169,46 @@ def test_an_unknown_stage_name_is_refused(tmp_path: Path, monkeypatch: pytest.Mo
 def test_a_named_insights_table_is_what_lets_the_publish_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The last stage is a skip on a clone and a step on a configured machine."""
+    """The last stage is a skip on a clone and a step on a configured machine.
+
+    No `--source-dir` here, so this is the ordinary bucket-fed run and the
+    local-source guard below has nothing to say about it.
+    """
     ran = fake_commands(monkeypatch)
     monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
 
     assert run(monkeypatch, tmp_path, ["--skip", "silver,gold"]) == 0
+
+    assert ran[-1] == "publish"
+
+
+def test_a_source_directory_run_does_not_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named table is not consent: a directory of blobs is nobody's production data."""
+    ran = fake_commands(monkeypatch)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+
+    assert run(monkeypatch, tmp_path, ["--source-dir", str(FIXTURES_DIR)]) == 0
+
+    assert "publish" not in ran
+    (row,) = [row for row in metric_rows(tmp_path) if row["stage"] == "run_all"]
+    (publish,) = [stage for stage in _extra(row)["stages"] if stage["stage"] == "publish"]
+    assert publish["status"] == STATUS_SKIPPED
+    assert publish["reason"] == (
+        "the run was fed from a local source directory, not the bucket; "
+        "pass --publish to publish anyway"
+    )
+
+
+def test_publish_says_yes_to_a_source_directory_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag the reason names is the whole of the way round it."""
+    ran = fake_commands(monkeypatch)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+
+    assert run(monkeypatch, tmp_path, ["--source-dir", str(FIXTURES_DIR), "--publish"]) == 0
 
     assert ran[-1] == "publish"
 
