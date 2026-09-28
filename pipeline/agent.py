@@ -897,4 +897,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # `python -m pipeline.agent` loads this file as `__main__`, and the card tool
+    # then imports `pipeline.agent` a second time as itself: two copies of the
+    # module, two `_calls` context variables, and a `lookup_cards` call that is
+    # recorded into a list nobody reads. Running the real module's `main` keeps
+    # one copy, which is what every other entry point sees when it imports us.
+    from pipeline.agent import main as agent_main
+
+    raise SystemExit(agent_main())
