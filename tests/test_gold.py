@@ -21,7 +21,6 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from pipeline.gold import run_gold
 from tests.conftest import FIXTURES_DIR
 
 pytestmark = pytest.mark.dbt
@@ -31,17 +30,16 @@ SIDES_PER_GAME = 2
 
 
 @pytest.fixture(scope="module")
-def warehouse(silver_from_fixtures: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    """One `dbt run` plus `dbt test` over the fixture silver, then a read-only handle.
+def warehouse(gold_from_fixtures: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+    """A read-only handle on the warehouse the session fixture built.
 
-    The exit code is asserted here rather than in a test of its own because
-    every other test in the module would be meaningless after a failed build,
-    and a setup failure says so more clearly than eight identical errors.
+    The build itself is `gold_from_fixtures` in `conftest.py`, which asserts
+    the exit code: every test here would be meaningless after a failed build,
+    and one setup failure says so more clearly than eight identical errors.
+    It is shared with the agent tests, which query the same tables through the
+    agent's SQL tool rather than through a connection of their own.
     """
-    assert run_gold(data_dir=silver_from_fixtures) == 0
-    connection = duckdb.connect(
-        str(silver_from_fixtures / "warehouse" / "meta.duckdb"), read_only=True
-    )
+    connection = duckdb.connect(str(gold_from_fixtures), read_only=True)
     yield connection
     connection.close()
 

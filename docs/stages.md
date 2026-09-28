@@ -700,13 +700,287 @@ Still planned: `GET /matchups/{archetype}` straight from the gold marts, over a
 read-only DuckDB connection, so the application can ask for a matchup table
 without the model being involved at all. It would never touch bronze.
 
-## 6. Agent (planned, LangChain)
+## 6. Agent (in progress, LangChain)
 
-A LangChain agent with two tools: SQL over the gold marts (read-only DuckDB
-connection, schema-limited to `gold`) and retrieval over card text from the
-catalog. It answers questions such as "which archetype has the best record
-against X this season" by writing and running the mart query and citing the
-row counts.
+`python -m pipeline.agent "..."` and `POST /ask` are live. A LangChain
+tool-calling agent with two tools: SQL over the gold marts, over a read-only
+DuckDB connection with an allowlist of tables, and retrieval over the text of
+printed cards. It answers a question such as "how does Dragapult ex do against
+Gholdengo ex" by writing the mart query, running it, and reporting the number
+next to the sample size it came from.
+
+### The tools
+
+`query_marts(sql)` runs one read-only SELECT and returns the rows as a markdown
+table with a row count. Every statement goes through `validate_sql` first,
+which is a pure function of the statement and the allowlist and is therefore
+unit tested with no database behind it. It refuses, naming the rule:
+
+| rule | what it refuses |
+| --- | --- |
+| one statement | a `;` anywhere but at the end |
+| read only | anything not starting with `SELECT` or `WITH` |
+| no side effects | `ATTACH`, `DETACH`, `COPY`, `INSTALL`, `LOAD`, `PRAGMA`, `SET`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, and the rest of the statement keywords |
+| no file access | `read_parquet`, `read_csv`, `read_json`, `glob` and the other table functions that leave the warehouse |
+| allowlist | any table other than the seven below |
+
+The allowlist is `mart_matchups`, `mart_archetype_weekly`, `mart_cards_seen`,
+`mart_player_summary`, `dim_archetype`, `dim_card` and `dim_date`. Two absences
+are deliberate. `fct_game_side` is off it because the marts aggregate it
+correctly and a model writing its own group-by over a two-rows-per-game fact is
+where double counting starts. `dim_player`, the member roster, is off it
+because the question it answers is "who is here"; so is everything in silver
+and staging, so no raw log line is reachable either. `mart_player_summary` is
+on it and is the one player-keyed table the agent can read: an aggregate over
+members, keyed by the same irreversible token, with no handle in it, and rule 5
+of the prompt is what stops the agent presenting a token as a person. A
+boundary that is a list of table names is one a reviewer can check
+(docs/data-handling.md).
+
+Two more limits sit under the allowlist. The connection is opened `read_only`,
+which is the second lock and not the first: `read_only` would still allow
+`read_csv('/etc/passwd')`, and the allowlist is what does not. And a query with
+no `LIMIT` gets `LIMIT 50` appended, a query with a larger one has it cut to
+200, and DuckDB is given a five-second statement timeout, because a mart query
+over this corpus is milliseconds and anything slower is a mistake.
+
+A refusal and a failed query both come back to the model as text with a row
+count of zero, never as an exception. The model that wrote a bad query is the
+only thing that can write a better one, so it has to read why it was refused.
+
+`lookup_cards(query, k)` searches the text of printed cards by meaning and
+returns the top k with their abilities, attacks and rules. It is a card
+reference and not game data, and the prompt says so: nothing it returns is
+evidence about how often anything is played.
+
+### The prompt
+
+`pipeline/prompts.py`. The schema half is rendered at import time out of
+`dbt/models/marts/schema.yml`, the same file dbt builds and tests the models
+from, cut to one sentence per table and per column so it fits a budget of about
+two thousand tokens. A column renamed in the model is renamed in the prompt on
+the next import, and a column that never existed cannot be described in it at
+all. Only the allowed tables are rendered, so a table the tool would refuse is
+never advertised.
+
+The rules beside it are hand written and are the part that matters:
+
+1. cite the sample size, the `games` count, in the same sentence as the number;
+2. say in words when `min_games_met` is false, rather than reporting the rate
+   alone;
+3. `seen_rate` is the share of games in which a card was **observed**, not a
+   deck inclusion rate, and must be labelled as an observation and a lower
+   bound whenever it is reported;
+4. never guess a number: an empty result or a refusal is reported as one;
+5. player identity is not available, and a question about a person is answered
+   by saying the pipeline anonymizes players before anything is written.
+
+### Provider and model
+
+Anthropic through `langchain-anthropic`, default model
+`claude-haiku-4-5-20251001`, overridden with `PRA_AGENT_MODEL`. The key is
+`ANTHROPIC_API_KEY` and only these two entry points read it; every other stage
+runs without it. The size of model is the job: write one SELECT over seven
+tables and read a dozen rows back.
+
+The model is injected, exactly as the serving stage injects its model loader,
+so the tests pass a scripted chat model that returns pre-written `AIMessage`s
+with real `tool_calls` on them. The loop, the tool, the SQL validation and the
+DuckDB query are all the real ones under it; the only thing the fake replaces
+is the decision about which SQL to write, which is the part that costs a key
+and is not deterministic. No test in this repository needs a provider.
+
+### The card text and its terms
+
+`scripts/fetch_card_text.py` downloads printed card text from
+[TCGdex](https://tcgdex.net), a free, open, community-maintained card database
+with a public REST API, and writes `data/catalog/card_text.jsonl`, one JSON
+object per card: name, set, number, types, hit points, stage, abilities,
+attacks, rules text, retreat cost, regulation mark and a `source_url`. Only
+the Standard format is fetched: printings whose regulation mark is in
+`STANDARD_REGULATION_MARKS` (`pipeline/config.py`, bumped at each rotation),
+a few thousand cards rather than the 25,000 printings the catalog lists;
+`--reg all` or `--reg G,H` changes that. Within the format, the
+local catalog decides what is fetched: its set codes are resolved against
+TCGdex's set list, and a catalog entry finds its card by (set, collector
+number) first, by name among the listed sets second, and by an exact-name query
+against the whole database third. A card that matches nothing is counted and
+skipped rather than guessed at, because a wrong card's text in a retriever is
+worse than a missing one.
+
+The two sources spell a set differently, and the spelling is the whole match:
+the client writes `SV6`, `SV8-5` and `MEBSP` where TCGdex writes `sv06`,
+`sv08.5` and `mep`. A code becomes a candidate identifier through a normalizer
+(the series number padded to two digits, a `-5` tail written as the `.5` of a
+special set) plus a small table for the codes no rule reaches, including the
+client's `RSV10-5` and `ZSV10-5`, which are the two halves of one special set
+that TCGdex serves as White Flare and Black Bolt. Candidates are checked
+against the live set list before they are used, and a code that resolves to
+nothing is logged at WARNING, because it is a whole set of the current format
+about to be missing. An entry whose set never resolved is counted as unmatched
+and broken down by set code in the run's `extra`, rather than being dropped in
+silence: the name query that would otherwise answer for it searches every set
+TCGdex has and returns the oldest printing of that name, which is a card from
+another era or another game.
+
+The card names and rules text are Pokemon Trading Card Game content owned by
+Nintendo, Creatures Inc. and GAME FREAK, and this project is not affiliated
+with any of them. What the script writes is a local working copy for a local
+index: the dump is gitignored, never committed and never republished, and the
+tool quotes a card next to an attribution back to its `source_url`. The client
+is polite about it: four requests in flight, a jittered backoff on a 429 or a
+5xx, one listing request per set rather than one per card, and a `User-Agent`
+naming the project.
+
+### Embeddings and the index
+
+`python -m pipeline.card_index build` writes `data/catalog/card_index/`: a
+`cards.parquet` of distinct cards with their printings, a `vectors.parquet` of
+passages with their vectors, and a `meta.json` naming the embedder and the
+index format version that built it, so an index from an older layout is
+rebuilt rather than misread.
+
+A card is indexed as several passages rather than one document: an identity
+line (name, stage, types, hit points) and one passage per ability, attack and
+rule, each prefixed with the card's name so it is self-describing. Passages are
+scored and the scores are aggregated to the card by their maximum, so a card
+comes back once, with the passage that matched it. One blob per card was the
+first design, and on the real corpus it ranked Dragapult ex around sixtieth
+for a verbatim quote of its own attack: the name, the stage, the hit points and
+the other attack diluted the text against short single-effect trainer cards.
+Reprints are collapsed the same way: 2,264 Standard printings are 1,552
+distinct cards, and before the collapse three copies of one Supporter could
+fill a top five.
+
+The ranking is hybrid. A small embedder is weakest on exact game vocabulary,
+where "Benched", "damage counters" and "Prize cards" are the whole meaning of a
+line, so the same passages are scored with BM25 over a hand-rolled index and
+the two rankings are fused by reciprocal rank (k=60). RRF rather than a
+weighted sum because a cosine and a BM25 score are not on the same scale. On
+the real corpus a verbatim quote of Phantom Dive ranks Dragapult ex first, "put
+damage counters on the bench" third; the two-word "bench damage" still ranks it
+outside the top fifteen, behind cards whose entire text is a shorter sentence
+about bench damage, which is what a two-word query deserves and why the agent
+is told to name the card or archetype it is asking about. Model load is about
+seven seconds once per process, and a search is under twenty milliseconds.
+
+The vectors come from `sentence-transformers` with `BAAI/bge-small-en-v1.5`,
+384 dimensions, running locally on a CPU. Local rather than an embedding API
+because card text is short, domain-specific and never changes, so the index is
+built once and read many times and an API would add a key, a bill and a network
+hop to something that is already fast. `all-MiniLM-L6-v2` is the alternative
+and is selected with `--embedder`. A query is embedded with bge's instruction
+prefix and a card is not, which is how the model was trained and is worth real
+accuracy: without it, "put damage counters on the bench" does not rank the card
+that does exactly that first, and with it, it does.
+
+Storage is a Parquet of vectors and a numpy dot product, not DuckDB's `vss`
+extension. A few thousand passages at 384 float32 is a few megabytes and one
+matrix-vector product per query: exact rather than approximate, with no recall
+parameter to tune. `vss` would add an extension to
+install at build time, an HNSW index whose persistence in a file-backed
+database is still behind an experimental flag, and a second copy of the card
+text inside the warehouse the SQL tool is deliberately restricted from reading.
+At millions of rows the trade goes the other way, and the storage is one file
+and one loader.
+
+`HashingEmbedder` is the third implementation and needs no download at all: it
+hashes word tokens, with a five-character stem, into 256 buckets. It is not a
+semantic model and does not pretend to be one. It exists so that the build, the
+Parquet round trip, the search, the tool and its instrumentation all run in the
+fast test suite with nothing fetched from anywhere.
+
+### How to run it
+
+```bash
+uv run python scripts/fetch_card_text.py            # corpus from TCGdex
+uv run python -m pipeline.card_index build          # embed it, the Standard format
+uv run python -m pipeline.card_index query "put damage counters on the bench" -k 5
+op run --env-file=.env.op -- uv run python -m pipeline.agent \
+  "how does Dragapult ex do against Gholdengo ex"
+op run --env-file=.env.op -- uv run python -m pipeline.agent --repl
+curl -s -X POST localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"question": "which archetype has the best record this month"}'
+```
+
+`POST /ask` returns `{answer, tool_calls, model, usage}`, where `tool_calls` is
+every tool the run made with the query it was given and the number of rows that
+came back, so an answer can be checked against what it actually read. The agent
+is built on the first question rather than at startup: a service with no
+provider key serves `/predict` and answers `/ask` with a 503 that says what is
+missing.
+
+`build_card_index` is a task in the DAG and a stage in `python -m
+pipeline.run_all`. It is skipped, with the reason logged and in the summary
+table, when `data/catalog/card_text.jsonl` has not been fetched, the same way a
+silver run without a card catalog is a real run with null catalog columns.
+
+### What is logged and traced
+
+Every tool call is a span, `agent.tool.query_marts` or
+`agent.tool.lookup_cards`, carrying the length of the input and the number of
+rows it returned, inside an `agent.answer` span carrying the model, the number
+of tool calls and the token usage the provider reported. The SQL is on the span
+as a length rather than as text: a query here is short and harmless, but a span
+attribute is the wrong place to start putting model output.
+
+Each call also increments `agent_tool_calls_total{tool=...}`, the Prometheus
+counter `pipeline/telemetry.py` declared while the serving instrumentation was
+being built, so the panel and the metric name were decided before the agent
+existed. A JSON log line per tool call carries the tool, the row count and the
+input length, and one per answer carries the model, the tool-call count and the
+usage. Nothing logs the question, the answer or the SQL.
+
+### The SQL gate
+
+Behind the denylist, and off unless `PRA_SQL_GATE=jev`, a second opinion from
+TypeSafe's Jev: one typed Choice question per statement, "is this SQL a
+read-only SELECT over the marts schema that answers the user's question?",
+answered with a confidence, refused below a threshold and refused on any
+error. It exists for the injection the denylist cannot see, a legal `SELECT`
+that reads what the question never asked for. The provider is OpenRouter's
+Decisions endpoint with TypeSafe's direct API as a drop-in swap, the decision
+is on the tool-call span and in a `gate` label on `agent_tool_calls_total`, and
+the golden set shows gate hits and cost per run. Written up in
+[sql-gate.md](sql-gate.md).
+
+### The golden question set
+
+`evals/golden.yaml` and `python -m pipeline.eval`, written up in full in
+[evals.md](evals.md). Ten questions the fixture marts really answer, each with
+the tools its answer has to call, the facts it has to contain and the claims it
+must not make; the command runs them through the real agent, prints a table and
+exits non-zero when anything failed.
+
+It grades facts rather than wording. A `require` entry is a number, an
+archetype, a card or a sample size, matched as a substring or as a regular
+expression, because two correct answers to the same question will not share a
+sentence and a set that insists on one gets ignored. `expect_tools` is a set
+and an extra call is reported rather than failed, for the same reason: calling
+the tool is a fact, the order is not. The `forbid` half is where the rules
+above are actually enforced. `[0-9a-f]{16}`, the shape of the player token, is
+forbidden on every question; two questions ask directly for a deck inclusion
+rate the stock-only corpus cannot give, and forbid the claim rather than the
+phrase, since the right answer is to say the number is an observation.
+
+The prompt can be replaced wholesale by pointing
+`PRA_AGENT_SYSTEM_PROMPT_FILE` at a file, which exists so the claim that the
+seven rules matter can be run as an experiment:
+`--prompt-override evals/broken_prompt.txt` swaps in the same job description
+with the schema and the rules cut out, and the score falls. Each run is logged
+to MLflow in the `agent-evals` experiment with the sha256 of the prompt that
+was actually rendered, so a column renamed in `schema.yml` is visible as a
+different prompt even though no Python changed.
+
+The cadence is a trade. `.github/workflows/agent-eval.yml` scores the set
+against the real provider weekly, on a push to main that touches the agent or
+the questions, and on demand; it is not on every pull request, because a run is
+tens of model calls and a paid check that flickers is a check people route
+around. What runs on every pull request is the same set with the recorded turns
+in `evals/transcript.yaml` replayed through the real graph, the real SQL gate
+and real DuckDB against the fixture marts: ten out of ten, no key, no bill, and
+it fails the moment a mart is renamed or the gate starts refusing a query the
+set depends on.
 
 ## 7. Orchestration (in progress, Airflow and a plain runner)
 
@@ -736,7 +1010,7 @@ backfill -> spark_silver -> dbt_run -> dbt_test -> build_features -> train
 | `train` | `pipeline.train` | one MLflow run plus its baseline |
 | `promote` | `pipeline.promote --candidate latest` | the gate that can refuse a worse model |
 | `drift` | `pipeline.drift` | writes the report, exits 0 whether or not it flagged |
-| `build_card_index` | `pipeline.card_index`, when it exists | stage 6's retriever index; parallel because nothing waits on it |
+| `build_card_index` | `pipeline.card_index build` | stage 6's retriever index; parallel because nothing waits on it, and a logged no-op when the card-text corpus has not been fetched |
 | `quality_gate` | `pipeline.quality_gate` | the only task allowed to fail a run that got this far |
 
 `--steps` and `--stage-name` exist for this graph. dbt's build and dbt's tests
@@ -1160,7 +1434,7 @@ process-global one, so two applications in one test process do not collide:
 | `model_inference_duration_seconds` | `model_version` | the model call alone, so a slow promotion is visible as a slow promotion |
 | `model_predictions_total` | `model_version`, `unknown_archetype` | how much of the traffic the model has never seen the decks for |
 | `model_info` | `name`, `version`, `alias` | always 1; which version is answering, cleared and reset on `/reload` |
-| `agent_tool_calls_total` | `tool` | nothing increments it yet. Stage 6 will |
+| `agent_tool_calls_total` | `tool` | how much of the agent's work is queries and how much is card lookups; one series per tool, and the tool names are a closed set |
 
 The labels are bounded deliberately. `route` is the matched template, `/predict`
 and not the request path, so a service that is scanned for `/wp-admin.php` gets

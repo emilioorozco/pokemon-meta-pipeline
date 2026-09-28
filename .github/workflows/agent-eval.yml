@@ -1,0 +1,134 @@
+# The golden question set, scored against a real provider.
+#
+# Deliberately not on every pull request. One run is ten questions through a
+# tool-calling loop, which is tens of model calls, and the answer it gives is
+# noisy at that sample size: a set that costs money on every push and goes
+# amber for a paraphrase is a set people start ignoring. So it runs weekly, on
+# a push to main that touches the agent or the questions, and on demand. The
+# fast checks in ci.yml stay the gate on a pull request, and they already cover
+# the harness: `pytest -m dbt` replays recorded turns through the real tools
+# against the same fixture marts and asserts ten out of ten, with no key and no
+# bill. What this workflow adds is the only thing that needs a provider, which
+# is whether the model still answers correctly.
+#
+# The marts are built here rather than downloaded: bronze, silver and gold over
+# the committed fixtures, which is why the job installs Java. Nothing it reads
+# or writes leaves the runner.
+
+name: Agent eval
+
+on:
+  schedule:
+    # Monday morning, off the hour, so a queue of hourly jobs is not where this
+    # one waits.
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - pipeline/agent.py
+      - pipeline/prompts.py
+      - pipeline/card_index.py
+      - pipeline/eval.py
+      - evals/**
+      - .github/workflows/agent-eval.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Not cancel-in-progress: two pushes in a minute should not leave the second
+# run scored and the first one half charged for.
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  golden:
+    name: golden question set
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      # A fork, and a clone that nobody has given a key to, are the normal
+      # state of this repository rather than a mistake, so the absence of the
+      # secret is a notice and a green job. A red build for a missing key
+      # teaches people to ignore the red build.
+      - name: Look for a provider key
+        id: key
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo '::notice title=Agent eval skipped::ANTHROPIC_API_KEY is not set for this repository, so the golden set was not scored. Set the secret to turn this job on; pytest -m dbt covers the harness either way.'
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+
+      - name: Install Java
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install uv
+        if: steps.key.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
+        run: uv sync --locked --group dev
+
+      # The same three commands docs/evals.md gives a reader, pointed at a
+      # scratch directory so nothing lands in the repository's own data dir.
+      # The anonymization key is generated here and thrown away with the
+      # runner; the fixtures were anonymized under a key nobody kept.
+      - name: Build the fixture marts
+        if: steps.key.outputs.present == 'true'
+        run: |
+          echo "PIPELINE_DATA_DIR=$RUNNER_TEMP/eval" >> "$GITHUB_ENV"
+          export PIPELINE_DATA_DIR="$RUNNER_TEMP/eval"
+          HANDLE_HMAC_KEY=$(openssl rand -hex 32) uv run python -m pipeline.backfill \
+            --source-dir tests/fixtures \
+            --bronze-dir "$PIPELINE_DATA_DIR/lake/bronze" \
+            --quarantine-dir "$PIPELINE_DATA_DIR/lake/quarantine"
+          uv run python -m pipeline.silver \
+            --bronze-dir "$PIPELINE_DATA_DIR/lake/bronze" \
+            --silver-dir "$PIPELINE_DATA_DIR/lake/silver" \
+            --catalog tests/catalog.json
+          uv run python -m pipeline.gold --data-dir "$PIPELINE_DATA_DIR"
+
+      # The hashing embedder, not the real one: the card questions are about
+      # whether the agent looks the card up and reports what it found, and a
+      # model download is minutes of runner time for a corpus of twelve cards.
+      - name: Build the fixture card index
+        if: steps.key.outputs.present == 'true'
+        run: |
+          uv run python -m pipeline.card_index build \
+            --source tests/card_text.jsonl \
+            --out "$PIPELINE_DATA_DIR/card_index" \
+            --embedder hashing
+
+      - name: Score the golden set
+        if: steps.key.outputs.present == 'true'
+        run: |
+          uv run python -m pipeline.eval \
+            --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
+            --card-index "$PIPELINE_DATA_DIR/card_index"
+
+      # Kept whether the run passed or failed, because the failing one is the
+      # one worth reading: the report names the missing fact per question, and
+      # the MLflow run beside it carries the prompt hash and the per-question
+      # metrics.
+      - name: Keep the report
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-mlruns
+          path: ${{ runner.temp }}/eval/mlruns
+          if-no-files-found: warn
+          retention-days: 30

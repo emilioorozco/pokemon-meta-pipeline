@@ -101,7 +101,7 @@ def test_every_stage_runs_in_order_when_nothing_is_skipped(
 
     # The three model stages are skipped: there is no warehouse here, so
     # `features_turn` holds no rows. The card index is skipped because the
-    # module does not exist yet.
+    # corpus it would embed has not been fetched into this data directory.
     assert ran == ["backfill", "silver", "gold", "quality_gate"]
 
 
@@ -120,7 +120,7 @@ def test_skip_leaves_the_named_stages_out_with_a_reason(
         if stage["status"] == STATUS_SKIPPED
     }
     assert skipped["silver"] == "skipped by --skip"
-    assert "not implemented yet" in skipped["build_card_index"]
+    assert "no card text" in skipped["build_card_index"]
     assert "features_turn" in skipped["train"]
     assert "PRA_INSIGHTS_TABLE" in skipped["publish"]
 
@@ -178,6 +178,20 @@ def test_a_named_insights_table_is_what_lets_the_publish_run(
     assert ran[-1] == "publish"
 
 
+def test_the_card_index_runs_as_soon_as_its_corpus_is_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one skip that goes away by fetching a file, rather than by writing code."""
+    ran = fake_commands(monkeypatch)
+    corpus = run_all.card_text_path(tmp_path)
+    corpus.parent.mkdir(parents=True, exist_ok=True)
+    corpus.write_text('{"card_id": "x", "name": "X"}\n', encoding="utf-8")
+
+    assert run(monkeypatch, tmp_path, []) == 0
+
+    assert "build_card_index" in ran
+
+
 def test_the_source_directory_only_reaches_the_stage_that_reads_blobs() -> None:
     stages = {stage.name: stage for stage in run_all.STAGES}
     fixtures = Path("tests/fixtures")
@@ -189,6 +203,12 @@ def test_the_source_directory_only_reaches_the_stage_that_reads_blobs() -> None:
     assert run_all.stage_command(stages["promote"], source_dir=None)[-2:] == [
         "--candidate",
         "latest",
+    ]
+    # The card index is a subcommand, not a bare module, and this is the line
+    # that would notice if the two drifted apart.
+    assert run_all.stage_command(stages["build_card_index"], source_dir=None)[-2:] == [
+        "pipeline.card_index",
+        "build",
     ]
 
 

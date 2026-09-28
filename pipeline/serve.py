@@ -35,6 +35,14 @@ in `unknown_archetypes`, because the useful reply to "Charizard against
 something I have never heard of" is a probability that leans on the other
 fifteen features plus a note that half the matchup is guesswork. A 422 would
 make the caller handle a metagame that moves every set release as an error.
+
+A fifth endpoint, `POST /ask`, is the agent. It is here rather than in a second
+service because it answers over the same warehouse, with the same traces and
+the same Prometheus registry, and a second process would double the deployment
+for one route. Its agent is injected exactly as the model loader is, so the
+tests drive the real agent loop with a scripted chat model and no API key, and
+it is built on the first question rather than at startup: a service whose
+`/predict` works should not fail to start because a provider key is missing.
 """
 
 import argparse
@@ -54,7 +62,13 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from opentelemetry.sdk.trace.export import SpanExporter
 from pydantic import BaseModel, ConfigDict, Field
 
-from pipeline.config import PRODUCTION_ALIAS, REGISTERED_MODEL_NAME, default_tracking_uri
+from pipeline.config import (
+    CARD_INDEX_DIR,
+    PRODUCTION_ALIAS,
+    REGISTERED_MODEL_NAME,
+    WAREHOUSE_PATH,
+    default_tracking_uri,
+)
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
 from pipeline.telemetry import INFERENCE_SPAN, route_label, setup_metrics, setup_tracing
@@ -172,6 +186,62 @@ class PredictResponse(BaseModel):
     )
 
 
+class AgentResult(Protocol):
+    """What the agent hands back: enough to build the response body from.
+
+    A protocol over `as_dict` rather than the dataclass itself, so importing
+    this module never imports LangChain. The serving container installs the
+    `ml` extra and nothing else, and `/predict` has to keep working in it.
+    """
+
+    def as_dict(self) -> dict[str, Any]:
+        """The answer, its tool calls, the model and the token usage."""
+
+
+class AskAgent(Protocol):
+    """A built agent: one question in, one answer out, no state between them."""
+
+    def ask(self, question: str) -> AgentResult:
+        """Answer one question."""
+
+
+AgentFactory = Callable[[], AskAgent]
+
+
+class AskRequest(BaseModel):
+    """One question in natural language."""
+
+    question: str = Field(
+        min_length=1,
+        max_length=2_000,
+        description="What to ask about the metagame, in plain English",
+    )
+
+
+class ToolCallResponse(BaseModel):
+    """One tool the agent called while answering, and what came back."""
+
+    tool: str = Field(description="Tool name, `query_marts` or `lookup_cards`")
+    input_summary: str = Field(description="The query it was given, shortened to one line")
+    rows: int = Field(description="Rows the tool returned; zero for a refusal or an empty result")
+
+
+class AskResponse(BaseModel):
+    """The agent's answer, and everything it did to get there."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    answer: str = Field(description="The answer, in prose, citing the sample size it read")
+    tool_calls: list[ToolCallResponse] = Field(
+        description="Every tool call of this run, in order. An empty list means the model "
+        "answered without reading the warehouse, which its prompt tells it not to do"
+    )
+    model: str = Field(description="Provider model that answered")
+    usage: dict[str, int] = Field(
+        description="Token counts the provider reported; empty when it reported none"
+    )
+
+
 class HealthResponse(BaseModel):
     """Liveness, and whether the alias resolved to anything."""
 
@@ -261,6 +331,59 @@ class ModelHolder:
                 ),
             )
         return self.current
+
+
+class AgentHolder:
+    """The agent, built on the first question and kept afterwards.
+
+    Lazily, because building it constructs a provider client that wants a key,
+    and a service that refused to start without one would make the agent a
+    dependency of `/predict`. The failure is recorded and returned as a 503
+    with its reason, and the next request tries again, so a key arriving later
+    fixes the endpoint without a restart.
+    """
+
+    def __init__(self, factory: AgentFactory) -> None:
+        self.factory = factory
+        self.current: AskAgent | None = None
+
+    def required(self) -> AskAgent:
+        """The agent, or a 503 naming what went wrong building it."""
+        if self.current is not None:
+            return self.current
+        try:
+            self.current = self.factory()
+        except Exception as failure:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"the agent is unavailable: {type(failure).__name__}: {failure}. "
+                    f"It needs a provider key in the environment and a warehouse built "
+                    f"by `python -m pipeline.gold`."
+                ),
+            ) from failure
+        return self.current
+
+
+def default_agent_factory(*, tracer: Any, metrics: Any) -> AgentFactory:
+    """An agent over the real warehouse, sharing this process's tracer and registry.
+
+    `pipeline.agent` is imported inside the closure for the same reason MLflow
+    is imported inside `mlflow_loader`: the application has to be importable,
+    and every other endpoint testable, without LangChain installed.
+    """
+
+    def build() -> AskAgent:
+        from pipeline.agent import build_agent, default_card_index
+
+        return build_agent(
+            warehouse=WAREHOUSE_PATH,
+            card_index=default_card_index(CARD_INDEX_DIR),
+            tracer=tracer,
+            metrics=metrics,
+        )
+
+    return build
 
 
 def mlflow_loader(*, tracking_uri: str | None = None, alias: str = PRODUCTION_ALIAS) -> Loader:
@@ -385,12 +508,18 @@ def create_app(
     loader: Loader | None = None,
     *,
     span_exporter: SpanExporter | None = None,
+    agent_factory: AgentFactory | None = None,
 ) -> FastAPI:
-    """The application, with its model loader injected.
+    """The application, with its model loader and its agent injected.
 
     The loader is a plain callable returning a `LoadedModel`, so a test passes a
     stub and the command line passes `mlflow_loader()`. Nothing below this line
     knows that MLflow exists.
+
+    `agent_factory` is the same shape one level up: a callable returning
+    something that answers `ask`, so a test passes an agent built around a
+    scripted chat model and the command line passes the real one. Nothing below
+    this line knows that LangChain exists either.
 
     `span_exporter` is the same idea for traces: the telemetry tests pass an
     in-memory exporter, and everything else leaves it out and lets
@@ -407,6 +536,7 @@ def create_app(
     )
     tracer = setup_tracing(app, exporter=span_exporter)
     metrics = setup_metrics(app)
+    agent = AgentHolder(agent_factory or default_agent_factory(tracer=tracer, metrics=metrics))
 
     def record_load() -> None:
         """Put the loaded version on the `model_info` gauge, or clear it if none."""
@@ -515,6 +645,17 @@ def create_app(
             features_used=list(MODEL_FEATURES),
             unknown_archetypes=unseen,
         )
+
+    @app.post("/ask", response_model=AskResponse, summary="Ask the agent about the metagame")
+    def ask(request: AskRequest) -> AskResponse:
+        """One question through the agent loop, and what it read to answer it.
+
+        No span is opened here: the agent opens `agent.answer` around its own
+        run and a span per tool call inside it, and the HTTP span from the
+        instrumentation is already the parent of all of them.
+        """
+        result = agent.required().ask(request.question)
+        return AskResponse.model_validate(result.as_dict())
 
     return app
 

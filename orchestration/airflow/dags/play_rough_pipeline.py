@@ -31,11 +31,12 @@ event-driven ingest is landing bronze already, so the first task becomes a
 logged no-op rather than a second pass over the same bucket.
 
 **The graph.** Linear, because the data is: bronze feeds silver feeds the
-warehouse feeds the model. The one branch is `build_card_index`, which needs the
-warehouse and nothing after it, so it runs beside the model stages instead of
-delaying them. `quality_gate` judges every row the run wrote, and `publish` is
-after it rather than before: a run whose gate refused must not put its numbers
-in front of the application's readers, and a failed task stops what follows it.
+warehouse feeds the model. The one branch is `build_card_index`, which embeds
+the card-text corpus and needs nothing the model stages produce, so it runs
+beside them instead of delaying them. `quality_gate` judges every row the run
+wrote, and `publish` is after it rather than before: a run whose gate refused
+must not put its numbers in front of the application's readers, and a failed
+task stops what follows it.
 """
 
 from __future__ import annotations
@@ -204,19 +205,14 @@ with DAG(
         append_env=True,
     )
 
-    # The retriever index is a later ticket. The task is here so the finished
-    # shape of the run is visible in the graph, and it checks for the module
-    # rather than assuming it: the day `pipeline/card_index.py` lands, this
-    # starts calling it with no change to the DAG.
+    # The retriever's index, off the gold branch because it needs neither the
+    # warehouse nor the model: it embeds the card-text corpus
+    # `scripts/fetch_card_text.py` wrote. The command exits 0 with a logged
+    # reason when that corpus has not been fetched, so an index nobody needs
+    # yet is a green task rather than a red one.
     build_card_index = BashOperator(
         task_id="build_card_index",
-        bash_command=(
-            f"cd {PIPELINE_DIR} && "
-            f"if {PYTHON} -c 'import importlib.util, sys; "
-            'sys.exit(0 if importlib.util.find_spec("pipeline.card_index") else 1)\'; then '
-            + stage("card_index")
-            + "; else echo 'pipeline.card_index is not implemented yet, skipping'; fi"
-        ),
+        bash_command=stage("card_index build"),
         env=TASK_ENV,
         append_env=True,
     )
