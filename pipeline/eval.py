@@ -140,6 +140,7 @@ CHECK_ERROR: Final = "error"
 # several queries in it reports the worst one: a single refusal is the news.
 GATE_NONE: Final = "-"
 GATE_ALLOWED: Final = "allowed"
+GATE_ALLOWED_LOW: Final = "allowed_low"
 GATE_REFUSED: Final = "refused"
 GATE_ERRORED: Final = "error"
 # One cent, the ceiling the ticket set for a whole run. Printed beside the
@@ -327,10 +328,12 @@ class Result:
 def gate_summary(calls: Sequence[ToolCall]) -> tuple[str, int, float]:
     """One question's gate column, its judged calls and what they cost.
 
-    The worst verdict wins, in the order refused, error, allowed, because a
-    question whose second query was waved through after the first was refused
-    is a question where the gate did something, and a column that reported the
-    last call would hide it.
+    The worst verdict wins, in the order refused, error, allowed_low, allowed,
+    because a question whose second query was waved through after the first
+    was refused is a question where the gate did something, and a column that
+    reported the last call would hide it. `allowed_low` is an allow the gate
+    was not sure about and let through: not a refusal, but the thing to look
+    at when the threshold is in question.
     """
     judged = [call for call in calls if call.gate != GATE_OFF]
     cost = round(sum(call.gate_cost_usd for call in judged), 10)
@@ -340,6 +343,7 @@ def gate_summary(calls: Sequence[ToolCall]) -> tuple[str, int, float]:
     for label, column in (
         (GATE_REFUSED, GATE_REFUSED),
         (GATE_ERRORED, GATE_ERRORED),
+        (GATE_ALLOWED_LOW, GATE_ALLOWED_LOW),
         (GATE_ALLOWED, GATE_ALLOWED),
     ):
         if any(name.endswith(f":{label}") for name in labels):

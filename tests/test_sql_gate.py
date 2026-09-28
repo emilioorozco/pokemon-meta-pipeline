@@ -182,16 +182,35 @@ def test_a_refuse_is_a_refusal_whatever_the_confidence_is() -> None:
     assert "did not read this" in decision.reason
 
 
-def test_an_allow_under_the_threshold_is_refused_and_says_so() -> None:
-    """The threshold is the whole of what this gate decides with."""
+def test_an_allow_under_the_threshold_is_let_through_and_flagged() -> None:
+    """The default policy after the first live runs: the choice decides, the confidence marks."""
     judge, _ = gate(HttpReply(200, answered("allow", 0.55)), threshold=0.7)
     decision = judge.judge(QUESTION, SQL, SCHEMA)
-    assert not decision.allowed
-    assert decision.label == "jev:refused"
+    assert decision.allowed
+    assert decision.uncertain
+    assert decision.label == "jev:allowed_low"
     assert "0.55" in decision.reason and "0.70" in decision.reason
-    # The same answer passes a gate that was told to be less careful.
-    lenient, _ = gate(HttpReply(200, answered("allow", 0.55)), threshold=0.5)
-    assert lenient.judge(QUESTION, SQL, SCHEMA).allowed
+    # At or above the threshold it is an ordinary allow with no flag.
+    sure, _ = gate(HttpReply(200, answered("allow", 0.55)), threshold=0.5)
+    confident = sure.judge(QUESTION, SQL, SCHEMA)
+    assert confident.allowed and not confident.uncertain
+    assert confident.label == "jev:allowed"
+
+
+def test_the_strict_policy_refuses_an_allow_under_the_threshold() -> None:
+    """`PRA_SQL_GATE_LOW_CONFIDENCE=refuse` is the first design, kept for whoever wants it."""
+    judge, _ = gate(
+        HttpReply(200, answered("allow", 0.55)),
+        threshold=0.7,
+        low_confidence=sql_gate.LOW_CONFIDENCE_REFUSE,
+    )
+    decision = judge.judge(QUESTION, SQL, SCHEMA)
+    assert not decision.allowed
+    assert not decision.uncertain
+    assert decision.label == "jev:refused"
+    assert "not sure enough" in decision.reason
+    with pytest.raises(sql_gate.GateConfigError, match="LOW_CONFIDENCE"):
+        gate(low_confidence="maybe")
 
 
 def test_the_cost_falls_back_to_the_published_rate_when_nothing_prices_the_call() -> None:

@@ -275,9 +275,11 @@ class ServiceMetrics:
     def count_tool_call(self, tool: str, gate: str = "off") -> None:
         """One agent tool call, by tool and by what the optional SQL gate said.
 
-        `gate` is a closed set of four: `off` when no gate ran, which is every
+        `gate` is a closed set of five: `off` when no gate ran, which is every
         `lookup_cards` call and every call made with `PRA_SQL_GATE` unset, and
-        `jev:allowed`, `jev:refused` or `jev:error` when one did. It defaults so
+        `jev:allowed`, `jev:allowed_low` (an allow under the confidence
+        threshold, let through and marked), `jev:refused` or `jev:error` when
+        one did. It defaults so
         that a caller with no gate to report does not have to know the gate
         exists, and it is bounded for the usual reason: a label whose values a
         provider chooses is one time series per provider mood.
