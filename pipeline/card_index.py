@@ -779,7 +779,10 @@ _CARD_SCHEMA: Final = pa.schema(
     ]
 )
 
-_PASSAGE_FIELDS: list[pa.Field[Any]] = [
+# The annotation is a string on purpose: `pa.Field` is not subscriptable at
+# runtime on Python 3.11 and 3.12, and a module-level annotation is evaluated
+# at import there (3.14 defers it, which is how this slipped past locally).
+_PASSAGE_FIELDS: "list[pa.Field[Any]]" = [
     pa.field("card_row", pa.int32(), nullable=False),
     pa.field("kind", pa.string(), nullable=False),
     pa.field("label", pa.string(), nullable=False),
