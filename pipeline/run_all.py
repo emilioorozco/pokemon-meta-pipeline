@@ -70,7 +70,8 @@ from pipeline.observability import (
     emit_summary,
     stage_run,
 )
-from pipeline.settings import INSIGHTS_TABLE_VAR
+from pipeline.settings import INSIGHTS_TABLE_VAR, DataRootError, validate_data_root
+from pipeline.storage import AnyLocation, Location, local_file, location
 
 logger = logging.getLogger(__name__)
 
@@ -210,17 +211,19 @@ class RunAllSummary:
         return "\n".join(lines)
 
 
-def feature_rows(warehouse: Path) -> int:
+def feature_rows(warehouse: AnyLocation) -> int:
     """How many rows `features_turn` holds, or 0 when there is no table to ask.
 
     A missing warehouse and an unbuilt table both answer zero rather than
     raising: the question this asks is "is there anything to model", and all
-    three ways of saying no mean the same thing to the caller.
+    three ways of saying no mean the same thing to the caller. A warehouse in
+    the lake is downloaded to be asked, like everywhere else that opens one.
     """
-    if not warehouse.is_file():
+    target = location(warehouse)
+    if not target.is_file():
         return 0
     try:
-        connection = duckdb.connect(str(warehouse), read_only=True)
+        connection = duckdb.connect(str(local_file(target)), read_only=True)
     except duckdb.Error:
         return 0
     try:
@@ -232,9 +235,9 @@ def feature_rows(warehouse: Path) -> int:
     return int(row[0]) if row else 0
 
 
-def card_text_path(data_dir: Path) -> Path:
-    """Where the retriever's corpus lives under a given data directory."""
-    return data_dir / "catalog" / CARD_TEXT_NAME
+def card_text_path(data_dir: AnyLocation) -> Location:
+    """Where the retriever's corpus lives under a given data root."""
+    return location(data_dir) / "catalog" / CARD_TEXT_NAME
 
 
 def skip_reason(
@@ -242,7 +245,7 @@ def skip_reason(
     *,
     skipped: Sequence[str],
     features: int | None,
-    card_text: Path | None = None,
+    card_text: Location | None = None,
 ) -> str | None:
     """Why this stage should not run, or None to run it.
 
@@ -286,7 +289,7 @@ def run_stage(stage: Stage, *, argv: Sequence[str], env: dict[str, str]) -> Stag
 
 def run_all(
     *,
-    data_dir: Path,
+    data_dir: AnyLocation,
     source_dir: Path | None = None,
     skip: Sequence[str] = (),
     stop_after: str | None = None,
@@ -294,9 +297,13 @@ def run_all(
     env: dict[str, str] | None = None,
 ) -> RunAllSummary:
     """Run the stages in order, stopping at the first failure or at `stop_after`."""
+    root = location(data_dir)
     child_env = dict(os.environ if env is None else env)
-    child_env[DATA_DIR_VAR] = str(data_dir)
-    warehouse = data_dir / "warehouse" / "meta.duckdb"
+    # The root is passed to every child as the string it came in as, s3:// and
+    # all: each stage resolves it the same way this one did, so the runner is
+    # not a place where a bucket can turn back into a directory.
+    child_env[DATA_DIR_VAR] = str(root)
+    warehouse = root / "warehouse" / "meta.duckdb"
     summary = RunAllSummary()
     features: int | None = None
 
@@ -307,9 +314,7 @@ def run_all(
                 "feature rows counted",
                 extra={"rows": features, "warehouse": str(warehouse)},
             )
-        reason = skip_reason(
-            stage, skipped=skip, features=features, card_text=card_text_path(data_dir)
-        )
+        reason = skip_reason(stage, skipped=skip, features=features, card_text=card_text_path(root))
         if reason is not None:
             logger.info("stage skipped", extra={"stage_name": stage.name, "reason": reason})
             summary.results.append(
@@ -347,10 +352,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--data-dir",
-        type=Path,
-        default=PIPELINE_DATA_DIR,
+        type=str,
+        default=str(PIPELINE_DATA_DIR),
         metavar="PATH",
-        help="the lake and warehouse root every stage is pointed at",
+        help="the lake and warehouse root every stage is pointed at, a directory or "
+        "an s3:// prefix",
     )
     parser.add_argument(
         "--skip",
@@ -379,17 +385,24 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(2, f"{parser.prog}: unknown stage(s) {', '.join(unknown)}\n")
     if args.source_dir is not None and not args.source_dir.is_dir():
         parser.exit(2, f"{parser.prog}: --source-dir is not a directory: {args.source_dir}\n")
+    # Checked here rather than left to the first stage that writes: a root with
+    # no bucket would otherwise be a directory called `s3:` under the working
+    # directory, and nine stages would each put part of a lake in it.
+    try:
+        data_dir = validate_data_root(args.data_dir)
+    except DataRootError as bad:
+        parser.exit(2, f"{parser.prog}: {bad}\n")
 
     # Set on this process rather than only on the children: the run identifier
     # has to be the one this command's own summary row carries, and the data
     # directory has to be the one that row is written to.
-    os.environ[DATA_DIR_VAR] = str(args.data_dir)
+    os.environ[DATA_DIR_VAR] = str(data_dir)
     run_id = configure_logging(STAGE, args.run_id)
     os.environ[RUN_ID_VAR] = run_id
 
     with stage_run(STAGE) as metrics:
         summary = run_all(
-            data_dir=args.data_dir,
+            data_dir=data_dir,
             source_dir=args.source_dir,
             skip=skip,
             stop_after=args.stop_after,
@@ -404,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             "skipped": counts[STATUS_SKIPPED],
             "failed": counts[STATUS_FAILED],
             "source_dir": str(args.source_dir) if args.source_dir else None,
-            "data_dir": str(args.data_dir),
+            "data_dir": str(data_dir),
             "exit_code": summary.exit_code,
         }
         failure = summary.failed

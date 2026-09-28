@@ -30,7 +30,7 @@ import pytest
 from pipeline.backfill import run_backfill
 from pipeline.settings import Settings
 from pipeline.source import LocalSource
-from pipeline.storage import Location, reset_s3_client
+from pipeline.storage import Location, location, reset_s3_client
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -60,6 +60,21 @@ def aws_fake_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_PROFILE", raising=False)
 
 
+@pytest.fixture(params=["local", "s3"])
+def root(request: pytest.FixtureRequest, tmp_path: Path) -> Location:
+    """A lake root of each kind, so a test that asks for it runs against both.
+
+    The whole claim of `pipeline.storage` is that a stage cannot tell them
+    apart, and a parameterized fixture is the cheapest way to keep asserting it:
+    one test body, two roots, and a difference between them fails rather than
+    going unnoticed.
+    """
+    if request.param == "local":
+        return location(tmp_path / "lake")
+    lake: Location = request.getfixturevalue("s3_lake")
+    return lake
+
+
 @pytest.fixture
 def s3_lake(aws_fake_credentials: None) -> Iterator[Location]:
     """An empty bucket and a `Location` naming a lake root inside it.
@@ -79,6 +94,45 @@ def s3_lake(aws_fake_credentials: None) -> Iterator[Location]:
         )
         yield Location(f"s3://{LAKE_BUCKET}/{LAKE_PREFIX}")
     reset_s3_client()
+
+
+@pytest.fixture
+def s3_lake_server(
+    aws_fake_credentials: None, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Location]:
+    """The same empty bucket, but served over HTTP so a subprocess can reach it.
+
+    `mock_aws` patches botocore inside this interpreter, which is everything the
+    in-process tests need and nothing a child process can see. `pipeline.run_all`
+    runs every stage as a subprocess on purpose, so the only way to give those
+    children a fake bucket is a real endpoint: moto's threaded server, with
+    `AWS_ENDPOINT_URL_S3` in the environment they inherit. boto3 reads that
+    variable itself, so no code here knows about it.
+
+    Skipped rather than failed when the server extra is not installed: it
+    arrives with MLflow's Flask today, and a suite that loses it should lose one
+    test rather than report a broken pipeline.
+    """
+    pytest.importorskip("flask", reason="moto's threaded server needs flask")
+    import boto3
+    from moto.server import ThreadedMotoServer
+
+    server = ThreadedMotoServer(port=0, verbose=False)
+    server.start()
+    host, port = server.get_host_and_port()
+    endpoint = f"http://{host}:{port}"
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", endpoint)
+    monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint)
+    reset_s3_client()
+    try:
+        boto3.client("s3", region_name=TEST_REGION, endpoint_url=endpoint).create_bucket(
+            Bucket=LAKE_BUCKET,
+            CreateBucketConfiguration={"LocationConstraint": TEST_REGION},
+        )
+        yield Location(f"s3://{LAKE_BUCKET}/{LAKE_PREFIX}")
+    finally:
+        reset_s3_client()
+        server.stop()
 
 
 @pytest.fixture(scope="session", autouse=True)
