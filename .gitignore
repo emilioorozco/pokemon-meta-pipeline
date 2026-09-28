@@ -36,3 +36,6 @@ airflow_home/
 # local-only op env files (real values, never committed)
 .env.prod.op
 .env.*.local
+
+# dbt writes an anonymous-id file next to the project on every run
+dbt/.user.yml
