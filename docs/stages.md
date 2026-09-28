@@ -33,6 +33,129 @@ S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
 
 Status legend: done, in progress, planned.
 
+## Where the lake lives
+
+Every stage takes one root and derives everything else under it:
+`PIPELINE_DATA_DIR`, or the `--data-dir`, `--bronze-dir`, `--silver-dir`,
+`--out-dir`, `--warehouse` and `--card-index` flags that override parts of it.
+That root can be a directory or an `s3://bucket/prefix`, and the layout under it
+is the same either way:
+
+```
+<root>/
+  lake/bronze/play_date=YYYY-MM-DD/part-0.parquet
+  lake/silver/<table>/play_date=YYYY-MM-DD/*.parquet
+  lake/quarantine/<reason>/<flattened key>.json + .meta.json
+  lake/run_metrics/<run id>-<stage>.parquet
+  catalog/cards.json, catalog/card_text.jsonl, catalog/card_index/
+  warehouse/meta.duckdb, warehouse/marts/<mart>.parquet
+  mlruns/
+  drift/drift_report.md, drift/drift_summary.json
+```
+
+Only the root moves. A laptop run and a container run differ by one environment
+variable, which is the whole point: the nightly job is the command a reviewer
+already ran, pointed somewhere else.
+
+`pipeline/storage.py` is the one module that knows the difference. Its docstring
+argues the design; the four things worth knowing before running this are below.
+
+### Credentials, and one client
+
+Credentials come from boto3's default chain, the same one the ingest already
+uses: environment, shared profile, container or instance role. Region comes from
+`AWS_REGION`. An endpoint override (`AWS_ENDPOINT_URL_S3`, else
+`AWS_ENDPOINT_URL`) is honoured for a local S3 stand-in such as moto, LocalStack
+or MinIO, and is what the end-to-end test of the S3 path uses. No key is ever
+written into a profile, a DAG or this repository.
+
+The two engines are the exceptions, because neither speaks through boto3. Spark
+reads and writes through the Hadoop `s3a://` connector, with a credential
+provider that walks the same places; the connector is a jar, fetched from Maven
+at session start unless `PRA_SPARK_PACKAGES` names one the image already ships.
+DuckDB reads through `httpfs` with a `credential_chain` secret, which is its own
+walk of the same places.
+
+### There is no rename, so a partition replace is two steps
+
+A bronze partition is replaced whole, which is what makes a re-run idempotent.
+On a disk that is a temporary file moved into place with `os.replace`. Object
+storage has no rename, so the replace writes the new object first and deletes
+whatever the new set did not name second. A reader that lists the prefix between
+the two steps can see both sets.
+
+The order is deliberate. Delete-then-write has a window in which the partition
+is empty, and an empty partition reads as "this day has no games", which is a
+wrong answer; write-then-delete has a window in which a stale file is still
+there, which is a duplicated one. In practice the window does not open at all
+for bronze, because the file name is fixed (`part-0.parquet`) and a rewrite of
+the same partition overwrites that key. It opens only when the set of file names
+changes, which is a layout change. Closing it properly means a manifest, which
+means a table format (Apache Iceberg, Delta Lake); that is the next design step,
+not this one, and the same paragraph in `pipeline/bronze.py` says so.
+
+### DuckDB builds on local disk
+
+A DuckDB database is a file the engine seeks around in, not a stream it appends
+to, and there is no such thing over object storage. So `python -m pipeline.gold`
+always builds `meta.duckdb` on the task's local disk, whatever the root is, and
+then uploads it under `warehouse/` afterwards. That is honest about what the
+file is: it holds no state worth keeping, it is rebuilt from the lake on every
+run, and the copy in the bucket is a convenience for the next reader and not a
+database anyone writes to in place.
+
+dbt reads silver in place through `httpfs`, so there is still no load step. The
+profile has two targets for it, `dev` and `s3`, identical except that `s3` loads
+the extensions and creates the credential secret; the stage picks one from the
+shape of the root.
+
+The marts are also written out as Parquet, one file per materialized table,
+under `warehouse/marts/<mart>.parquet`. The next design step reads the marts
+without DuckDB at all, and a Parquet file is what every engine can open; a
+reader that only wants the matchup matrix should not have to download a
+warehouse to get it.
+
+Everything downstream that opens the warehouse (`publish`, `quality_gate`,
+`train`, `drift`, the agent's `query_marts`, `eval`) takes a `--warehouse` that
+can be `s3://.../meta.duckdb`. It is downloaded once per process and opened
+read-only, with `httpfs` loaded: the `ops` models are views over the run-metrics
+Parquet, so reading the published warehouse means reading the lake too.
+
+### MLflow is a synced file store, and there is one writer
+
+With an `s3://` root, `mlruns/` is downloaded to a temporary directory at the
+start of `train`, `promote`, `drift` and `eval`, used as the local file store
+for the length of the command, and uploaded back at the end. `publish` and the
+serving application read it the same way and do not upload, so a reader is never
+briefly a writer. Nothing is deleted on the way up, and a command that raises
+uploads nothing.
+
+**The single writer is an assumption, not a guarantee.** Two commands syncing
+the same prefix at once will each upload their own view, and the later one wins
+for any file they both touched. Today there is one writer: the nightly job, one
+stage at a time, under one run identifier. The reason for doing it this way is
+that it is free and reversible, needs no service standing up, and disappears the
+moment `MLFLOW_TRACKING_URI` points at a server.
+
+A tracking server is the design the day there is a second writer, and
+`docs/orchestration-on-aws.md` already recommends it and says why: the file
+store's own documentation warns it is unsafe under concurrent writers, and the
+registry it protects is what decides which model answers `/predict`.
+
+### What the tests cover, and what the live run has to
+
+The moto-backed tests cover the storage helper, the bronze partition replace and
+single-game merge, the backfill from fixtures, quarantine, run metrics and the
+gold build with its publish back, all against an `s3://` root. `run_all` and the
+dbt build run against moto's threaded server rather than its in-process fake,
+because a subprocess and DuckDB's own HTTP client cannot see a patched botocore.
+
+Silver on `s3a://` is the one path with no test: the shared SparkSession in the
+suite is started once for the whole run, and the connector is chosen when the
+Java Virtual Machine starts, so a second session with different jars is not
+possible in the same process. It is verified by running the pipeline end to end
+against a local S3 server, and by the live run against a real bucket.
+
 ## 1. Bronze ingest (in progress)
 
 Input: every object under `parsed/` in the environment's bucket (name from

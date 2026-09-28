@@ -43,6 +43,14 @@ USER root
 # without `libgomp1` the training task fails on the import rather than on
 # anything to do with the model. `procps` is for looking at what a task is doing
 # from inside the container.
+#
+# The Hadoop S3 connector is not installed here and that is a choice. A silver
+# run whose lake is an `s3://` root asks Spark for it by Maven coordinate
+# (`pipeline.storage.DEFAULT_SPARK_PACKAGES`), which resolves it at session
+# start and caches it in the task's Ivy directory. Baking it in means pulling
+# the AWS SDK bundle, several hundred megabytes, into every image including the
+# ones that never read a bucket. An image that does want it offline adds the jar
+# and names its coordinate in `PRA_SPARK_PACKAGES`, which the DAG forwards.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        default-jre-headless libgomp1 procps \

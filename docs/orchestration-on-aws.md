@@ -93,6 +93,16 @@ name in Logs Insights and on `run_id` in the Parquet files.
 
 ### Where the state lives
 
+**Implemented since this was written**, and the recommendations below are what
+was built. `PIPELINE_DATA_DIR` takes an `s3://bucket/prefix` and every stage
+reads and writes it: `docs/stages.md`, "Where the lake lives", is the operator's
+half and `pipeline/storage.py` is the design. `meta.duckdb` is rebuilt on the
+task's local disk every run and uploaded as an artifact, so there is no EFS
+volume and no lock contention; `mlruns/` is synced to the lake around each model
+command, which is the file store on a schedule rather than the server, and the
+paragraph below is still why the server is the answer the day there is a second
+writer.
+
 With no laptop, `meta.duckdb` needs a home a stateless task can reach: an EFS
 (Elastic File System) volume mounted into every task, or no persistent
 warehouse, `dbt_run` rebuilding it from bronze and silver Parquet on S3 each

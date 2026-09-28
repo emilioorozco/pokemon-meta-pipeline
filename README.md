@@ -77,6 +77,12 @@ at. Fields are defined in [docs/schema.md](docs/schema.md).
 
 ## Status (what runs today)
 
+The lake is location independent. `PIPELINE_DATA_DIR` and the `--data-dir`
+style flags take an `s3://bucket/prefix` as readily as a directory, the layout
+underneath is identical, and every stage below works unchanged against either,
+so running the whole pipeline without a laptop is one environment variable
+(docs/stages.md, "Where the lake lives").
+
 Bronze ingest is real. The backfill has run against the production bucket:
 **128 games, 0 quarantined, 10 play-date partitions**, all handles anonymized
 and leak-checked before anything was written.

@@ -307,6 +307,30 @@ detail.
   previous run. What it proves: the warehouse is not the end of the line, the
   refresh is atomic enough to read through, and every row on the application's
   side names the run that produced it.
+- **The same run against S3**: every command above takes an `s3://bucket/prefix`
+  wherever it takes a directory, because only the root changes
+  (`docs/stages.md`, "Where the lake lives"). Export the lake once,
+  `export LAKE=s3://pra-<stage>-lake/nightly`, have credentials in the
+  environment, and each line becomes:
+
+  ```bash
+  uv run python -m pipeline.backfill --source-dir tests/fixtures --bronze-dir "$LAKE/lake/bronze" --quarantine-dir "$LAKE/lake/quarantine"
+  uv run python -m pipeline.silver --bronze-dir "$LAKE/lake/bronze" --silver-dir "$LAKE/lake/silver" --catalog tests/catalog.json
+  uv run python -m pipeline.gold --data-dir "$LAKE"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.train --warehouse "$LAKE/warehouse/meta.duckdb"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.promote
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.drift --window-days 3 --warehouse "$LAKE/warehouse/meta.duckdb" --out-dir "$LAKE/drift"
+  uv run python -m pipeline.card_index build --source tests/card_text.jsonl --out "$LAKE/catalog/card_index" --embedder hashing
+  uv run python -m pipeline.quality_gate --warehouse "$LAKE/warehouse/meta.duckdb"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.eval --fake evals/transcript.yaml --warehouse "$LAKE/warehouse/meta.duckdb" --card-index "$LAKE/catalog/card_index"
+  uv run python -m pipeline.publish --dry-run --warehouse "$LAKE/warehouse/meta.duckdb"
+  uv run python -m pipeline.run_all --source-dir tests/fixtures --data-dir "$LAKE"
+  ```
+
+  The last line is all of them, and it is the one to show. What it proves: the
+  nightly job is the same command a reviewer just ran, pointed at a bucket, and
+  the warehouse, the MLflow store and the drift report come back to the lake
+  rather than dying with the container.
 - **Dashboard**: not yet. Placeholder for the published archetype and matchup
   views, which read the table the publish step writes.
 
