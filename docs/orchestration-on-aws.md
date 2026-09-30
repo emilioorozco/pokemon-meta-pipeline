@@ -7,12 +7,13 @@ costs, and when it is worth building. Nothing here is deployed; no AWS call
 was made and no container was built writing it, and every number below is
 arithmetic on published rates, not a bill.
 
-Why a design and not a stack: `docker compose up -d airflow` already
-satisfies the requirement, runs anywhere Docker does, one command, no AWS
-account needed ([docs/demo.md](demo.md)). Standing up an ECS (Elastic
-Container Service) cluster, a task role, and a database for MLflow to run a
-pipeline a laptop already runs correctly would be infrastructure with no
-user, so this is what gets built the day that stops being true.
+Why a design and not a stack: the batch stages already run unattended from a
+scheduled workflow ([nightly.md](nightly.md)) on a runner that exists for the
+length of the run, and `docker compose up -d airflow` is the same list with a
+user interface for development ([docs/demo.md](demo.md)). Standing up an ECS
+(Elastic Container Service) cluster, a task role, and a database for MLflow to
+run a pipeline a cron in CI already runs correctly would be infrastructure
+with no user, so this is what gets built the day that stops being true.
 
 ## The state machine
 
@@ -225,8 +226,11 @@ edges are left off so the diagram stays readable as the happy path.
 
 ## Airflow, or Step Functions
 
-Airflow in Compose is the right shape today; Step Functions is the right
-shape for a later state, not a better version of the same thing.
+A scheduled workflow is the shape that runs today and Airflow in Compose is
+the shape that develops it; Step Functions is the right shape for a later
+state, not a better version of either. The comparison below is between the two
+orchestrators, because the workflow is a cron rather than an orchestrator and
+gets replaced by whichever of them wins.
 
 **Choose Step Functions when** the pipeline already runs in AWS and nobody
 wants a server to keep up: no scheduler to patch, no metadata database to
@@ -246,10 +250,12 @@ is what would carry this pipeline to a sensor-driven trigger later
 (`docs/stages.md`'s "still to come": start on new bronze partitions instead
 of a clock) rather than custom EventBridge wiring.
 
-This repository runs Airflow in Compose because it has to run anywhere
-Docker does, for a reviewer with no AWS account, in one command. The Step
-Functions path is the deployment shape for the day a team wants it
-unattended in AWS instead: designed, not needed yet.
+This repository keeps Airflow in Compose because it has to run anywhere
+Docker does, for a reviewer with no AWS account, in one command, and runs the
+scheduled workflow because unattended does not need either of them yet. The
+Step Functions path is the deployment shape for the day a stage needs its own
+retry, its own machine, or more than the hour a role-chained session lasts:
+designed, not needed yet.
 
 ## Rough monthly cost
 
@@ -287,8 +293,9 @@ design that is not naturally serverless.
   temporary credentials, picked up automatically by boto3's default
   credential chain, the same one every stage already uses.
 - **`python -m pipeline.run_all` stops being used.** It is the no-scheduler
-  runner for a laptop or an unorchestrated container; the state machine is
-  the runner instead, calling each stage command directly.
+  runner, which is what a laptop, an unorchestrated container and the
+  scheduled workflow all use today; the state machine would be the runner
+  instead, calling each stage command directly.
 - **`.env.op` and `.env.dev.op` are replaced by task definition secrets.**
   The two `op://` references become two Secrets Manager secrets or SSM
   parameters, resolved into the container by the task definition instead of

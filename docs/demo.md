@@ -1,5 +1,14 @@
 # Five-minute demo
 
+This is the development mode, start to finish: a clone, a lake under `/tmp`,
+and every stage as a command on the machine in front of you. It is not how the
+product runs. In production the event path is a Lambda that lands each upload
+in bronze within seconds and the batch stages are a scheduled workflow, neither
+of which anybody starts; the README's Operations section is where to look for
+those, and [nightly.md](nightly.md) is the long form. What makes the demo worth
+running anyway is that the commands are the same commands: the lake root is the
+only thing that changes, which is the last bullet of this page.
+
 An anchor for a live walk-through. The order below goes from a clone to a
 queryable lake to a deliberate failure to green CI, and every command proves
 exactly one thing, so a step that misbehaves can be named, skipped and left
@@ -244,10 +253,10 @@ detail.
   expiry of a model is measured rather than assumed, the archetype mix is
   where a set release shows up first, and the command flags and exits 0
   instead of retraining anything.
-- **The consumer's Lambda handler**: runs today, on a laptop, with no AWS
-  account and no queue. `pipeline.lambda_consumer.handler` takes an SQS event
-  source payload, so a sample event over one of the committed fixtures is
-  enough to see the whole path:
+- **The consumer's Lambda handler**: the deployed function, run here on a
+  laptop with no AWS account and no queue. `pipeline.lambda_consumer.handler`
+  takes an SQS event source payload, so a sample event over one of the
+  committed fixtures is enough to see the whole path:
 
   ```bash
   HANDLE_HMAC_KEY=demo-key-not-a-real-secret PRA_BUCKET=demo-bucket \
@@ -269,7 +278,10 @@ detail.
   the key at a real bucket and the same call lands a row. What it proves: the
   deployed shape of the consumer is a function anyone can run, the failure
   reporting is a value rather than an exception, and the key comes from the
-  environment when Secrets Manager is not in the picture.
+  environment when Secrets Manager is not in the picture. None of this is an
+  operating procedure: in a deployed environment the event source mapping is
+  what invokes the function, and `python -m pipeline.consume` is for pointing
+  the same routine at a scratch lake while changing it.
 - **Traces and dashboards**: runs today, and out of the timed sequence because
   it is six containers. `docker compose --profile observability up -d --build
   predict grafana` brings up the predict service and the tracking server with an
@@ -333,9 +345,12 @@ detail.
   the application's DynamoDB table would receive and prints the counts, one
   sample per kind and the meta row, without needing credentials that can write;
   with `PRA_INSIGHTS_TABLE` set it writes them, then deletes the rows of the
-  previous run. What it proves: the warehouse is not the end of the line, the
-  refresh is atomic enough to read through, and every row on the application's
-  side names the run that produced it.
+  previous run. Showing it is worth a minute; running it for real is not, and
+  is not how the table is refreshed: the nightly publishes after its quality
+  gate, and a publish by hand is for a recovery whose reason somebody can
+  state. What it proves: the warehouse is not the end of the line, the refresh
+  is atomic enough to read through, and every row on the application's side
+  names the run that produced it.
 - **The same run against S3**: every command above takes an `s3://bucket/prefix`
   wherever it takes a directory, because only the root changes
   (`docs/stages.md`, "Where the lake lives"). Export the lake once,
