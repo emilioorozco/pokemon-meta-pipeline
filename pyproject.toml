@@ -52,6 +52,12 @@ agent = [
     # named here so the extra is installable on its own.
     "duckdb>=1.0",
 ]
+# The serving application as a Lambda function: the ASGI-to-Lambda adapter and
+# nothing else. Its own extra rather than a line in `ml`, because `ml` is what
+# `Dockerfile.serve` and the compose stack install and neither of them runs
+# under Lambda, and rather than a line in `agent`, because a Lambda adapter is
+# not an agent dependency. `Dockerfile.agent` installs all three.
+serve-lambda = ["mangum>=0.17"]
 
 [dependency-groups]
 dev = [
@@ -103,6 +109,9 @@ dev = [
     # The retriever's embedder. The fast suite swaps in a hashing embedder and
     # never loads it; `pytest -m ml` builds the index with the real one.
     "sentence-transformers>=3",
+    # And the Lambda adapter, because `tests/test_lambda_serve.py` drives the
+    # handler through it in the fast suite with a stub loader and no AWS.
+    "mangum>=0.17",
 ]
 
 [build-system]

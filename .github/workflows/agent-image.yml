@@ -1,0 +1,181 @@
+# Build the serving application's Lambda image and point the function at it.
+#
+# The twin of `consumer-image.yml`, on the same seam and for the same reason.
+# The function, its role, its function URL and the permissions that let it read
+# the lake and the key secret are infrastructure and belong beside the
+# application that calls them; the image is this repository's code and changes
+# whenever `pipeline/` does. The stack creates the function from `:latest` on
+# the repository named below, and this workflow moves it to the commit it just
+# built, so an agent fix ships by pushing to main here with no deploy there.
+#
+# The one difference from the consumer's is what the deploy means. That
+# function is asynchronous, so an image that is broken is noticed when a
+# message is redelivered; this one is on a request path, so the wait after
+# `update-function-code` is what keeps a green build from meaning a function
+# that is still pulling.
+#
+# Nothing in this file names an account, a region, a repository or a function.
+# All four are variables on a GitHub Environment, `dev` and `prod`, set by hand
+# in the settings, so the identifiers stay out of the history the way
+# `scripts/check_history.sh` insists and each stage supplies its own values for
+# the same four names. That is also why the job declares `environment:` rather
+# than reading repository-level variables: the environment is part of the
+# OpenID Connect subject GitHub signs, and the CI role's trust policy in the
+# application stack is bound to it per stage, so a dev job cannot deploy the
+# prod function even if it asked for it. A push to main builds once per
+# environment; a fork, or a clone with none of the variables set, skips every
+# step with a notice instead of failing.
+
+name: Agent image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/**"
+      - "Dockerfile.agent"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/agent-image.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy one environment only, or both"
+        type: choice
+        required: false
+        default: both
+        options: [both, dev, prod]
+
+# `id-token: write` is what lets the job ask GitHub for an OpenID Connect token
+# and trade it for the role below. No access key is stored anywhere: the trust
+# policy on the role names this repository and this environment, so a
+# credential exists only for the length of the job.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # A choice input always carries a value, so "both" is a named option rather
+  # than an empty one, and this job turns whichever was chosen into the matrix
+  # the build job fans out over. It exists because a job-level `if:` cannot see
+  # the matrix context, so narrowing has to happen before the matrix is built.
+  plan:
+    name: choose environments
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.pick.outputs.environments }}
+    steps:
+      - name: Choose the environments to build for
+        id: pick
+        env:
+          ONLY: ${{ inputs.environment }}
+        run: |
+          set -eu
+          case "$ONLY" in
+            dev|prod) environments="[\"$ONLY\"]" ;;
+            *) environments='["dev","prod"]' ;;
+          esac
+          echo "::notice::agent image targeting $environments"
+          echo "environments=$environments" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: build and deploy (${{ matrix.environment }})
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.plan.outputs.environments) }}
+    # Per environment, so dev and prod build side by side while two pushes to
+    # the same environment queue rather than racing to tag `:latest`.
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      # One gate for the whole job. An environment without the four variables
+      # is a fork, a fresh clone, or a stage nobody has wired up yet, and none
+      # of them should see a red build for not having an AWS account.
+      - name: Check the deployment variables are set
+        id: configured
+        env:
+          ROLE_ARN: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.AGENT_ECR_REPOSITORY }}
+          FUNCTION_NAME: ${{ vars.AGENT_FUNCTION_NAME }}
+        run: |
+          missing=
+          for name in ROLE_ARN AWS_REGION ECR_REPOSITORY FUNCTION_NAME; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::agent image skipped for ${{ matrix.environment }}; unset environment variable(s):$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The image is several gigabytes, most of it torch and the CUDA runtime
+      # its PyPI wheel depends on, and a hosted runner starts with about
+      # fourteen free. This clears the toolchains the build never touches
+      # rather than letting the push fail on a full disk.
+      - name: Make room for the image
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          set -eu
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+
+      - name: Configure AWS credentials
+        if: steps.configured.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: steps.configured.outputs.ready == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Two tags on one build. `:latest` is what the stack's function
+      # definition points at, so an operator reading the stack sees a stable
+      # reference; the commit tag is what the update below actually deploys, so
+      # the running function always names the exact image it holds and a
+      # rollback is `update-function-code` with an older commit.
+      - name: Build and push the image
+        if: steps.configured.outputs.ready == 'true'
+        id: build
+        env:
+          REPOSITORY: ${{ steps.ecr.outputs.registry }}/${{ vars.AGENT_ECR_REPOSITORY }}
+        run: |
+          set -eu
+          # Lambda pulls a single-platform image manifest and refuses an OCI
+          # image index; BuildKit writes an index whenever it attaches
+          # provenance or SBOM attestations, so both are turned off here.
+          docker build --platform linux/amd64 --provenance=false --sbom=false \
+            -f Dockerfile.agent \
+            -t "$REPOSITORY:${{ github.sha }}" \
+            -t "$REPOSITORY:latest" .
+          docker push "$REPOSITORY:${{ github.sha }}"
+          docker push "$REPOSITORY:latest"
+          echo "image=$REPOSITORY:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # And wait for it. `update-function-code` returns as soon as the update
+      # is accepted, and a job that ended there would report green on an image
+      # Lambda has not finished pulling, so the first question after a deploy
+      # would be the thing that discovered a broken image.
+      - name: Point the function at the new image
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          set -eu
+          aws lambda update-function-code \
+            --function-name "${{ vars.AGENT_FUNCTION_NAME }}" \
+            --image-uri "${{ steps.build.outputs.image }}" \
+            --no-cli-pager
+          aws lambda wait function-updated \
+            --function-name "${{ vars.AGENT_FUNCTION_NAME }}"
+          echo "::notice::${{ matrix.environment }} agent function updated to ${{ github.sha }}"

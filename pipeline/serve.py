@@ -542,6 +542,14 @@ def create_app(
     tracer = setup_tracing(app, exporter=span_exporter)
     metrics = setup_metrics(app)
     agent = AgentHolder(agent_factory or default_agent_factory(tracer=tracer, metrics=metrics))
+    # Both holders on the application object, for a host that owns the process
+    # and has to reach inside it. The only one is `pipeline.lambda_serve`, which
+    # drops the agent when the warehouse under it has been replaced by a
+    # nightly, because the agent holds an open connection to the old file.
+    # Nothing on the command-line path reads either attribute, and nothing
+    # below this line does.
+    app.state.model = holder
+    app.state.agent = agent
 
     def record_load() -> None:
         """Put the loaded version on the `model_info` gauge, or clear it if none."""
