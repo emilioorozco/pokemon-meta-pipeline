@@ -369,6 +369,24 @@ def run_all(
     return summary
 
 
+def write_summary_file(path: Path, summary: RunAllSummary, *, run_id: str) -> None:
+    """The readable summary, on local disk, for a runner that has to upload it.
+
+    Everything else a run produces goes to the data root, which in a scheduled
+    run is an `s3://` prefix; a continuous-integration job that wanted the
+    summary back would have to know the lake layout and download from it. This
+    is the one file the runner names itself, on the machine that ran the
+    command, so uploading it is a path and not an AWS call. The run identifier
+    and the exit code lead, because those are the two things an operator reads
+    first and the table underneath does not carry either.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"run_id: {run_id}\nexit_code: {summary.exit_code}\n\n{summary}\n",
+        encoding="utf-8",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the whole pipeline from the command line."""
     parser = argparse.ArgumentParser(
@@ -413,6 +431,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         metavar="ID",
         help=f"the identifier every stage shares (default: ${RUN_ID_VAR}, else a fresh one)",
+    )
+    parser.add_argument(
+        "--summary-path",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="also write the summary to this local file, for a scheduled runner to upload",
     )
     args = parser.parse_args(argv)
 
@@ -475,6 +500,10 @@ def main(argv: list[str] | None = None) -> int:
         text=str(summary),
         level=logging.ERROR if summary.failed else logging.INFO,
     )
+    # Written whatever the run did, because the failing run is the one whose
+    # summary somebody has to read.
+    if args.summary_path is not None:
+        write_summary_file(args.summary_path, summary, run_id=run_id)
     return summary.exit_code
 
 
