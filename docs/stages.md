@@ -262,10 +262,12 @@ change.
 Command: `python -m pipeline.consume` (`--once`, `--max-messages N`,
 `--wait-seconds N`, `--bronze-dir`, `--quarantine-dir`), or the `consumer`
 service in `compose.yaml`, which is the same command in a container with the
-lake mounted from the host. The queue itself is not deployed yet: the bucket
-notification on `parsed/` for `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`,
-the `parsed-games` queue and its dead-letter queue at three deliveries are a
-separate ticket. The consumer reads `PRA_QUEUE_URL`, which nothing else does.
+lake mounted from the host. That command is the local shape of this stage; the
+deployed shape is the Lambda in 1c below, which runs the same routine without
+a laptop. Either way the bucket notification on `parsed/` for
+`s3:ObjectCreated:*` and `s3:ObjectRemoved:*`, the `parsed-games` queue and its
+dead-letter queue at three deliveries are defined in the application's stack.
+The command-line consumer reads `PRA_QUEUE_URL`, which nothing else does.
 
 It logs and reports itself like every other stage (the Ops section below), with
 one difference that follows from never finishing: the unit it records is the
@@ -317,6 +319,101 @@ The rewrite becomes an append-only file per event plus a compaction step, or a
 table format (Apache Iceberg, Delta Lake) that does row-level upserts and
 deletes; the lookup becomes a `game_id -> play_date` index written beside the
 partitions. Neither changes the contract, the routing or the quarantine.
+
+### 1c. The event path as a Lambda (in progress)
+
+The same ingest with the polling taken out. `pipeline.lambda_consumer.handler`
+is a Lambda handler behind an SQS **event source mapping**: the mapping is the
+thing that long-polls the queue, batches up to ten messages and invokes the
+function with them, and on a clean return it deletes the messages the function
+did not report back. So the function holds no receive loop, no
+`delete_message` and no visibility timeout, and `PRA_QUEUE_URL` is not in its
+environment at all: the mapping owns the queue, and the code owns what a
+message means. The queue, the bucket notification, the function, its role and
+the mapping are defined in the application's CDK stack, beside the producer
+that fills the queue; this repository owns the image the function runs.
+
+Per message it calls `MessageHandler.apply` from `pipeline.consume`, which is
+the routine the command-line consumer calls, so every routing and quarantine
+decision above is the same decision here and there is no second implementation
+to keep in step.
+
+**Partial batch responses** are how a failure stays the failing message's
+alone. The handler returns
+`{"batchItemFailures": [{"itemIdentifier": "<messageId>"}, ...]}`, and SQS
+deletes the rest of the batch and redelivers only the named ones. Without it, a
+Lambda that raises fails its whole batch: nine good messages become visible
+again with the one poison message and ride along with it to the dead-letter
+queue after three deliveries, and the receive count that the redrive policy
+counts to three stops meaning anything. The mapping has to be created with
+`ReportBatchItemFailures` for the field to be read; a mapping without it
+ignores the return value silently. Which records are named is unchanged from
+the section above: a blob that fails the contract is quarantined and
+acknowledged, and an S3 error, a storage error or a body that is not an S3
+event is named so the queue can try again.
+
+**Reserved concurrency is 1**, and that is a correctness setting rather than a
+throughput one. A bronze partition is written by reading the day's Parquet
+file, dropping the rows this message replaces and writing the file back. Two
+invocations doing that to the same day at once would each build a file from
+what it read before the other wrote, and the second write would silently drop
+the first one's game. One invocation at a time makes that impossible. The
+ceiling it sets is a batch of ten games every second or so, which is orders of
+magnitude above what this application produces; lifting it later means a table
+format with row-level writes (Apache Iceberg, Delta Lake), not more writers
+over the same rewrite.
+
+**The key** comes from Secrets Manager, not from a function environment
+variable: an environment variable is readable by anyone who can call
+`GetFunction`, and this key is the one thing standing between the lake and a
+reversible handle. `HANDLE_HMAC_KEY_SECRET_ARN` names the secret, the value is
+read once per execution environment and kept for the life of the container, and
+a rotation arrives as a new container, which a deployment or an idle timeout
+produces on its own. `HANDLE_HMAC_KEY` in the environment still wins, so the
+handler can be invoked on a laptop with no AWS call at all ([demo.md](demo.md)).
+The secret is put there once by hand from the 1Password value; nothing in either
+repository writes it.
+
+**The image** is `Dockerfile.lambda`, built on `public.ecr.aws/lambda/python`
+for x86_64. Its dependency set is `uv export` of the project's runtime
+dependencies from `uv.lock`, minus DuckDB, which is boto3, pydantic, pyarrow
+and python-dotenv with their transitives: no Spark, no MLflow, no LangChain, no
+torch. That set is what the handler's import graph actually needs, and
+`bronze.read_smoke` imports DuckDB inside the function rather than at the top
+of the module so that the one command-line use of it does not follow the
+consumer into the image. A test asserts the claim by importing the handler in a
+subprocess and checking `sys.modules`. A container image rather than a zip
+because pyarrow alone is most of the 250 MB unzipped limit; the cost is a few
+seconds of cold start, which a queue consumer does not notice because nothing
+is waiting on the reply.
+
+`.github/workflows/consumer-image.yml` builds and pushes it on every push to
+`main` that touches `pipeline/`, `contract/` or the Dockerfile, tags it
+`:latest` and `:<commit>`, then runs `aws lambda update-function-code` on the
+commit tag and waits for the update to finish. It assumes its role by OpenID
+Connect, so no access key is stored; the role, the region, the registry
+repository and the function name are repository variables set by hand, and the
+workflow skips with a notice when they are unset, so a fork does not see a red
+build for not having an account.
+
+How to watch it. The logs are JSON lines in the function's CloudWatch log
+group, carrying the same `run_id`, `stage` and event fields every other stage
+logs, with the run identifier being the invocation's own request id, so one
+invocation is one filter in Logs Insights:
+
+```
+fields @timestamp, msg, run_id, rows_out, rows_quarantined
+| filter stage = "consume"
+| sort @timestamp desc
+```
+
+The numbers are also a table. Every invocation writes one `run_metrics` row to
+the lake, so the `ops` dbt models and the health mart count the function's runs
+beside every other stage's with nothing to configure; `extra_json` on those
+rows carries `ignored`, `deleted` and `failed`. Beyond that it is the queue's
+own metrics: `ApproximateNumberOfMessagesVisible` near zero on the queue, and
+anything at all on the dead-letter queue is the alarm worth having, because by
+construction only a message three retries could not fix reaches it.
 
 ## 2. Silver (in progress, PySpark)
 

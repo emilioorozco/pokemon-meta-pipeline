@@ -244,6 +244,32 @@ detail.
   expiry of a model is measured rather than assumed, the archetype mix is
   where a set release shows up first, and the command flags and exits 0
   instead of retraining anything.
+- **The consumer's Lambda handler**: runs today, on a laptop, with no AWS
+  account and no queue. `pipeline.lambda_consumer.handler` takes an SQS event
+  source payload, so a sample event over one of the committed fixtures is
+  enough to see the whole path:
+
+  ```bash
+  HANDLE_HMAC_KEY=demo-key-not-a-real-secret PRA_BUCKET=demo-bucket \
+  PIPELINE_DATA_DIR=/tmp/demo-lambda uv run python -c '
+  import json
+  from pipeline.lambda_consumer import handler
+  body = {"Records": [{"eventName": "ObjectCreated:Put", "s3": {
+      "bucket": {"name": "demo-bucket"},
+      "object": {"key": "parsed/user-1/not-there.json"}}}]}
+  event = {"Records": [{"messageId": "m-1", "body": json.dumps(body)},
+                       {"messageId": "m-2", "body": "not json at all"}]}
+  print(handler(event, None))'
+  ```
+
+  Both records fail here, because there is no bucket to read and the second
+  body is not an event, and that is the point: the reply is
+  `{'batchItemFailures': [{'itemIdentifier': 'm-1'}, {'itemIdentifier':
+  'm-2'}]}`, which is exactly what SQS would redeliver. Point `PRA_BUCKET` and
+  the key at a real bucket and the same call lands a row. What it proves: the
+  deployed shape of the consumer is a function anyone can run, the failure
+  reporting is a value rather than an exception, and the key comes from the
+  environment when Secrets Manager is not in the picture.
 - **Traces and dashboards**: runs today, and out of the timed sequence because
   it is six containers. `docker compose --profile observability up -d --build
   predict grafana` brings up the predict service and the tracking server with an

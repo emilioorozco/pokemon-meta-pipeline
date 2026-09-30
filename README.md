@@ -85,7 +85,13 @@ so running the whole pipeline without a laptop is one environment variable
 
 Bronze ingest is real. The backfill has run against the production bucket:
 **128 games, 0 quarantined, 10 play-date partitions**, all handles anonymized
-and leak-checked before anything was written.
+and leak-checked before anything was written. The event path is the same code
+in two shapes: `python -m pipeline.consume` long-polls the queue from a laptop,
+and `pipeline.lambda_consumer.handler` is that routine as a Lambda on an SQS
+event source mapping, returning partial batch failures so one bad message
+reaches the dead-letter queue without taking nine good ones with it, packaged
+by `Dockerfile.lambda` into an image of boto3, pydantic and pyarrow with no
+Spark, MLflow or LangChain in it.
 
 Silver is real too. `python -m pipeline.silver` reads those bronze partitions
 with PySpark and writes four tables (`games`, `game_sides`, `turns`,
