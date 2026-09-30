@@ -192,6 +192,12 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-chaining: true
           role-duration-seconds: 3600
+          # The action tags the session with the repository and workflow by
+          # default, which needs `sts:TagSession` in the reader role's trust
+          # policy on top of `sts:AssumeRole`. Nothing reads those tags here,
+          # so the call is left as a plain AssumeRole, the one action the
+          # trust policy grants the CI role.
+          role-skip-session-tagging: true
 
       # Only when the run writes bronze. Masked on the line after it is read,
       # so nothing downstream can echo it into the log by accident, and put on
