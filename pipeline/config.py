@@ -4,6 +4,14 @@ Only output locations live here. Source-side settings (the S3 bucket and prefix
 of the parsed-game blobs, the anonymization key) belong to the stage that reads
 them and are documented in .env.example. Everything is relative to the repo
 unless PIPELINE_DATA_DIR overrides it, so a fresh clone runs with no setup.
+
+PIPELINE_DATA_DIR takes an `s3://bucket/prefix` as readily as a directory, and
+every path below is derived from it either way, so the layout under an S3 prefix
+is the layout under `data/` and only the root moves. `pipeline.storage` is what
+makes that true; its docstring has the reasoning, and `docs/stages.md` has the
+operational half. The derived names are `Location` rather than `Path`, and a
+local `Location` compares equal to the `Path` it wraps, so a caller that already
+held a path keeps working unchanged.
 """
 
 import os
@@ -11,12 +19,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from pipeline.storage import Location, location
+
 load_dotenv()
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # pipeline outputs (relative to the repo unless overridden)
-PIPELINE_DATA_DIR = Path(os.environ.get("PIPELINE_DATA_DIR", REPO_ROOT / "data"))
+PIPELINE_DATA_DIR: Location = location(os.environ.get("PIPELINE_DATA_DIR") or REPO_ROOT / "data")
 LAKE_DIR = PIPELINE_DATA_DIR / "lake"
 BRONZE_DIR = LAKE_DIR / "bronze"
 SILVER_DIR = LAKE_DIR / "silver"
@@ -56,10 +66,17 @@ STAGING_ALIAS = "staging"
 
 
 def default_tracking_uri() -> str:
-    """`MLFLOW_TRACKING_URI` when it is set, else a local directory under the data dir.
+    """`MLFLOW_TRACKING_URI` when it is set, else the store under the data dir.
 
     Read at call time rather than at import, because the tests and the command
     line both set the variable after this module is first imported.
+
+    A local data dir gives `file:<path>`, which is what it always gave. An S3
+    data dir gives the `s3://` prefix itself, which MLflow cannot use directly;
+    `pipeline.storage.tracking_store` turns it into a `file:` URI over a synced
+    temporary directory for the length of the command, and says there why.
     """
     configured = os.environ.get("MLFLOW_TRACKING_URI")
-    return configured if configured else f"file:{MLRUNS_DIR}"
+    if configured:
+        return configured
+    return str(MLRUNS_DIR) if MLRUNS_DIR.is_s3 else f"file:{MLRUNS_DIR}"

@@ -23,7 +23,8 @@ Two outputs, deliberately on two streams:
 
 Run metrics are the same idea at the run level. `stage_run` times a stage,
 records what went in and what came out, and writes exactly one Parquet row per
-run per stage under `$PIPELINE_DATA_DIR/lake/run_metrics/`, named
+run per stage under `$PIPELINE_DATA_DIR/lake/run_metrics/` (a directory or an
+S3 prefix, whichever the root is), named
 `<run id>-<stage>.parquet`. One small file per run rather than an appended
 table: two stages of the same DAG run finish at unpredictable times, sometimes
 concurrently, and a writer that rewrites a shared file loses one of them. The
@@ -54,13 +55,13 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Final
 
 import pyarrow as pa
-import pyarrow.parquet as pq
+from botocore.exceptions import ClientError
 
 from pipeline.config import REPO_ROOT, RUN_METRICS_DIR
+from pipeline.storage import AnyLocation, Location, location
 
 RUN_ID_VAR: Final = "PRA_RUN_ID"
 LOG_FORMAT_VAR: Final = "PRA_LOG_FORMAT"
@@ -324,16 +325,19 @@ def emit_summary(
 # ------------------------------------------------------------ run metrics --
 
 
-def run_metrics_dir() -> Path:
+def run_metrics_dir() -> Location:
     """Where the run-metrics rows go, honouring a `PIPELINE_DATA_DIR` set after import.
 
     `config.RUN_METRICS_DIR` is resolved when the package is imported, which is
     the right answer for a command line and the wrong one for a test, or an
-    orchestrator, that points the data directory somewhere else afterwards.
+    orchestrator, that points the data directory somewhere else afterwards. The
+    override is read through `pipeline.storage`, so `PIPELINE_DATA_DIR` naming an
+    `s3://` prefix puts the rows in the lake rather than on the task's disk,
+    where nothing would ever read them again.
     """
     override = os.environ.get(DATA_DIR_VAR, "").strip()
     if override:
-        return Path(override) / "lake" / "run_metrics"
+        return location(override) / "lake" / "run_metrics"
     return RUN_METRICS_DIR
 
 
@@ -387,13 +391,19 @@ class RunMetrics:
         }
 
 
-def write_run_metrics(metrics: RunMetrics, directory: Path | None = None) -> Path:
-    """Write one row as its own Parquet file and return the path."""
-    target = directory if directory is not None else run_metrics_dir()
-    target.mkdir(parents=True, exist_ok=True)
+def write_run_metrics(metrics: RunMetrics, directory: AnyLocation | None = None) -> Location:
+    """Write one row as its own Parquet file and return where it went.
+
+    One file per run per stage is what makes this work unchanged on object
+    storage: there is no shared file to read, modify and write back, so two
+    stages finishing at the same moment cannot lose each other's row whether the
+    root is a disk or a bucket.
+    """
+    target = run_metrics_dir() if directory is None else location(directory)
+    target.mkdir()
     path = target / f"{_slug(metrics.run_id)}-{_slug(metrics.stage)}.parquet"
     table = pa.Table.from_pylist([metrics.as_row()], schema=RUN_METRICS_SCHEMA)
-    pq.write_table(table, path)
+    path.write_table(table)
     return path
 
 
@@ -402,7 +412,7 @@ def stage_run(
     stage: str,
     *,
     run_id: str | None = None,
-    directory: Path | None = None,
+    directory: AnyLocation | None = None,
 ) -> Iterator[RunMetrics]:
     """Time a stage, write its row on the way out, and log `stage complete`.
 
@@ -436,12 +446,18 @@ def stage_run(
         _run_id.reset(run_token)
 
 
-def _finish(metrics: RunMetrics, directory: Path | None) -> None:
-    """Write the row and log it, never letting either failure replace the stage's own."""
-    path: Path | None = None
+def _finish(metrics: RunMetrics, directory: AnyLocation | None) -> None:
+    """Write the row and log it, never letting either failure replace the stage's own.
+
+    The swallowed failures gain one class on an S3 root: a `ClientError` from a
+    bucket that is missing, unreachable or not writable by this task is the same
+    kind of bookkeeping failure a full disk is, and it must not turn a stage that
+    did its work into a stage that reports itself broken.
+    """
+    path: Location | None = None
     try:
         path = write_run_metrics(metrics, directory)
-    except (OSError, pa.ArrowInvalid) as failure:
+    except (OSError, pa.ArrowInvalid, ClientError) as failure:
         logger.warning(
             "run metrics were not written",
             extra={"error": f"{type(failure).__name__}: {failure}"},

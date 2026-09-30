@@ -1,0 +1,125 @@
+# Build the event consumer's Lambda image and point the function at it.
+#
+# Why this workflow lives in the pipeline repository while the function itself
+# is defined in the application's CDK stack: the two halves have different
+# owners and change at different rates. The queue, the bucket notification, the
+# function, its role and the event source mapping are infrastructure that
+# belongs beside the producer that fills the queue, and they change when the
+# topology does, which is rarely. The image is this repository's code, and it
+# changes whenever `pipeline/` does. Splitting them on that line means an
+# ingest fix ships by pushing to main here, with no change and no deploy in the
+# application, and a topology change ships there with no rebuild here. The
+# seam is the image tag: the stack creates the function from `:latest` on the
+# repository named below, and this workflow moves it to the commit it just
+# built.
+#
+# Nothing in this file names an account, a region, a repository or a function.
+# All four are repository variables set by hand in the GitHub settings, so the
+# identifiers stay out of the history the way `scripts/check_history.sh`
+# insists; a fork, or a clone with none of them set, skips every step with a
+# notice instead of failing.
+
+name: Consumer image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/**"
+      - "contract/**"
+      - "Dockerfile.lambda"
+      - ".github/workflows/consumer-image.yml"
+  workflow_dispatch:
+
+# `id-token: write` is what lets the job ask GitHub for an OpenID Connect token
+# and trade it for the role below. No access key is stored anywhere: the trust
+# policy on the role names this repository and this workflow, so a credential
+# exists only for the length of the job.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: build and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # One gate for the whole job. A repository without the four variables is
+      # a fork or a fresh clone, and neither should see a red build for not
+      # having an AWS account.
+      - name: Check the deployment variables are set
+        id: configured
+        env:
+          ROLE_ARN: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.CONSUMER_ECR_REPOSITORY }}
+          FUNCTION_NAME: ${{ vars.CONSUMER_FUNCTION_NAME }}
+        run: |
+          missing=
+          for name in ROLE_ARN AWS_REGION ECR_REPOSITORY FUNCTION_NAME; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::consumer image skipped; unset repository variable(s):$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.configured.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: steps.configured.outputs.ready == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Two tags on one build. `:latest` is what the stack's function
+      # definition points at, so an operator reading the stack sees a stable
+      # reference; the commit tag is what the update below actually deploys, so
+      # the running function always names the exact image it holds and a
+      # rollback is `update-function-code` with an older commit.
+      - name: Build and push the image
+        if: steps.configured.outputs.ready == 'true'
+        id: build
+        env:
+          REPOSITORY: ${{ steps.ecr.outputs.registry }}/${{ vars.CONSUMER_ECR_REPOSITORY }}
+        run: |
+          set -eu
+          # Lambda pulls a single-platform image manifest and refuses an OCI
+          # image index; BuildKit writes an index whenever it attaches
+          # provenance or SBOM attestations, so both are turned off here.
+          docker build --platform linux/amd64 --provenance=false --sbom=false \
+            -f Dockerfile.lambda \
+            -t "$REPOSITORY:${{ github.sha }}" \
+            -t "$REPOSITORY:latest" .
+          docker push "$REPOSITORY:${{ github.sha }}"
+          docker push "$REPOSITORY:latest"
+          echo "image=$REPOSITORY:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # And wait for it. `update-function-code` returns as soon as the update
+      # is accepted, and a job that ended there would report green on an image
+      # Lambda has not finished pulling, so a broken image would look deployed
+      # until the next invocation failed.
+      - name: Point the function at the new image
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          set -eu
+          aws lambda update-function-code \
+            --function-name "${{ vars.CONSUMER_FUNCTION_NAME }}" \
+            --image-uri "${{ steps.build.outputs.image }}" \
+            --no-cli-pager
+          aws lambda wait function-updated \
+            --function-name "${{ vars.CONSUMER_FUNCTION_NAME }}"
+          echo "::notice::consumer function updated to ${{ github.sha }}"

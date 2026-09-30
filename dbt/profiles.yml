@@ -2,6 +2,18 @@
 # builds with `dbt --project-dir dbt --profiles-dir dbt run` and nothing else.
 # There is no secret here: DuckDB is a file, and the file is under the
 # gitignored data directory.
+#
+# Two targets, one build. `dev` is the local lake: the sources are files under
+# `PIPELINE_DATA_DIR` and the warehouse is a file beside them. `s3` is the same
+# project against a bucket: the sources resolve to `s3://...` through DuckDB's
+# httpfs extension, and the warehouse is still a local file, because DuckDB
+# cannot open a database over object storage. `python -m pipeline.gold` picks
+# the target from the shape of the root and says why in its docstring.
+#
+# `PRA_WAREHOUSE_PATH` rather than deriving the file from `PIPELINE_DATA_DIR`:
+# on an S3 root the lake and the database file are not in the same place, so
+# the two have to be two variables. It defaults to where it always was, which
+# is what keeps a hand-run `dbt run` working with only `PIPELINE_DATA_DIR` set.
 play_rough_pipeline:
   target: dev
   outputs:
@@ -9,5 +21,31 @@ play_rough_pipeline:
       type: duckdb
       # Same environment variable the Python package uses (pipeline/config.py),
       # so the lake and the warehouse always move together.
-      path: "{{ env_var('PIPELINE_DATA_DIR', 'data') }}/warehouse/meta.duckdb"
+      path: "{{ env_var('PRA_WAREHOUSE_PATH', env_var('PIPELINE_DATA_DIR', 'data') ~ '/warehouse/meta.duckdb') }}"
       threads: 4
+    s3:
+      type: duckdb
+      path: "{{ env_var('PRA_WAREHOUSE_PATH', env_var('PIPELINE_DATA_DIR', 'data') ~ '/warehouse/meta.duckdb') }}"
+      threads: 4
+      # httpfs teaches DuckDB to read s3://, aws resolves credentials. Both are
+      # installed on first use and cached in ~/.duckdb, which is why they are on
+      # this target only: a local build must not need the network to start.
+      extensions:
+        - httpfs
+        - aws
+      # The same chain boto3 walks: environment, profile, container and instance
+      # metadata. No key is named here and none should ever be.
+      #
+      #
+      # dbt parses this file as YAML and only then renders each value, so the
+      # three keys below cannot be written conditionally. They are exported by
+      # `python -m pipeline.gold` from `pipeline.storage.duckdb_s3_profile`,
+      # whose defaults are the regional AWS endpoint over TLS; an endpoint in
+      # the environment (moto, LocalStack, MinIO) replaces them.
+      secrets:
+        - type: s3
+          provider: credential_chain
+          region: "{{ env_var('AWS_REGION', 'us-west-2') }}"
+          endpoint: "{{ env_var('PRA_DUCKDB_S3_ENDPOINT', 's3.' ~ env_var('AWS_REGION', 'us-west-2') ~ '.amazonaws.com') }}"
+          url_style: "{{ env_var('PRA_DUCKDB_S3_URL_STYLE', 'vhost') }}"
+          use_ssl: "{{ env_var('PRA_DUCKDB_S3_USE_SSL', 'true') }}"

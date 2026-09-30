@@ -66,12 +66,19 @@ PYTHON = os.environ.get("PIPELINE_PYTHON", "/opt/pipeline-venv/bin/python")
 TASK_ENV = {
     "PRA_RUN_ID": "{{ run_id }}",
     "PRA_INGEST_MODE": "{{ params.ingest_mode }}",
+    # Forwarded as the string the container was given, `s3://bucket/prefix` or a
+    # directory. Every stage resolves it the same way, so the DAG does not need
+    # to know which kind of lake it is scheduling over.
     "PIPELINE_DATA_DIR": os.environ.get("PIPELINE_DATA_DIR", f"{PIPELINE_DIR}/data"),
     "MLFLOW_TRACKING_URI": os.environ.get("MLFLOW_TRACKING_URI", ""),
     "HANDLE_HMAC_KEY": os.environ.get("HANDLE_HMAC_KEY", ""),
     "PRA_BUCKET": os.environ.get("PRA_BUCKET", ""),
     "PRA_PREFIX": os.environ.get("PRA_PREFIX", ""),
     "PRA_SPARK_MASTER": os.environ.get("PRA_SPARK_MASTER", ""),
+    # The Hadoop connector coordinate, for a silver run whose lake is a bucket.
+    # Empty means the default in `pipeline.storage`, fetched from Maven at
+    # session start; an image that already ships the jar names it here instead.
+    "PRA_SPARK_PACKAGES": os.environ.get("PRA_SPARK_PACKAGES", ""),
     # Logs that a collector reads, not a terminal: the tasks have no teletype,
     # so this only pins what would already be the default.
     "PRA_LOG_FORMAT": "json",

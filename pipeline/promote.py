@@ -52,6 +52,7 @@ from pipeline.config import (
     default_tracking_uri,
 )
 from pipeline.observability import RunMetrics, configure_logging, emit_summary, stage_run
+from pipeline.storage import tracking_store
 
 logger = logging.getLogger(__name__)
 
@@ -345,11 +346,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     configure_logging(STAGE)
     try:
-        with stage_run(STAGE) as metrics:
+        with (
+            tracking_store(args.tracking_uri or default_tracking_uri()) as tracking_uri,
+            stage_run(STAGE) as metrics,
+        ):
             return run_promotion(
                 candidate=args.candidate,
                 metric=args.metric,
-                tracking_uri=args.tracking_uri or default_tracking_uri(),
+                tracking_uri=tracking_uri,
                 metrics=metrics,
             )
     except PromotionError as error:

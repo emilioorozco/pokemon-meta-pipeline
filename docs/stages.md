@@ -33,6 +33,166 @@ S3 parsed/{userId}/{gameId}.json  (contract v1 today, v2 target)
 
 Status legend: done, in progress, planned.
 
+## Where the lake lives
+
+Every stage takes one root and derives everything else under it:
+`PIPELINE_DATA_DIR`, or the `--data-dir`, `--bronze-dir`, `--silver-dir`,
+`--out-dir`, `--warehouse` and `--card-index` flags that override parts of it.
+That root can be a directory or an `s3://bucket/prefix`, and the layout under it
+is the same either way:
+
+```
+<root>/
+  lake/bronze/play_date=YYYY-MM-DD/part-0.parquet
+  lake/silver/<table>/play_date=YYYY-MM-DD/*.parquet
+  lake/quarantine/<reason>/<flattened key>.json + .meta.json
+  lake/run_metrics/<run id>-<stage>.parquet
+  catalog/cards.json, catalog/card_text.jsonl, catalog/card_index/
+  warehouse/meta.duckdb, warehouse/marts/<mart>.parquet
+  mlruns/                        MLflow's runs, params, metrics, tags, registry
+  mlruns-artifacts/<experiment>/ the files those runs logged
+  drift/drift_report.md, drift/drift_summary.json
+```
+
+Only the root moves. A laptop run and a container run differ by one environment
+variable, which is the whole point: the nightly job is the command a reviewer
+already ran, pointed somewhere else.
+
+`pipeline/storage.py` is the one module that knows the difference. Its docstring
+argues the design; the four things worth knowing before running this are below.
+
+### Credentials, and one client
+
+Credentials come from boto3's default chain, the same one the ingest already
+uses: environment, shared profile, container or instance role. Region comes from
+`AWS_REGION`. An endpoint override (`AWS_ENDPOINT_URL_S3`, else
+`AWS_ENDPOINT_URL`) is honoured for a local S3 stand-in such as moto, LocalStack
+or MinIO, and is what the end-to-end test of the S3 path uses. No key is ever
+written into a profile, a DAG or this repository.
+
+The two engines are the exceptions, because neither speaks through boto3. Spark
+reads and writes through the Hadoop `s3a://` connector, with a credential
+provider that walks the same places; the connector is a jar, fetched from Maven
+at session start unless `PRA_SPARK_PACKAGES` names one the image already ships.
+DuckDB reads through `httpfs` with a `credential_chain` secret, which is its own
+walk of the same places.
+
+### There is no rename, so a partition replace is two steps
+
+A bronze partition is replaced whole, which is what makes a re-run idempotent.
+On a disk that is a temporary file moved into place with `os.replace`. Object
+storage has no rename, so the replace writes the new object first and deletes
+whatever the new set did not name second. A reader that lists the prefix between
+the two steps can see both sets.
+
+The order is deliberate. Delete-then-write has a window in which the partition
+is empty, and an empty partition reads as "this day has no games", which is a
+wrong answer; write-then-delete has a window in which a stale file is still
+there, which is a duplicated one. In practice the window does not open at all
+for bronze, because the file name is fixed (`part-0.parquet`) and a rewrite of
+the same partition overwrites that key. It opens only when the set of file names
+changes, which is a layout change. Closing it properly means a manifest, which
+means a table format (Apache Iceberg, Delta Lake); that is the next design step,
+not this one, and the same paragraph in `pipeline/bronze.py` says so.
+
+### DuckDB builds on local disk
+
+A DuckDB database is a file the engine seeks around in, not a stream it appends
+to, and there is no such thing over object storage. So `python -m pipeline.gold`
+always builds `meta.duckdb` on the task's local disk, whatever the root is, and
+then uploads it under `warehouse/` afterwards. That is honest about what the
+file is: it holds no state worth keeping, it is rebuilt from the lake on every
+run, and the copy in the bucket is a convenience for the next reader and not a
+database anyone writes to in place.
+
+dbt reads silver in place through `httpfs`, so there is still no load step. The
+profile has two targets for it, `dev` and `s3`, identical except that `s3` loads
+the extensions and creates the credential secret; the stage picks one from the
+shape of the root.
+
+The marts are also written out as Parquet, one file per materialized table,
+under `warehouse/marts/<mart>.parquet`. The next design step reads the marts
+without DuckDB at all, and a Parquet file is what every engine can open; a
+reader that only wants the matchup matrix should not have to download a
+warehouse to get it.
+
+Everything downstream that opens the warehouse (`publish`, `quality_gate`,
+`train`, `drift`, the agent's `query_marts`, `eval`) takes a `--warehouse` that
+can be `s3://.../meta.duckdb`. It is downloaded once per process and opened
+read-only, with `httpfs` loaded: the `ops` models are views over the run-metrics
+Parquet, so reading the published warehouse means reading the lake too.
+
+### MLflow is a synced file store with its artifacts left on S3
+
+With an `s3://` root, `mlruns/` is downloaded to a temporary directory at the
+start of `train`, `promote`, `drift` and `eval`, used as the local file store
+for the length of the command, and uploaded back at the end. `publish` and the
+serving application read it the same way and do not upload, so a reader is never
+briefly a writer. Nothing is deleted on the way up, and a command that raises
+uploads nothing.
+
+**Only the metadata is synced.** The runs, parameters, metrics, tags and the
+registry are small and are what the sync carries; the artifacts stay on S3 under
+`mlruns-artifacts/<experiment>/` and are read and written in place. The reason
+is that MLflow's file store records absolute paths. An experiment created inside
+one command's temporary directory writes that directory into its
+`artifact_location`, every run under it inherits it as its `artifact_uri`, and
+every registered version points at the same place, so the next command reads a
+store whose files are all in a directory that no longer exists: `serve` cannot
+load `models:/win-probability@production`, `promote` cannot open a candidate's
+artifacts, `drift` cannot read the reference it wrote yesterday. Creating each
+experiment with an `s3://` artifact location instead makes every one of those
+URIs absolute somewhere that outlives the command and is the same from any
+machine. `pipeline.storage.experiment_id` is the one place that does it, and
+`train`, `drift` and `eval` all go through it.
+
+The artifact prefix is a sibling of `mlruns/` and not a directory inside it,
+because the sync copies the whole store down and back on every command: under
+it, logging one metric would mean downloading every model ever trained.
+
+A local root is unchanged. No artifact location is named, MLflow puts the files
+beside the runs, and `mlflow ui --backend-store-uri data/mlruns` finds them.
+
+**The single writer is an assumption, not a guarantee.** Two commands syncing
+the same prefix at once will each upload their own view, and the later one wins
+for any file they both touched. Today there is one writer: the nightly job, one
+stage at a time, under one run identifier. The reason for doing it this way is
+that it is free and reversible, needs no service standing up, and disappears the
+moment `MLFLOW_TRACKING_URI` points at a server.
+
+A tracking server is the design the day there is a second writer, and
+`docs/orchestration-on-aws.md` already recommends it and says why: the file
+store's own documentation warns it is unsafe under concurrent writers, and the
+registry it protects is what decides which model answers `/predict`.
+
+**One-time operator step.** An experiment's artifact location is written when
+the experiment is created and cannot be corrected afterwards, so experiments
+created on a lake before this change keep pointing at a temporary directory that
+is gone. Delete the `mlruns/` prefix under the lake root once, before the first
+run with this behaviour, and let `train` recreate it:
+
+```
+aws s3 rm "$PIPELINE_DATA_DIR/mlruns" --recursive
+```
+
+Nothing downstream depends on what is there: the warehouse and the lake are
+rebuilt from bronze, and a registered version is reproduced by the next training
+run. Do this only against a lake whose registry you are willing to lose.
+
+### What the tests cover, and what the live run has to
+
+The moto-backed tests cover the storage helper, the bronze partition replace and
+single-game merge, the backfill from fixtures, quarantine, run metrics and the
+gold build with its publish back, all against an `s3://` root. `run_all` and the
+dbt build run against moto's threaded server rather than its in-process fake,
+because a subprocess and DuckDB's own HTTP client cannot see a patched botocore.
+
+Silver on `s3a://` is the one path with no test: the shared SparkSession in the
+suite is started once for the whole run, and the connector is chosen when the
+Java Virtual Machine starts, so a second session with different jars is not
+possible in the same process. It is verified by running the pipeline end to end
+against a local S3 server, and by the live run against a real bucket.
+
 ## 1. Bronze ingest (in progress)
 
 Input: every object under `parsed/` in the environment's bucket (name from
@@ -102,10 +262,12 @@ change.
 Command: `python -m pipeline.consume` (`--once`, `--max-messages N`,
 `--wait-seconds N`, `--bronze-dir`, `--quarantine-dir`), or the `consumer`
 service in `compose.yaml`, which is the same command in a container with the
-lake mounted from the host. The queue itself is not deployed yet: the bucket
-notification on `parsed/` for `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`,
-the `parsed-games` queue and its dead-letter queue at three deliveries are a
-separate ticket. The consumer reads `PRA_QUEUE_URL`, which nothing else does.
+lake mounted from the host. That command is the local shape of this stage; the
+deployed shape is the Lambda in 1c below, which runs the same routine without
+a laptop. Either way the bucket notification on `parsed/` for
+`s3:ObjectCreated:*` and `s3:ObjectRemoved:*`, the `parsed-games` queue and its
+dead-letter queue at three deliveries are defined in the application's stack.
+The command-line consumer reads `PRA_QUEUE_URL`, which nothing else does.
 
 It logs and reports itself like every other stage (the Ops section below), with
 one difference that follows from never finishing: the unit it records is the
@@ -157,6 +319,101 @@ The rewrite becomes an append-only file per event plus a compaction step, or a
 table format (Apache Iceberg, Delta Lake) that does row-level upserts and
 deletes; the lookup becomes a `game_id -> play_date` index written beside the
 partitions. Neither changes the contract, the routing or the quarantine.
+
+### 1c. The event path as a Lambda (in progress)
+
+The same ingest with the polling taken out. `pipeline.lambda_consumer.handler`
+is a Lambda handler behind an SQS **event source mapping**: the mapping is the
+thing that long-polls the queue, batches up to ten messages and invokes the
+function with them, and on a clean return it deletes the messages the function
+did not report back. So the function holds no receive loop, no
+`delete_message` and no visibility timeout, and `PRA_QUEUE_URL` is not in its
+environment at all: the mapping owns the queue, and the code owns what a
+message means. The queue, the bucket notification, the function, its role and
+the mapping are defined in the application's CDK stack, beside the producer
+that fills the queue; this repository owns the image the function runs.
+
+Per message it calls `MessageHandler.apply` from `pipeline.consume`, which is
+the routine the command-line consumer calls, so every routing and quarantine
+decision above is the same decision here and there is no second implementation
+to keep in step.
+
+**Partial batch responses** are how a failure stays the failing message's
+alone. The handler returns
+`{"batchItemFailures": [{"itemIdentifier": "<messageId>"}, ...]}`, and SQS
+deletes the rest of the batch and redelivers only the named ones. Without it, a
+Lambda that raises fails its whole batch: nine good messages become visible
+again with the one poison message and ride along with it to the dead-letter
+queue after three deliveries, and the receive count that the redrive policy
+counts to three stops meaning anything. The mapping has to be created with
+`ReportBatchItemFailures` for the field to be read; a mapping without it
+ignores the return value silently. Which records are named is unchanged from
+the section above: a blob that fails the contract is quarantined and
+acknowledged, and an S3 error, a storage error or a body that is not an S3
+event is named so the queue can try again.
+
+**Reserved concurrency is 1**, and that is a correctness setting rather than a
+throughput one. A bronze partition is written by reading the day's Parquet
+file, dropping the rows this message replaces and writing the file back. Two
+invocations doing that to the same day at once would each build a file from
+what it read before the other wrote, and the second write would silently drop
+the first one's game. One invocation at a time makes that impossible. The
+ceiling it sets is a batch of ten games every second or so, which is orders of
+magnitude above what this application produces; lifting it later means a table
+format with row-level writes (Apache Iceberg, Delta Lake), not more writers
+over the same rewrite.
+
+**The key** comes from Secrets Manager, not from a function environment
+variable: an environment variable is readable by anyone who can call
+`GetFunction`, and this key is the one thing standing between the lake and a
+reversible handle. `HANDLE_HMAC_KEY_SECRET_ARN` names the secret, the value is
+read once per execution environment and kept for the life of the container, and
+a rotation arrives as a new container, which a deployment or an idle timeout
+produces on its own. `HANDLE_HMAC_KEY` in the environment still wins, so the
+handler can be invoked on a laptop with no AWS call at all ([demo.md](demo.md)).
+The secret is put there once by hand from the 1Password value; nothing in either
+repository writes it.
+
+**The image** is `Dockerfile.lambda`, built on `public.ecr.aws/lambda/python`
+for x86_64. Its dependency set is `uv export` of the project's runtime
+dependencies from `uv.lock`, minus DuckDB, which is boto3, pydantic, pyarrow
+and python-dotenv with their transitives: no Spark, no MLflow, no LangChain, no
+torch. That set is what the handler's import graph actually needs, and
+`bronze.read_smoke` imports DuckDB inside the function rather than at the top
+of the module so that the one command-line use of it does not follow the
+consumer into the image. A test asserts the claim by importing the handler in a
+subprocess and checking `sys.modules`. A container image rather than a zip
+because pyarrow alone is most of the 250 MB unzipped limit; the cost is a few
+seconds of cold start, which a queue consumer does not notice because nothing
+is waiting on the reply.
+
+`.github/workflows/consumer-image.yml` builds and pushes it on every push to
+`main` that touches `pipeline/`, `contract/` or the Dockerfile, tags it
+`:latest` and `:<commit>`, then runs `aws lambda update-function-code` on the
+commit tag and waits for the update to finish. It assumes its role by OpenID
+Connect, so no access key is stored; the role, the region, the registry
+repository and the function name are repository variables set by hand, and the
+workflow skips with a notice when they are unset, so a fork does not see a red
+build for not having an account.
+
+How to watch it. The logs are JSON lines in the function's CloudWatch log
+group, carrying the same `run_id`, `stage` and event fields every other stage
+logs, with the run identifier being the invocation's own request id, so one
+invocation is one filter in Logs Insights:
+
+```
+fields @timestamp, msg, run_id, rows_out, rows_quarantined
+| filter stage = "consume"
+| sort @timestamp desc
+```
+
+The numbers are also a table. Every invocation writes one `run_metrics` row to
+the lake, so the `ops` dbt models and the health mart count the function's runs
+beside every other stage's with nothing to configure; `extra_json` on those
+rows carries `ignored`, `deleted` and `failed`. Beyond that it is the queue's
+own metrics: `ApproximateNumberOfMessagesVisible` near zero on the queue, and
+anything at all on the dead-letter queue is the alarm worth having, because by
+construction only a message three retries could not fix reaches it.
 
 ## 2. Silver (in progress, PySpark)
 
@@ -992,6 +1249,9 @@ scheduler at all. Neither holds any pipeline logic: a task that called the
 stages as Python functions would be a second way to invoke them, and the second
 way is the one that drifts.
 
+What actually runs every night is the plain runner on a schedule:
+`.github/workflows/nightly.yml`, documented in [nightly.md](nightly.md).
+
 ### The task graph
 
 ```
@@ -1075,6 +1335,21 @@ what was skipped and how long each took. The same summary goes into a
 `run_metrics` row of its own, under the stage name `run_all`, with the per-stage
 durations in `extra_json`.
 
+Stages are skipped rather than dropped, each with its reason in that table and
+in the logs:
+
+- `backfill`, when `PRA_INGEST_MODE=consumer`: the consumer is already landing
+  bronze, so a backfill would read the same bucket twice.
+- `train`, `promote` and `drift`, when `features_turn` holds no rows.
+- `build_card_index`, when the card-text corpus has not been fetched.
+- `publish`, when `PRA_INSIGHTS_TABLE` is unset, which is the normal state of a
+  clone.
+- `publish`, when the run was fed from `--source-dir`. Those blobs came from a
+  directory on whichever machine ran the command, not from the bucket, and the
+  publish replaces the insights table whole rather than adding to it, so a
+  fixture run reaching it would swap the real rows for fixture ones. Pass
+  `--publish` alongside `--source-dir` for the rare run that means it.
+
 ### Parameters
 
 | parameter | default | what it does |
@@ -1083,7 +1358,10 @@ durations in `extra_json`.
 | `ingest_mode` | `backfill` | `consumer` means the event-driven ingest is already landing bronze, so the first task is a logged no-op |
 
 `run_all` takes the same two as `--source-dir` and the `PRA_INGEST_MODE`
-environment variable, plus `--skip`, `--stop-after`, `--data-dir` and `--run-id`.
+environment variable, plus `--publish`, `--skip`, `--stop-after`, `--data-dir`,
+`--run-id` and `--summary-path`. The last one writes the stage table to a local
+file as well as to the log, which is how the scheduled run gets it back off a
+runner whose lake root is an `s3://` prefix.
 
 ### The run identifier
 
@@ -1165,7 +1443,9 @@ Command: `python -m pipeline.publish` (`--warehouse`, `--table`, `--dry-run`,
 than before it: a run whose gate refused must not put its numbers in front of
 the application's readers, and a failed task stops what follows it. The runner
 and the DAG both skip it with a logged reason when `PRA_INSIGHTS_TABLE` is
-unset, which is the normal state of a clone.
+unset, which is the normal state of a clone. The runner skips it a second way:
+a run given `--source-dir` read its blobs from a directory rather than from the
+bucket, and does not publish unless `--publish` is passed as well.
 
 ### The contract
 

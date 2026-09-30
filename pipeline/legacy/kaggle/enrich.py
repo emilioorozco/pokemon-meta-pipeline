@@ -19,9 +19,9 @@ import logging
 import time
 import urllib.request
 from datetime import datetime
-from pathlib import Path
 
 from pipeline.config import LAKE_DIR
+from pipeline.storage import AnyLocation, location
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,12 @@ CHUNK_SIZE = 100
 SLEEP_BETWEEN_CALLS_S = 1.0
 
 
-def _cached_chunks(cache_dir: Path) -> list[dict]:
-    return [json.loads(p.read_text()) for p in sorted(cache_dir.glob("chunk-*.json"))]
+def _cached_chunks(cache_dir: AnyLocation) -> list[dict]:
+    found = location(cache_dir).iter_files(".json")
+    return [json.loads(p.read_text()) for p in found if p.name.startswith("chunk-")]
 
 
-def cached_episode_ids(cache_dir: Path = META_CACHE_DIR) -> set[int]:
+def cached_episode_ids(cache_dir: AnyLocation = META_CACHE_DIR) -> set[int]:
     ids: set[int] = set()
     for chunk in _cached_chunks(cache_dir):
         ids.update(ep["id"] for ep in chunk.get("episodes", []))
@@ -54,10 +55,11 @@ def _fetch_chunk(ids: list[int]) -> dict:
         return payload
 
 
-def fetch_missing(episode_ids: list[int], cache_dir: Path = META_CACHE_DIR) -> int:
+def fetch_missing(episode_ids: list[int], cache_dir: AnyLocation = META_CACHE_DIR) -> int:
     """Fetch metadata for any ids not already cached. Returns count fetched."""
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    missing = sorted(set(episode_ids) - cached_episode_ids(cache_dir))
+    target = location(cache_dir)
+    target.mkdir()
+    missing = sorted(set(episode_ids) - cached_episode_ids(target))
     for i in range(0, len(missing), CHUNK_SIZE):
         chunk = missing[i : i + CHUNK_SIZE]
         payload = _fetch_chunk(chunk)
@@ -67,7 +69,7 @@ def fetch_missing(episode_ids: list[int], cache_dir: Path = META_CACHE_DIR) -> i
                 "ids not returned",
                 extra={"missing": len(not_found), "examples": sorted(not_found)[:5]},
             )
-        out = cache_dir / f"chunk-{chunk[0]}-{chunk[-1]}.json"
+        out = target / f"chunk-{chunk[0]}-{chunk[-1]}.json"
         out.write_text(json.dumps(payload))
         logger.info("episode chunk cached", extra={"episodes": len(got), "file": out.name})
         if i + CHUNK_SIZE < len(missing):
@@ -79,7 +81,7 @@ def _parse_ts(s: str | None) -> datetime | None:
     return datetime.fromisoformat(s) if s else None
 
 
-def load_meta(cache_dir: Path = META_CACHE_DIR) -> dict[int, dict]:
+def load_meta(cache_dir: AnyLocation = META_CACHE_DIR) -> dict[int, dict]:
     """Parse the cache into {episode_id: metadata} for the ingest join.
 
     Per-seat lists are indexed by the agent's seat (its `index` field; Kaggle

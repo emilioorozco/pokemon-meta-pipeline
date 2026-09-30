@@ -45,6 +45,12 @@ Stages are skipped rather than dropped, each with a logged reason:
   has nowhere to publish to, which is the normal state of a reviewer's laptop
   and of every test in this repository; naming the variable in the reason is
   what turns "it did not publish" into "set this".
+- `publish`, when the run was fed from `--source-dir` and `--publish` was not
+  passed. A local directory of blobs is a demo or a fixture set, never the
+  bucket the real numbers come from, and the publish replaces the table whole
+  rather than adding to it, so one such run reaching it puts fixture rows in
+  front of every reader and sweeps the real ones away. Naming the flag in the
+  reason keeps the deliberate case one word away.
 """
 
 import argparse
@@ -70,7 +76,8 @@ from pipeline.observability import (
     emit_summary,
     stage_run,
 )
-from pipeline.settings import INSIGHTS_TABLE_VAR
+from pipeline.settings import INSIGHTS_TABLE_VAR, DataRootError, validate_data_root
+from pipeline.storage import AnyLocation, Location, duckdb_connect, location
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +103,11 @@ class Stage:
     when it was never fetched, and the publish has nowhere to write when no
     table is named. Anything more conditional than that belongs in the stage,
     not in the runner.
+
+    The one flag that is not of that kind is `needs_bucket_source`. A stage
+    cannot tell what fed bronze, so the runner is the only place that knows the
+    rows came from a directory somebody pointed at, and the publish is the only
+    stage for which that changes the answer.
     """
 
     name: str
@@ -109,6 +121,8 @@ class Stage:
     needs_card_text: bool = False
     #: Skipped when no insights table is named, because there is nowhere to write.
     needs_insights_table: bool = False
+    #: Skipped when the run was fed from `--source-dir`, unless `--publish` says otherwise.
+    needs_bucket_source: bool = False
 
 
 # The order is the dependency order, and it is the DAG's order flattened: the
@@ -138,7 +152,12 @@ STAGES: Final[tuple[Stage, ...]] = (
     # refuse would put a known-bad matchup matrix in front of every reader of
     # the application, and the runner stops at the first failure, so a red gate
     # is also the thing that stops this.
-    Stage(name="publish", module="pipeline.publish", needs_insights_table=True),
+    Stage(
+        name="publish",
+        module="pipeline.publish",
+        needs_insights_table=True,
+        needs_bucket_source=True,
+    ),
 )
 STAGE_NAMES: Final[tuple[str, ...]] = tuple(stage.name for stage in STAGES)
 
@@ -210,17 +229,19 @@ class RunAllSummary:
         return "\n".join(lines)
 
 
-def feature_rows(warehouse: Path) -> int:
+def feature_rows(warehouse: AnyLocation) -> int:
     """How many rows `features_turn` holds, or 0 when there is no table to ask.
 
     A missing warehouse and an unbuilt table both answer zero rather than
     raising: the question this asks is "is there anything to model", and all
-    three ways of saying no mean the same thing to the caller.
+    three ways of saying no mean the same thing to the caller. A warehouse in
+    the lake is downloaded to be asked, like everywhere else that opens one.
     """
-    if not warehouse.is_file():
+    target = location(warehouse)
+    if not target.is_file():
         return 0
     try:
-        connection = duckdb.connect(str(warehouse), read_only=True)
+        connection = duckdb_connect(target)
     except duckdb.Error:
         return 0
     try:
@@ -232,9 +253,9 @@ def feature_rows(warehouse: Path) -> int:
     return int(row[0]) if row else 0
 
 
-def card_text_path(data_dir: Path) -> Path:
-    """Where the retriever's corpus lives under a given data directory."""
-    return data_dir / "catalog" / CARD_TEXT_NAME
+def card_text_path(data_dir: AnyLocation) -> Location:
+    """Where the retriever's corpus lives under a given data root."""
+    return location(data_dir) / "catalog" / CARD_TEXT_NAME
 
 
 def skip_reason(
@@ -242,7 +263,9 @@ def skip_reason(
     *,
     skipped: Sequence[str],
     features: int | None,
-    card_text: Path | None = None,
+    card_text: Location | None = None,
+    source_dir: Path | None = None,
+    publish: bool = False,
 ) -> str | None:
     """Why this stage should not run, or None to run it.
 
@@ -259,6 +282,11 @@ def skip_reason(
         return f"no card text at {card_text}: run scripts/fetch_card_text.py"
     if stage.needs_insights_table and not os.environ.get(INSIGHTS_TABLE_VAR, "").strip():
         return f"{INSIGHTS_TABLE_VAR} is unset: there is no table to publish to"
+    if stage.needs_bucket_source and source_dir is not None and not publish:
+        return (
+            "the run was fed from a local source directory, not the bucket; "
+            "pass --publish to publish anyway"
+        )
     return None
 
 
@@ -286,17 +314,22 @@ def run_stage(stage: Stage, *, argv: Sequence[str], env: dict[str, str]) -> Stag
 
 def run_all(
     *,
-    data_dir: Path,
+    data_dir: AnyLocation,
     source_dir: Path | None = None,
+    publish: bool = False,
     skip: Sequence[str] = (),
     stop_after: str | None = None,
     stages: Sequence[Stage] = STAGES,
     env: dict[str, str] | None = None,
 ) -> RunAllSummary:
     """Run the stages in order, stopping at the first failure or at `stop_after`."""
+    root = location(data_dir)
     child_env = dict(os.environ if env is None else env)
-    child_env[DATA_DIR_VAR] = str(data_dir)
-    warehouse = data_dir / "warehouse" / "meta.duckdb"
+    # The root is passed to every child as the string it came in as, s3:// and
+    # all: each stage resolves it the same way this one did, so the runner is
+    # not a place where a bucket can turn back into a directory.
+    child_env[DATA_DIR_VAR] = str(root)
+    warehouse = root / "warehouse" / "meta.duckdb"
     summary = RunAllSummary()
     features: int | None = None
 
@@ -308,7 +341,12 @@ def run_all(
                 extra={"rows": features, "warehouse": str(warehouse)},
             )
         reason = skip_reason(
-            stage, skipped=skip, features=features, card_text=card_text_path(data_dir)
+            stage,
+            skipped=skip,
+            features=features,
+            card_text=card_text_path(root),
+            source_dir=source_dir,
+            publish=publish,
         )
         if reason is not None:
             logger.info("stage skipped", extra={"stage_name": stage.name, "reason": reason})
@@ -331,6 +369,24 @@ def run_all(
     return summary
 
 
+def write_summary_file(path: Path, summary: RunAllSummary, *, run_id: str) -> None:
+    """The readable summary, on local disk, for a runner that has to upload it.
+
+    Everything else a run produces goes to the data root, which in a scheduled
+    run is an `s3://` prefix; a continuous-integration job that wanted the
+    summary back would have to know the lake layout and download from it. This
+    is the one file the runner names itself, on the machine that ran the
+    command, so uploading it is a path and not an AWS call. The run identifier
+    and the exit code lead, because those are the two things an operator reads
+    first and the table underneath does not carry either.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"run_id: {run_id}\nexit_code: {summary.exit_code}\n\n{summary}\n",
+        encoding="utf-8",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the whole pipeline from the command line."""
     parser = argparse.ArgumentParser(
@@ -346,11 +402,17 @@ def main(argv: list[str] | None = None) -> int:
         help="read the blobs from a directory instead of S3, for example tests/fixtures",
     )
     parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="publish even when the run was fed from --source-dir, which it does not by default",
+    )
+    parser.add_argument(
         "--data-dir",
-        type=Path,
-        default=PIPELINE_DATA_DIR,
+        type=str,
+        default=str(PIPELINE_DATA_DIR),
         metavar="PATH",
-        help="the lake and warehouse root every stage is pointed at",
+        help="the lake and warehouse root every stage is pointed at, a directory or "
+        "an s3:// prefix",
     )
     parser.add_argument(
         "--skip",
@@ -370,6 +432,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="ID",
         help=f"the identifier every stage shares (default: ${RUN_ID_VAR}, else a fresh one)",
     )
+    parser.add_argument(
+        "--summary-path",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="also write the summary to this local file, for a scheduled runner to upload",
+    )
     args = parser.parse_args(argv)
 
     skip = [name.strip() for name in args.skip.split(",") if name.strip()]
@@ -379,18 +448,26 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(2, f"{parser.prog}: unknown stage(s) {', '.join(unknown)}\n")
     if args.source_dir is not None and not args.source_dir.is_dir():
         parser.exit(2, f"{parser.prog}: --source-dir is not a directory: {args.source_dir}\n")
+    # Checked here rather than left to the first stage that writes: a root with
+    # no bucket would otherwise be a directory called `s3:` under the working
+    # directory, and nine stages would each put part of a lake in it.
+    try:
+        data_dir = validate_data_root(args.data_dir)
+    except DataRootError as bad:
+        parser.exit(2, f"{parser.prog}: {bad}\n")
 
     # Set on this process rather than only on the children: the run identifier
     # has to be the one this command's own summary row carries, and the data
     # directory has to be the one that row is written to.
-    os.environ[DATA_DIR_VAR] = str(args.data_dir)
+    os.environ[DATA_DIR_VAR] = str(data_dir)
     run_id = configure_logging(STAGE, args.run_id)
     os.environ[RUN_ID_VAR] = run_id
 
     with stage_run(STAGE) as metrics:
         summary = run_all(
-            data_dir=args.data_dir,
+            data_dir=data_dir,
             source_dir=args.source_dir,
+            publish=args.publish,
             skip=skip,
             stop_after=args.stop_after,
         )
@@ -404,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:
             "skipped": counts[STATUS_SKIPPED],
             "failed": counts[STATUS_FAILED],
             "source_dir": str(args.source_dir) if args.source_dir else None,
-            "data_dir": str(args.data_dir),
+            "data_dir": str(data_dir),
             "exit_code": summary.exit_code,
         }
         failure = summary.failed
@@ -423,6 +500,10 @@ def main(argv: list[str] | None = None) -> int:
         text=str(summary),
         level=logging.ERROR if summary.failed else logging.INFO,
     )
+    # Written whatever the run did, because the failing run is the one whose
+    # summary somebody has to read.
+    if args.summary_path is not None:
+        write_summary_file(args.summary_path, summary, run_id=run_id)
     return summary.exit_code
 
 

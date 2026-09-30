@@ -23,10 +23,24 @@ game is two seat rows but forty card rows and twenty turn rows, and the same
 code runs unchanged on a laptop and on a cluster.
 
 What changes on a cluster: nothing in this file. The master URL comes from
-`--master` or `PRA_SPARK_MASTER`, the directories become `s3a://` paths passed
+`--master` or `PRA_SPARK_MASTER`, the directories become `s3://` paths passed
 to the same arguments, and `spark.sql.shuffle.partitions` (8 here, right for a
 laptop and far too low for a real cluster) is raised. The transforms, the
 schemas and the reconciliation are the same.
+
+An `s3://` argument is rewritten to `s3a://` on the way into Spark and the
+session is given the Hadoop connector and a credential provider that walks the
+same chain boto3 does (`pipeline.storage.spark_configuration`). `s3a` rather
+than `s3` because the Hadoop connector registers itself under that scheme and
+`s3` in a Spark job means Amazon EMR's own, which is not on this classpath. The
+connector is a jar, not a Python package, so it is fetched from Maven at session
+start unless the image already ships it and `PRA_SPARK_PACKAGES` says so; that
+fetch is why this path is checked against a real bucket rather than against the
+in-process S3 fake the rest of the suite uses.
+
+The reconciliation runs the same way on either root: it counts rows out of the
+DataFrames this stage just built, not files, so "games in equals games out" is
+as true over a bucket as over a directory.
 
 Four shapes of the real data drive decisions here, and each is worth stating
 because the obvious implementation gets them wrong:
@@ -71,9 +85,8 @@ import json
 import logging
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Final
 
 from pyspark.sql import Column, DataFrame, SparkSession
@@ -84,6 +97,7 @@ from pyspark.sql.window import Window
 from pipeline.config import BRONZE_DIR, CATALOG_PATH, SILVER_DIR
 from pipeline.contract import ActionKind, SideStats
 from pipeline.observability import configure_logging, emit_summary, stage_run
+from pipeline.storage import AnyLocation, location, spark_configuration
 
 logger = logging.getLogger(__name__)
 
@@ -286,13 +300,18 @@ CATALOG_SCHEMA: Final = T.StructType(
 )
 
 
-def build_session(master: str) -> SparkSession:
+def build_session(master: str, *, targets: Sequence[AnyLocation] = ()) -> SparkSession:
     """A local or cluster session with the settings every silver run needs.
 
     UTC everywhere so a timestamp means the same thing in the lake and in a
     query, a small shuffle width because a laptop run with the default 200 wastes
     more time on empty tasks than on work, and dynamic partition overwrite so a
     rerun over one day replaces that day instead of the whole table.
+
+    `targets` are the locations this run will read and write. When any of them is
+    on S3 the session also gets the Hadoop connector and its credential provider;
+    when none is, the session is byte for byte the one a laptop always got, with
+    no extra jar to fetch and nothing to resolve.
     """
     builder = (
         SparkSession.builder.master(master)
@@ -301,6 +320,8 @@ def build_session(master: str) -> SparkSession:
         .config("spark.sql.shuffle.partitions", SHUFFLE_PARTITIONS)
         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
     )
+    for name, value in spark_configuration(*targets).items():
+        builder = builder.config(name, value)
     if master.startswith("local"):
         # A laptop whose hostname does not resolve (no network, a container)
         # cannot bind the driver to it. Loopback is always right in local mode
@@ -311,7 +332,7 @@ def build_session(master: str) -> SparkSession:
     return builder.getOrCreate()
 
 
-def read_bronze(spark: SparkSession, bronze_dir: Path) -> DataFrame:
+def read_bronze(spark: SparkSession, bronze_dir: AnyLocation) -> DataFrame:
     """Every bronze partition as one DataFrame, `play_date` typed from the directory.
 
     `basePath` is what makes Spark read `play_date=YYYY-MM-DD` as a partition
@@ -321,10 +342,11 @@ def read_bronze(spark: SparkSession, bronze_dir: Path) -> DataFrame:
     uses the partition value, which is the one this stage wants: it is typed,
     and it is the value a partition filter can skip whole files on.
     """
-    return spark.read.option("basePath", str(bronze_dir)).parquet(str(bronze_dir / PART_GLOB))
+    root = location(bronze_dir)
+    return spark.read.option("basePath", root.spark_uri).parquet((root / PART_GLOB).spark_uri)
 
 
-def load_catalog(spark: SparkSession, catalog_path: Path | None) -> DataFrame:
+def load_catalog(spark: SparkSession, catalog_path: AnyLocation | None) -> DataFrame:
     """The card catalog as a DataFrame, or an empty one when the file is absent.
 
     The catalog is a 25k-entry export of the client's card database and is not
@@ -332,13 +354,11 @@ def load_catalog(spark: SparkSession, catalog_path: Path | None) -> DataFrame:
     is a real run: every `catalog_*` column is null and `in_decklist` falls back
     to matching card ids against card ids.
     """
-    if catalog_path is None or not catalog_path.is_file():
-        logger.warning(
-            "no card catalog at %s: catalog columns will be null", catalog_path or "<unset>"
-        )
+    source = None if catalog_path is None else location(catalog_path)
+    if source is None or not source.is_file():
+        logger.warning("no card catalog at %s: catalog columns will be null", source or "<unset>")
         return spark.createDataFrame([], CATALOG_SCHEMA)
-    with catalog_path.open(encoding="utf-8") as handle:
-        entries: dict[str, dict[str, Any]] = json.load(handle)
+    entries: dict[str, dict[str, Any]] = json.loads(source.read_text())
     rows = [
         (
             card_id,
@@ -351,7 +371,7 @@ def load_catalog(spark: SparkSession, catalog_path: Path | None) -> DataFrame:
         )
         for card_id, entry in entries.items()
     ]
-    logger.info("card catalog: %d entries from %s", len(rows), catalog_path)
+    logger.info("card catalog: %d entries from %s", len(rows), source)
     return spark.createDataFrame(rows, CATALOG_SCHEMA)
 
 
@@ -620,9 +640,9 @@ def build_cards_seen(bronze: DataFrame, catalog: DataFrame) -> DataFrame:
 
 def run_silver(
     spark: SparkSession,
-    bronze_dir: Path,
-    silver_dir: Path,
-    catalog_path: Path | None,
+    bronze_dir: AnyLocation,
+    silver_dir: AnyLocation,
+    catalog_path: AnyLocation | None,
 ) -> SilverSummary:
     """Build the four tables, write them and reconcile them against bronze.
 
@@ -631,6 +651,7 @@ def run_silver(
     games is worse than one that wrote them and said so.
     """
     started = time.monotonic()
+    silver = location(silver_dir)
     bronze = read_bronze(spark, bronze_dir).cache()
     catalog = load_catalog(spark, catalog_path)
     aliases = archetype_aliases(bronze)
@@ -646,7 +667,7 @@ def run_silver(
     written: dict[str, DataFrame] = {}
     for name in TABLES:
         frame = tables[name].cache()
-        write_table(frame, silver_dir, name)
+        write_table(frame, silver, name)
         written[name] = frame
         summary.rows[name] = frame.count()
         logger.info("silver.%s: %d row(s)", name, summary.rows[name])
@@ -656,9 +677,18 @@ def run_silver(
     return summary
 
 
-def write_table(frame: DataFrame, silver_dir: Path, name: str) -> None:
-    """Write one table under `silver_dir/<name>/play_date=.../`, replacing touched days."""
-    frame.write.mode("overwrite").partitionBy("play_date").parquet(str(silver_dir / name))
+def write_table(frame: DataFrame, silver_dir: AnyLocation, name: str) -> None:
+    """Write one table under `silver_dir/<name>/play_date=.../`, replacing touched days.
+
+    Spark does the replace itself here rather than going through
+    `pipeline.storage`: dynamic partition overwrite is the connector's job, it is
+    already what the local write does, and routing a shuffle's worth of files
+    through a single-process helper would make the one stage that is about
+    parallelism write serially.
+    """
+    frame.write.mode("overwrite").partitionBy("play_date").parquet(
+        (location(silver_dir) / name).spark_uri
+    )
 
 
 def reconcile(summary: SilverSummary, cards_seen: DataFrame) -> None:
@@ -865,14 +895,22 @@ def main(argv: list[str] | None = None) -> int:
         description="Build the silver tables from bronze Parquet with PySpark.",
     )
     parser.add_argument(
-        "--bronze-dir", type=Path, default=BRONZE_DIR, metavar="PATH", help="bronze input"
+        "--bronze-dir",
+        type=location,
+        default=BRONZE_DIR,
+        metavar="PATH",
+        help="bronze input, a directory or an s3:// prefix",
     )
     parser.add_argument(
-        "--silver-dir", type=Path, default=SILVER_DIR, metavar="PATH", help="silver output"
+        "--silver-dir",
+        type=location,
+        default=SILVER_DIR,
+        metavar="PATH",
+        help="silver output, a directory or an s3:// prefix",
     )
     parser.add_argument(
         "--catalog",
-        type=Path,
+        type=location,
         default=CATALOG_PATH,
         metavar="PATH",
         help="card catalog JSON; the run continues without it, with null catalog columns",
@@ -885,7 +923,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     configure_logging(STAGE)
 
-    spark = build_session(args.master)
+    spark = build_session(args.master, targets=(args.bronze_dir, args.silver_dir))
     spark.sparkContext.setLogLevel("WARN")
     try:
         with stage_run(STAGE) as metrics:

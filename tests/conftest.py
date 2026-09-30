@@ -1,14 +1,22 @@
-"""Shared fixtures for the tests that need a Java Virtual Machine or a real bronze lake.
+"""Shared fixtures for the tests that need a Java Virtual Machine, a bronze lake or a bucket.
 
-Both are session scoped because both are expensive: a SparkSession costs a few
-seconds of Java Virtual Machine (JVM) startup, and the bronze lake costs a full
-backfill over the committed games. Nothing in the silver tests writes to either,
-so one of each serves the whole run.
+The first two are session scoped because both are expensive: a SparkSession
+costs a few seconds of Java Virtual Machine (JVM) startup, and the bronze lake
+costs a full backfill over the committed games. Nothing in the silver tests
+writes to either, so one of each serves the whole run.
 
 The bronze lake is built by running the real backfill over `tests/fixtures` with
 `LocalSource`, the same code path `--source-dir` takes, rather than by writing
 Parquet by hand. That way the silver tests read the bronze a real run produces,
 and a bronze schema change reaches them.
+
+`s3_lake` is the third, and it is function scoped for the opposite reason: it is
+cheap. moto's `mock_aws` serves a real boto3 client from an in-process fake, so
+a test that wants an `s3://` lake root gets an empty bucket and a `Location`
+pointing into it with no account, no network and no credentials beyond the fake
+ones it sets. Every stage that goes through `pipeline.storage` works against it
+unchanged, which is the point of the fixture: the S3 tests are the local tests
+with one argument different.
 """
 
 import shutil
@@ -22,6 +30,7 @@ import pytest
 from pipeline.backfill import run_backfill
 from pipeline.settings import Settings
 from pipeline.source import LocalSource
+from pipeline.storage import Location, location, reset_s3_client
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -32,6 +41,98 @@ CATALOG_PATH: Final = Path(__file__).parent / "catalog.json"
 # this one only has to be stable inside a test run.
 TEST_HMAC_KEY: Final = b"tests-only-key-not-a-real-secret"
 INGESTED_AT: Final = datetime(2026, 9, 23, 9, 0, tzinfo=UTC)
+# The fake lake bucket and the prefix inside it. A prefix rather than the bucket
+# root on purpose: a real deployment shares a bucket between environments, and a
+# root that is not the bucket root is the case where a key is built wrongly.
+LAKE_BUCKET: Final = "pra-lake-under-test"
+LAKE_PREFIX: Final = "nightly"
+TEST_REGION: Final = "us-west-2"
+
+
+@pytest.fixture
+def aws_fake_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fake credentials, so a misconfigured run can never reach a real account."""
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SECURITY_TOKEN"):
+        monkeypatch.setenv(name, "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", TEST_REGION)
+    monkeypatch.setenv("AWS_REGION", TEST_REGION)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+
+
+@pytest.fixture(params=["local", "s3"])
+def root(request: pytest.FixtureRequest, tmp_path: Path) -> Location:
+    """A lake root of each kind, so a test that asks for it runs against both.
+
+    The whole claim of `pipeline.storage` is that a stage cannot tell them
+    apart, and a parameterized fixture is the cheapest way to keep asserting it:
+    one test body, two roots, and a difference between them fails rather than
+    going unnoticed.
+    """
+    if request.param == "local":
+        return location(tmp_path / "lake")
+    lake: Location = request.getfixturevalue("s3_lake")
+    return lake
+
+
+@pytest.fixture
+def s3_lake(aws_fake_credentials: None) -> Iterator[Location]:
+    """An empty bucket and a `Location` naming a lake root inside it.
+
+    The cached client is dropped on both sides of the mock: it is built lazily
+    and kept for the process, so a client made under one test's fake bucket must
+    not be handed to the next test's.
+    """
+    import boto3
+    from moto import mock_aws
+
+    reset_s3_client()
+    with mock_aws():
+        boto3.client("s3", region_name=TEST_REGION).create_bucket(
+            Bucket=LAKE_BUCKET,
+            CreateBucketConfiguration={"LocationConstraint": TEST_REGION},
+        )
+        yield Location(f"s3://{LAKE_BUCKET}/{LAKE_PREFIX}")
+    reset_s3_client()
+
+
+@pytest.fixture
+def s3_lake_server(
+    aws_fake_credentials: None, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Location]:
+    """The same empty bucket, but served over HTTP so a subprocess can reach it.
+
+    `mock_aws` patches botocore inside this interpreter, which is everything the
+    in-process tests need and nothing a child process can see. `pipeline.run_all`
+    runs every stage as a subprocess on purpose, so the only way to give those
+    children a fake bucket is a real endpoint: moto's threaded server, with
+    `AWS_ENDPOINT_URL_S3` in the environment they inherit. boto3 reads that
+    variable itself, so no code here knows about it.
+
+    Skipped rather than failed when the server extra is not installed: it
+    arrives with MLflow's Flask today, and a suite that loses it should lose one
+    test rather than report a broken pipeline.
+    """
+    pytest.importorskip("flask", reason="moto's threaded server needs flask")
+    import boto3
+    from moto.server import ThreadedMotoServer
+
+    server = ThreadedMotoServer(port=0, verbose=False)
+    server.start()
+    host, port = server.get_host_and_port()
+    endpoint = f"http://{host}:{port}"
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", endpoint)
+    monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint)
+    reset_s3_client()
+    try:
+        boto3.client("s3", region_name=TEST_REGION, endpoint_url=endpoint).create_bucket(
+            Bucket=LAKE_BUCKET,
+            CreateBucketConfiguration={"LocationConstraint": TEST_REGION},
+        )
+        yield Location(f"s3://{LAKE_BUCKET}/{LAKE_PREFIX}")
+    finally:
+        reset_s3_client()
+        server.stop()
 
 
 @pytest.fixture(scope="session", autouse=True)

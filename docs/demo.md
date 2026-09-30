@@ -244,6 +244,32 @@ detail.
   expiry of a model is measured rather than assumed, the archetype mix is
   where a set release shows up first, and the command flags and exits 0
   instead of retraining anything.
+- **The consumer's Lambda handler**: runs today, on a laptop, with no AWS
+  account and no queue. `pipeline.lambda_consumer.handler` takes an SQS event
+  source payload, so a sample event over one of the committed fixtures is
+  enough to see the whole path:
+
+  ```bash
+  HANDLE_HMAC_KEY=demo-key-not-a-real-secret PRA_BUCKET=demo-bucket \
+  PIPELINE_DATA_DIR=/tmp/demo-lambda uv run python -c '
+  import json
+  from pipeline.lambda_consumer import handler
+  body = {"Records": [{"eventName": "ObjectCreated:Put", "s3": {
+      "bucket": {"name": "demo-bucket"},
+      "object": {"key": "parsed/user-1/not-there.json"}}}]}
+  event = {"Records": [{"messageId": "m-1", "body": json.dumps(body)},
+                       {"messageId": "m-2", "body": "not json at all"}]}
+  print(handler(event, None))'
+  ```
+
+  Both records fail here, because there is no bucket to read and the second
+  body is not an event, and that is the point: the reply is
+  `{'batchItemFailures': [{'itemIdentifier': 'm-1'}, {'itemIdentifier':
+  'm-2'}]}`, which is exactly what SQS would redeliver. Point `PRA_BUCKET` and
+  the key at a real bucket and the same call lands a row. What it proves: the
+  deployed shape of the consumer is a function anyone can run, the failure
+  reporting is a value rather than an exception, and the key comes from the
+  environment when Secrets Manager is not in the picture.
 - **Traces and dashboards**: runs today, and out of the timed sequence because
   it is six containers. `docker compose --profile observability up -d --build
   predict grafana` brings up the predict service and the tracking server with an
@@ -295,8 +321,11 @@ detail.
   `docker compose down` when finished. The quick version, with no Docker at
   all, is `uv run python -m pipeline.run_all --source-dir tests/fixtures
   --data-dir /tmp/demo`, which runs the same nine stages in about twenty
-  seconds and prints a table of what ran and how long each took. What it
-  proves: every stage is a command, one run identifier ties all of their
+  seconds and prints a table of what ran and how long each took. A fixture run
+  never publishes: `--source-dir` means the rows came from a directory on this
+  machine rather than from the bucket, and the publish replaces the insights
+  table whole, so it is skipped with that reason unless `--publish` is passed.
+  What it proves: every stage is a command, one run identifier ties all of their
   `run_metrics` rows together, and the last task reads those rows back and is
   allowed to fail the run.
 - **Publish**: runs today, and out of the timed sequence because it writes to
@@ -307,6 +336,30 @@ detail.
   previous run. What it proves: the warehouse is not the end of the line, the
   refresh is atomic enough to read through, and every row on the application's
   side names the run that produced it.
+- **The same run against S3**: every command above takes an `s3://bucket/prefix`
+  wherever it takes a directory, because only the root changes
+  (`docs/stages.md`, "Where the lake lives"). Export the lake once,
+  `export LAKE=s3://pra-<stage>-lake/nightly`, have credentials in the
+  environment, and each line becomes:
+
+  ```bash
+  uv run python -m pipeline.backfill --source-dir tests/fixtures --bronze-dir "$LAKE/lake/bronze" --quarantine-dir "$LAKE/lake/quarantine"
+  uv run python -m pipeline.silver --bronze-dir "$LAKE/lake/bronze" --silver-dir "$LAKE/lake/silver" --catalog tests/catalog.json
+  uv run python -m pipeline.gold --data-dir "$LAKE"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.train --warehouse "$LAKE/warehouse/meta.duckdb"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.promote
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.drift --window-days 3 --warehouse "$LAKE/warehouse/meta.duckdb" --out-dir "$LAKE/drift"
+  uv run python -m pipeline.card_index build --source tests/card_text.jsonl --out "$LAKE/catalog/card_index" --embedder hashing
+  uv run python -m pipeline.quality_gate --warehouse "$LAKE/warehouse/meta.duckdb"
+  PIPELINE_DATA_DIR="$LAKE" uv run python -m pipeline.eval --fake evals/transcript.yaml --warehouse "$LAKE/warehouse/meta.duckdb" --card-index "$LAKE/catalog/card_index"
+  uv run python -m pipeline.publish --dry-run --warehouse "$LAKE/warehouse/meta.duckdb"
+  uv run python -m pipeline.run_all --source-dir tests/fixtures --data-dir "$LAKE"
+  ```
+
+  The last line is all of them, and it is the one to show. What it proves: the
+  nightly job is the same command a reviewer just ran, pointed at a bucket, and
+  the warehouse, the MLflow store and the drift report come back to the lake
+  rather than dying with the container.
 - **Dashboard**: not yet. Placeholder for the published archetype and matchup
   views, which read the table the publish step writes.
 

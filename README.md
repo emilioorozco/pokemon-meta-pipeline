@@ -77,9 +77,21 @@ at. Fields are defined in [docs/schema.md](docs/schema.md).
 
 ## Status (what runs today)
 
+The lake is location independent. `PIPELINE_DATA_DIR` and the `--data-dir`
+style flags take an `s3://bucket/prefix` as readily as a directory, the layout
+underneath is identical, and every stage below works unchanged against either,
+so running the whole pipeline without a laptop is one environment variable
+(docs/stages.md, "Where the lake lives").
+
 Bronze ingest is real. The backfill has run against the production bucket:
 **128 games, 0 quarantined, 10 play-date partitions**, all handles anonymized
-and leak-checked before anything was written.
+and leak-checked before anything was written. The event path is the same code
+in two shapes: `python -m pipeline.consume` long-polls the queue from a laptop,
+and `pipeline.lambda_consumer.handler` is that routine as a Lambda on an SQS
+event source mapping, returning partial batch failures so one bad message
+reaches the dead-letter queue without taking nine good ones with it, packaged
+by `Dockerfile.lambda` into an image of boto3, pydantic and pyarrow with no
+Spark, MLflow or LangChain in it.
 
 Silver is real too. `python -m pipeline.silver` reads those bronze partitions
 with PySpark and writes four tables (`games`, `game_sides`, `turns`,
@@ -517,6 +529,8 @@ orchestration/airflow/dags/  the DAG: one BashOperator per stage command
 - [data-handling.md](docs/data-handling.md) collection, anonymization, what is
   never published, deletion and key rotation
 - [demo.md](docs/demo.md) running the pipeline on the fixtures, no AWS account
+- [nightly.md](docs/nightly.md) the scheduled run: what runs when, the
+  variables it expects, and what a red run means
 - [orchestration-on-aws.md](docs/orchestration-on-aws.md) the Step Functions
   design that replaced the AWS stretch goal, and why it was not built
 - [adr/](docs/adr/) architecture decision records

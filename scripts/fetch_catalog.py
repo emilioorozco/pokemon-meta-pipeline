@@ -6,6 +6,10 @@ mark. It is reference data the producer maintains, so it is fetched rather than
 committed, and it is not ours to redistribute.
 
     uv run python scripts/fetch_catalog.py
+
+It lands wherever the lake root points, a directory or an `s3://` prefix, and it
+goes through `pipeline.storage` rather than `download_file` so both work: the
+catalog is a few megabytes of reference data, small enough to move as one body.
 """
 
 import logging
@@ -27,11 +31,13 @@ def main() -> int:
     configure_logging(STAGE)
     settings = Settings.from_env()
     with stage_run(STAGE) as metrics:
-        CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        boto3.client("s3", region_name=settings.region).download_file(
-            settings.bucket, CATALOG_KEY, str(CATALOG_PATH)
-        )
-        size = CATALOG_PATH.stat().st_size
+        CATALOG_PATH.parent.mkdir()
+        body = boto3.client("s3", region_name=settings.region).get_object(
+            Bucket=settings.bucket, Key=CATALOG_KEY
+        )["Body"]
+        catalog = body.read()
+        CATALOG_PATH.write_bytes(catalog)
+        size = len(catalog)
         # One object in, one file out: the rows a catalog fetch moves are files,
         # and its size is the number worth keeping.
         metrics.rows_in = 1

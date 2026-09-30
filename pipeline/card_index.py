@@ -101,16 +101,15 @@ import sys
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Final, Protocol
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.parquet as pq
 from opentelemetry import trace
 
 from pipeline.config import CARD_INDEX_DIR, CARD_TEXT_PATH
 from pipeline.observability import configure_logging, emit_summary, stage_run
+from pipeline.storage import AnyLocation, Location, location, table_bytes
 from pipeline.telemetry import ServiceMetrics
 
 logger = logging.getLogger(__name__)
@@ -500,25 +499,29 @@ def _clip(text: str, limit: int = MAX_EFFECT_CHARS) -> str:
     return flat if len(flat) <= limit else flat[: limit - 3] + "..."
 
 
-def read_cards(source: Path) -> list[Card]:
-    """Every printing in a JSONL corpus. A malformed line is skipped and counted."""
+def read_cards(source: AnyLocation) -> list[Card]:
+    """Every printing in a JSONL corpus. A malformed line is skipped and counted.
+
+    Read whole rather than streamed: the corpus is a few thousand lines of card
+    text, and one read is the only shape that means the same thing on a disk and
+    in a bucket.
+    """
     cards: list[Card] = []
     skipped = 0
-    with source.open(encoding="utf-8") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                record = json.loads(stripped)
-            except json.JSONDecodeError:
-                skipped += 1
-                continue
-            card = Card.from_record(record)
-            if card.card_id and card.name:
-                cards.append(card)
-            else:
-                skipped += 1
+    for line in location(source).read_text().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            skipped += 1
+            continue
+        card = Card.from_record(record)
+        if card.card_id and card.name:
+            cards.append(card)
+        else:
+            skipped += 1
     if skipped:
         logger.warning("skipped unreadable card records", extra={"skipped": skipped})
     return cards
@@ -792,7 +795,7 @@ _PASSAGE_FIELDS: "list[pa.Field[Any]]" = [
 _PASSAGE_SCHEMA: Final = pa.schema(_PASSAGE_FIELDS)
 
 
-def build_index(cards: Sequence[Card], embedder: Embedder, out_dir: Path) -> int:
+def build_index(cards: Sequence[Card], embedder: Embedder, out_dir: AnyLocation) -> int:
     """Embed every passage and write the index. Returns the number of cards written.
 
     Printings collapse into cards first, so the count returned is distinct cards
@@ -814,38 +817,41 @@ def build_index(cards: Sequence[Card], embedder: Embedder, out_dir: Path) -> int
         raise ValueError(
             f"the embedder returned {vectors.shape[0]} rows for {len(passages)} passages"
         )
-    out_dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(
-        pa.Table.from_pydict(
-            {
-                "card_id": [entry.card_id for entry in entries],
-                "name": [entry.name for entry in entries],
-                "record_json": [
-                    json.dumps(_as_record(entry.card), sort_keys=True) for entry in entries
-                ],
-                "printings_json": [
-                    json.dumps([printing.as_record() for printing in entry.printings])
-                    for entry in entries
-                ],
-            },
-            schema=_CARD_SCHEMA,
-        ),
-        out_dir / CARDS_FILE,
+    target = location(out_dir)
+    target.mkdir()
+    (target / CARDS_FILE).write_bytes(
+        table_bytes(
+            pa.Table.from_pydict(
+                {
+                    "card_id": [entry.card_id for entry in entries],
+                    "name": [entry.name for entry in entries],
+                    "record_json": [
+                        json.dumps(_as_record(entry.card), sort_keys=True) for entry in entries
+                    ],
+                    "printings_json": [
+                        json.dumps([printing.as_record() for printing in entry.printings])
+                        for entry in entries
+                    ],
+                },
+                schema=_CARD_SCHEMA,
+            )
+        )
     )
-    pq.write_table(
-        pa.Table.from_pydict(
-            {
-                "card_row": rows,
-                "kind": [passage.kind for passage in passages],
-                "label": [passage.label for passage in passages],
-                "text": [passage.text for passage in passages],
-                "vector": [row.tolist() for row in vectors],
-            },
-            schema=_PASSAGE_SCHEMA,
-        ),
-        out_dir / VECTORS_FILE,
+    (target / VECTORS_FILE).write_bytes(
+        table_bytes(
+            pa.Table.from_pydict(
+                {
+                    "card_row": rows,
+                    "kind": [passage.kind for passage in passages],
+                    "label": [passage.label for passage in passages],
+                    "text": [passage.text for passage in passages],
+                    "vector": [row.tolist() for row in vectors],
+                },
+                schema=_PASSAGE_SCHEMA,
+            )
+        )
     )
-    (out_dir / META_FILE).write_text(
+    (target / META_FILE).write_text(
         json.dumps(
             {
                 "format_version": INDEX_FORMAT_VERSION,
@@ -858,8 +864,7 @@ def build_index(cards: Sequence[Card], embedder: Embedder, out_dir: Path) -> int
             },
             indent=2,
         )
-        + "\n",
-        encoding="utf-8",
+        + "\n"
     )
     return len(entries)
 
@@ -920,7 +925,9 @@ class CardIndex:
         self._bm25: BM25 | None = None
 
     @classmethod
-    def load(cls, directory: Path, embedder: Embedder | None = None, **options: Any) -> "CardIndex":
+    def load(
+        cls, directory: AnyLocation, embedder: Embedder | None = None, **options: Any
+    ) -> "CardIndex":
         """Read an index off disk, with the embedder its `meta.json` names.
 
         An embedder passed in wins, which is how a test builds with the hashing
@@ -930,21 +937,22 @@ class CardIndex:
         meaningless. An index from an older layout is refused for the same
         reason, and with the same bluntness.
         """
-        meta_path = directory / META_FILE
-        cards_path = directory / CARDS_FILE
-        vectors_path = directory / VECTORS_FILE
+        root = location(directory)
+        meta_path = root / META_FILE
+        cards_path = root / CARDS_FILE
+        vectors_path = root / VECTORS_FILE
         if not meta_path.is_file() or not vectors_path.is_file():
             raise FileNotFoundError(
                 f"no card index at {directory}: run `python -m pipeline.card_index build`"
             )
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta = json.loads(meta_path.read_text())
         version = _as_int(meta.get("format_version")) or 1
         if version != INDEX_FORMAT_VERSION or not cards_path.is_file():
             raise ValueError(
                 f"the card index at {directory} is format {version}, this reads "
                 f"{INDEX_FORMAT_VERSION}: rebuild it with `python -m pipeline.card_index build`"
             )
-        card_table = pq.read_table(cards_path)
+        card_table = cards_path.read_table()
         entries = [
             IndexedCard(
                 card=Card.from_record(json.loads(str(record))),
@@ -956,7 +964,7 @@ class CardIndex:
                 strict=True,
             )
         ]
-        passage_table = pq.read_table(vectors_path)
+        passage_table = vectors_path.read_table()
         passages = [
             Passage(kind=str(kind), label=str(label), text=str(text))
             for kind, label, text in zip(
@@ -1051,7 +1059,7 @@ def render_hits(hits: Sequence[Hit]) -> str:
 
 
 def make_lookup_cards_tool(
-    index_dir: Path,
+    index_dir: AnyLocation,
     *,
     tracer: trace.Tracer,
     metrics: ServiceMetrics,
@@ -1097,11 +1105,11 @@ def make_lookup_cards_tool(
 # ------------------------------------------------------------ entry point --
 
 
-def build(source: Path, out_dir: Path, embedder: Embedder) -> int:
+def build(source: AnyLocation, out_dir: AnyLocation, embedder: Embedder) -> int:
     """Read the corpus, build the index, and say what was written."""
     printings = read_cards(source)
     written = build_index(printings, embedder, out_dir)
-    meta = json.loads((out_dir / META_FILE).read_text(encoding="utf-8"))
+    meta = json.loads((location(out_dir) / META_FILE).read_text())
     logger.info(
         "card index built",
         extra={
@@ -1127,14 +1135,14 @@ def main(argv: list[str] | None = None) -> int:
     builder = subcommands.add_parser("build", help="embed the card corpus into an index")
     builder.add_argument(
         "--source",
-        type=Path,
+        type=location,
         default=CARD_TEXT_PATH,
         metavar="PATH",
         help=f"the JSONL corpus to read (default: {CARD_TEXT_PATH})",
     )
     builder.add_argument(
         "--out",
-        type=Path,
+        type=location,
         default=CARD_INDEX_DIR,
         metavar="PATH",
         help=f"where to write the index (default: {CARD_INDEX_DIR})",
@@ -1154,7 +1162,7 @@ def main(argv: list[str] | None = None) -> int:
     query.add_argument("-k", type=int, default=DEFAULT_K, help=f"results (default: {DEFAULT_K})")
     query.add_argument(
         "--index",
-        type=Path,
+        type=location,
         default=CARD_INDEX_DIR,
         metavar="PATH",
         help=f"the index to read (default: {CARD_INDEX_DIR})",
@@ -1178,7 +1186,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(render_hits(hits) + "\n")
         return 0
 
-    source: Path = args.source
+    source: Location = args.source
     if not source.is_file():
         # Not an error. The corpus is fetched from a public API and is not
         # committed, so a clone that has not fetched it has nothing to index,
@@ -1197,7 +1205,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with stage_run(STAGE) as metrics:
         written = build(source, args.out, make_embedder(args.embedder))
-        meta = json.loads((args.out / META_FILE).read_text(encoding="utf-8"))
+        meta = json.loads((location(args.out) / META_FILE).read_text())
         metrics.rows_in = int(meta["printings"])
         metrics.rows_out = written
         metrics.rows_quarantined = 0

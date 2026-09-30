@@ -77,7 +77,6 @@ import sys
 from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Final
 
 import duckdb
@@ -99,6 +98,7 @@ from pipeline.sql_gate import (
     gate_from_env,
     schema_summary,
 )
+from pipeline.storage import AnyLocation, Location, duckdb_connect, location
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
 
 logger = logging.getLogger(__name__)
@@ -395,7 +395,7 @@ def current_question() -> str:
 # ----------------------------------------------------------------- tools --
 
 
-def open_warehouse(path: Path) -> duckdb.DuckDBPyConnection:
+def open_warehouse(path: AnyLocation) -> duckdb.DuckDBPyConnection:
     """A read-only connection to the warehouse, with a statement timeout on it.
 
     Read-only is the cheap half of the protection and the allowlist in
@@ -403,8 +403,14 @@ def open_warehouse(path: Path) -> duckdb.DuckDBPyConnection:
     the validator cannot write. The timeout is set through a configuration
     parameter and is tolerated if this DuckDB build does not have it: a version
     without the setting should serve queries, not refuse to start.
+
+    A warehouse on S3 is downloaded first and opened with `httpfs` loaded, both
+    through `pipeline.storage.duckdb_connect`: DuckDB opens a database file, not
+    a stream, and the ops views inside that file read the lake. The download
+    happens once per process, which for a service is once per start and not once
+    per question.
     """
-    connection = duckdb.connect(str(path), read_only=True)
+    connection = duckdb_connect(path)
     with contextlib.suppress(duckdb.Error):
         connection.execute(f"SET statement_timeout = '{STATEMENT_TIMEOUT_S}s'")
     return connection
@@ -429,7 +435,7 @@ def gate_refusal(decision: GateDecision) -> str:
 def run_marts_query(
     sql: str,
     *,
-    warehouse: Path,
+    warehouse: AnyLocation,
     allowed_tables: Sequence[str] = ALLOWED_TABLES,
 ) -> tuple[str, int]:
     """Validate, run and render one query. Returns the tool's text and the row count.
@@ -446,7 +452,7 @@ def run_marts_query(
 def guarded_query(
     sql: str,
     *,
-    warehouse: Path,
+    warehouse: AnyLocation,
     allowed_tables: Sequence[str] = ALLOWED_TABLES,
     gate: SqlGate | None = None,
     question: str = "",
@@ -475,7 +481,7 @@ def guarded_query(
     return answer, rows, decision
 
 
-def execute_marts_query(sql: str, *, warehouse: Path) -> tuple[str, int]:
+def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> tuple[str, int]:
     """Run one already-checked statement and render what came back.
 
     Split out of `guarded_query` so that "is this allowed" and "what does it
@@ -483,13 +489,14 @@ def execute_marts_query(sql: str, *, warehouse: Path) -> tuple[str, int]:
     checks anything, and nothing above here touches a connection.
     """
     limited = with_limit(sql)
-    if not warehouse.is_file():
+    target = location(warehouse)
+    if not target.is_file():
         return (
-            f"the warehouse is not built: nothing at {warehouse.name}. "
+            f"the warehouse is not built: nothing at {target.name}. "
             "Run `python -m pipeline.gold` first.",
             0,
         )
-    connection = open_warehouse(warehouse)
+    connection = open_warehouse(target)
     try:
         result = connection.sql(limited)
         columns = list(result.columns)
@@ -507,7 +514,7 @@ def execute_marts_query(sql: str, *, warehouse: Path) -> tuple[str, int]:
 
 def make_query_marts_tool(
     *,
-    warehouse: Path,
+    warehouse: AnyLocation,
     tracer: trace.Tracer,
     metrics: ServiceMetrics,
     allowed_tables: Sequence[str] = ALLOWED_TABLES,
@@ -574,10 +581,10 @@ def summarize(text: str, width: int = 100) -> str:
 
 def marts_tools(
     *,
-    warehouse: Path = WAREHOUSE_PATH,
+    warehouse: AnyLocation = WAREHOUSE_PATH,
     tracer: trace.Tracer,
     metrics: ServiceMetrics,
-    card_index: Path | None = None,
+    card_index: AnyLocation | None = None,
     gate: SqlGate | None = None,
 ) -> list[BaseTool]:
     """Every tool the agent gets: the SQL one always, the card one when there is an index.
@@ -750,8 +757,8 @@ def token_usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
 def build_agent(
     *,
     model: BaseChatModel | None = None,
-    warehouse: Path = WAREHOUSE_PATH,
-    card_index: Path | None = None,
+    warehouse: AnyLocation = WAREHOUSE_PATH,
+    card_index: AnyLocation | None = None,
     tracer: trace.Tracer | None = None,
     metrics: ServiceMetrics | None = None,
     gate: SqlGate | None = None,
@@ -792,11 +799,12 @@ def build_agent(
     )
 
 
-def default_card_index(path: Path | None) -> Path | None:
+def default_card_index(path: AnyLocation | None) -> Location | None:
     """The card index to use, or None when there is no built index to load."""
     if path is None:
         return None
-    return path if path.is_dir() else None
+    resolved = location(path)
+    return resolved if resolved.is_dir() else None
 
 
 # ------------------------------------------------------------ entry point --
@@ -848,17 +856,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repl", action="store_true", help="ask questions until end of file")
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help=f"the DuckDB warehouse to read (default: {WAREHOUSE_PATH})",
+        help=(
+            "the DuckDB warehouse to read, a file or an s3:// object that is "
+            f"downloaded to read (default: {WAREHOUSE_PATH})"
+        ),
     )
     parser.add_argument(
         "--card-index",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
-        help="a built card index directory; without one the agent has only the SQL tool",
+        help="a built card index directory or s3:// prefix; without one the agent has "
+        "only the SQL tool",
     )
     parser.add_argument(
         "--model", default=None, metavar="NAME", help=f"provider model (default: ${MODEL_VAR})"

@@ -23,8 +23,14 @@ import pytest
 
 from pipeline import run_all
 from pipeline.observability import STATUS_FAILED, STATUS_OK
+from pipeline.quality_gate import EXIT_FAILED
 from pipeline.run_all import STATUS_SKIPPED, Stage
 from tests.conftest import FIXTURES_DIR, TEST_HMAC_KEY
+
+# The gate's verdict is tested next door, over a hand-written mart; the refusal
+# this module needs is the same warehouse, so the builder is shared rather than
+# written twice and allowed to drift from the mart's real columns.
+from tests.test_quality_gate import warehouse_with
 
 # Stage commands that need no pipeline at all. `exit 7` rather than `false`,
 # because a runner that returned 1 for every failure would pass a test written
@@ -169,11 +175,46 @@ def test_an_unknown_stage_name_is_refused(tmp_path: Path, monkeypatch: pytest.Mo
 def test_a_named_insights_table_is_what_lets_the_publish_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The last stage is a skip on a clone and a step on a configured machine."""
+    """The last stage is a skip on a clone and a step on a configured machine.
+
+    No `--source-dir` here, so this is the ordinary bucket-fed run and the
+    local-source guard below has nothing to say about it.
+    """
     ran = fake_commands(monkeypatch)
     monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
 
     assert run(monkeypatch, tmp_path, ["--skip", "silver,gold"]) == 0
+
+    assert ran[-1] == "publish"
+
+
+def test_a_source_directory_run_does_not_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named table is not consent: a directory of blobs is nobody's production data."""
+    ran = fake_commands(monkeypatch)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+
+    assert run(monkeypatch, tmp_path, ["--source-dir", str(FIXTURES_DIR)]) == 0
+
+    assert "publish" not in ran
+    (row,) = [row for row in metric_rows(tmp_path) if row["stage"] == "run_all"]
+    (publish,) = [stage for stage in _extra(row)["stages"] if stage["stage"] == "publish"]
+    assert publish["status"] == STATUS_SKIPPED
+    assert publish["reason"] == (
+        "the run was fed from a local source directory, not the bucket; "
+        "pass --publish to publish anyway"
+    )
+
+
+def test_publish_says_yes_to_a_source_directory_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag the reason names is the whole of the way round it."""
+    ran = fake_commands(monkeypatch)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+
+    assert run(monkeypatch, tmp_path, ["--source-dir", str(FIXTURES_DIR), "--publish"]) == 0
 
     assert ran[-1] == "publish"
 
@@ -214,6 +255,51 @@ def test_the_source_directory_only_reaches_the_stage_that_reads_blobs() -> None:
 
 def test_an_absent_warehouse_counts_zero_feature_rows(tmp_path: Path) -> None:
     assert run_all.feature_rows(tmp_path / "nothing.duckdb") == 0
+
+
+def test_a_refused_gate_ends_the_run_red_and_leaves_the_publish_unrun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real gate, over a warehouse that says a stage failed last night.
+
+    Every other stage is replaced, because what is under test is the runner's
+    reaction rather than the pipeline: the gate is the one stage allowed to
+    fail a run that got this far, and the publish is the one stage that must
+    not happen after it. The gate itself is the real subprocess, so the code
+    that reaches the caller is the one `pipeline.quality_gate` chose and not a
+    number a fake command was told to exit with. This is what a scheduled
+    runner turns red on, and `.github/workflows/nightly.yml` needs no rule of
+    its own for it: the run's own exit code is the job's.
+    """
+    real_command = run_all.stage_command
+    ran: list[str] = []
+
+    def command(stage: Stage, *, source_dir: Path | None) -> list[str]:
+        ran.append(stage.name)
+        if stage.name == "quality_gate":
+            return real_command(stage, source_dir=source_dir)
+        return OK_COMMAND
+
+    monkeypatch.setattr(run_all, "stage_command", command)
+    monkeypatch.setenv("PRA_INSIGHTS_TABLE", "pra-test-insights")
+    warehouse_dir = tmp_path / "warehouse"
+    warehouse_dir.mkdir()
+    warehouse_with(
+        warehouse_dir,
+        [("silver", "run-0", "failed", "ReconciliationError: games_in != games_out", 0.0, False)],
+    )
+    summary_path = tmp_path / "artifacts" / "run_summary.txt"
+
+    assert run(monkeypatch, tmp_path, ["--summary-path", str(summary_path)]) == EXIT_FAILED
+
+    assert ran[-1] == "quality_gate"
+    assert "publish" not in ran
+    written = summary_path.read_text(encoding="utf-8")
+    assert "run_id: fake-run" in written
+    assert f"exit_code: {EXIT_FAILED}" in written
+    rows = {line.split()[0]: line.split()[1] for line in written.splitlines() if line.strip()}
+    assert rows["quality_gate"] == STATUS_FAILED
+    assert "publish" not in rows
 
 
 def _extra(row: dict[str, Any]) -> dict[str, Any]:

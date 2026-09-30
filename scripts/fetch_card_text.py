@@ -74,7 +74,6 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Final
 
 from pipeline.config import (
@@ -84,6 +83,7 @@ from pipeline.config import (
     STANDARD_REGULATION_MARKS,
 )
 from pipeline.observability import configure_logging, emit_summary, stage_run
+from pipeline.storage import AnyLocation, Location, location
 
 logger = logging.getLogger(__name__)
 
@@ -167,14 +167,14 @@ class CatalogEntry:
     reg: str = ""
 
 
-def read_catalog(path: Path) -> list[CatalogEntry]:
+def read_catalog(path: AnyLocation) -> list[CatalogEntry]:
     """The local catalog as entries, whichever of its two shapes it is in.
 
     The real catalog is keyed by the client's card identifier and the committed
     fixture is keyed by a lowercased name; both map to an object carrying the
     name, the set and the number, which is all this needs.
     """
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(location(path).read_text())
     entries: list[CatalogEntry] = []
     for key, value in raw.items():
         if not isinstance(value, dict):
@@ -468,12 +468,18 @@ def fetch_cards(card_ids: list[str]) -> list[dict[str, Any]]:
     return records
 
 
-def write_records(records: list[dict[str, Any]], out: Path) -> int:
-    """The corpus as JSON lines, sorted by card id so two runs produce one diff."""
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", encoding="utf-8") as handle:
-        for record in sorted(records, key=lambda item: str(item["card_id"])):
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+def write_records(records: list[dict[str, Any]], out: AnyLocation) -> int:
+    """The corpus as JSON lines, sorted by card id so two runs produce one diff.
+
+    Built in memory and written once rather than streamed line by line: the
+    corpus is a few thousand cards, and one write is the only shape that means
+    the same thing on a disk and in a bucket.
+    """
+    lines = [
+        json.dumps(record, ensure_ascii=False, sort_keys=True)
+        for record in sorted(records, key=lambda item: str(item["card_id"]))
+    ]
+    location(out).write_text("".join(line + "\n" for line in lines))
     return len(records)
 
 
@@ -488,14 +494,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--catalog",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
         help=f"the local catalog (default: {CATALOG_PATH}, else {FALLBACK_CATALOG})",
     )
     parser.add_argument(
         "--out",
-        type=Path,
+        type=location,
         default=CARD_TEXT_PATH,
         metavar="PATH",
         help=f"where to write the corpus (default: {CARD_TEXT_PATH})",
@@ -516,8 +522,8 @@ def main(argv: list[str] | None = None) -> int:
     marks: list[str] = [] if args.reg.strip().lower() == "all" else args.reg.split(",")
     configure_logging(STAGE)
 
-    catalog_path: Path = args.catalog or (
-        CATALOG_PATH if CATALOG_PATH.is_file() else FALLBACK_CATALOG
+    catalog_path: Location = location(
+        args.catalog or (CATALOG_PATH if CATALOG_PATH.is_file() else FALLBACK_CATALOG)
     )
     if not catalog_path.is_file():
         logger.error("no catalog to enrich", extra={"path": str(catalog_path)})

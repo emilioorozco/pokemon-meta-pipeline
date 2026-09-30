@@ -46,6 +46,7 @@ from pipeline.observability import (
     emit_summary,
     stage_run,
 )
+from pipeline.storage import AnyLocation, duckdb_connect, location
 
 logger = logging.getLogger(__name__)
 
@@ -105,19 +106,26 @@ class StageHealth:
         return ""
 
 
-def read_health(warehouse: Path) -> list[StageHealth]:
-    """The mart, one object per stage, from a read-only connection."""
-    if not warehouse.is_file():
-        raise QualityGateError(f"no warehouse at {warehouse}; run `python -m pipeline.gold` first")
+def read_health(warehouse: AnyLocation) -> list[StageHealth]:
+    """The mart, one object per stage, from a read-only connection.
+
+    A warehouse on S3 is downloaded first and opened with `httpfs` loaded:
+    `mart_pipeline_health` is a view over the run-metrics Parquet, so reading it
+    means reading the lake, not just the file. `pipeline.storage.duckdb_connect`
+    is where both halves live.
+    """
+    target = location(warehouse)
+    if not target.is_file():
+        raise QualityGateError(f"no warehouse at {target}; run `python -m pipeline.gold` first")
     try:
-        connection = duckdb.connect(str(warehouse), read_only=True)
+        connection = duckdb_connect(target)
     except duckdb.Error as unreadable:
-        raise QualityGateError(f"{warehouse} could not be opened: {unreadable}") from unreadable
+        raise QualityGateError(f"{target} could not be opened: {unreadable}") from unreadable
     try:
         rows = connection.sql(QUERY).fetchall()
     except duckdb.Error as missing:
         raise QualityGateError(
-            f"{warehouse} has no readable {HEALTH_TABLE}; run `python -m pipeline.gold` first"
+            f"{target} has no readable {HEALTH_TABLE}; run `python -m pipeline.gold` first"
         ) from missing
     finally:
         connection.close()
@@ -199,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--warehouse",
-        type=Path,
+        type=location,
         default=WAREHOUSE_PATH,
         metavar="PATH",
-        help=f"DuckDB warehouse holding {HEALTH_TABLE}",
+        help=f"DuckDB warehouse holding {HEALTH_TABLE}, a file or an s3:// object",
     )
     args = parser.parse_args(argv)
     configure_logging(STAGE)

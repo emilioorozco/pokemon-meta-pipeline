@@ -94,6 +94,7 @@ from pipeline.quarantine import (
 )
 from pipeline.settings import Settings
 from pipeline.source import LocalSource, S3Source, Source, SourceBlob, SourceObject
+from pipeline.storage import AnyLocation, location
 
 if TYPE_CHECKING:  # the boto3 stubs are a dev dependency, not a runtime one
     from mypy_boto3_s3.client import S3Client
@@ -166,8 +167,8 @@ class Outcome:
 class Quarantiner:
     """Counts every rejection and writes it, unless the run is a dry run."""
 
-    def __init__(self, directory: Path, when: datetime, *, dry_run: bool) -> None:
-        self.directory = directory
+    def __init__(self, directory: AnyLocation, when: datetime, *, dry_run: bool) -> None:
+        self.directory = location(directory)
         self.when = when
         self.dry_run = dry_run
         self.counts: dict[str, int] = {}
@@ -201,8 +202,8 @@ class Quarantiner:
 def run_backfill(
     settings: Settings,
     s3: "S3Client | None" = None,
-    bronze_dir: Path = BRONZE_DIR,
-    quarantine_dir: Path = QUARANTINE_DIR,
+    bronze_dir: AnyLocation = BRONZE_DIR,
+    quarantine_dir: AnyLocation = QUARANTINE_DIR,
     *,
     source: Source | None = None,
     now: datetime | None = None,
@@ -340,7 +341,7 @@ def _prepare(
 
 def land_records(
     pending: Sequence[Prepared],
-    bronze_dir: Path,
+    bronze_dir: AnyLocation,
     when: datetime,
     real_handles: set[str],
     *,
@@ -364,7 +365,7 @@ def land_records(
 
 def _land(
     pending: list[Prepared],
-    bronze_dir: Path,
+    bronze_dir: AnyLocation,
     when: datetime,
     rejects: Quarantiner,
     *,
@@ -462,17 +463,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--bronze-dir",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
-        help="where the landed rows go (default: the configured bronze directory)",
+        help="where the landed rows go, a directory or an s3:// prefix "
+        "(default: the configured bronze directory)",
     )
     parser.add_argument(
         "--quarantine-dir",
-        type=Path,
+        type=location,
         default=None,
         metavar="PATH",
-        help="where rejected blobs go (default: the configured quarantine directory)",
+        help="where rejected blobs go, a directory or an s3:// prefix "
+        "(default: the configured quarantine directory)",
     )
     args = parser.parse_args(argv)
 
