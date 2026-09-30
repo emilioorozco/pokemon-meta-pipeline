@@ -27,14 +27,14 @@ flowchart LR
   end
   subgraph PIPE["This pipeline (downstream consumer)"]
     BF["Backfill"]
-    SQS["SQS consumer"]
+    SQS["Lambda consumer"]
     BRZ["Bronze Parquet"]
     SLV["Spark silver"]
     GLD["dbt gold on DuckDB"]
     MDL["LightGBM under MLflow"]
     SRV["FastAPI serving"]
     AGT["LangChain agent"]
-    AIR["Airflow orchestration"]
+    AIR["Nightly on GitHub Actions"]
     BF --> BRZ
     SQS --> BRZ
     BRZ --> SLV
@@ -77,21 +77,37 @@ at. Fields are defined in [docs/schema.md](docs/schema.md).
 
 ## Status (what runs today)
 
-The lake is location independent. `PIPELINE_DATA_DIR` and the `--data-dir`
-style flags take an `s3://bucket/prefix` as readily as a directory, the layout
-underneath is identical, and every stage below works unchanged against either,
-so running the whole pipeline without a laptop is one environment variable
+Nothing here needs a machine that stays up. There are two halves and they run
+in two places. The **event path** is immediate: an upload lands under `parsed/`
+in the application's bucket, a bucket notification puts a message on
+`pra-<stage>-parsed-games`, and a Lambda built from `Dockerfile.lambda` writes
+that game into bronze on the lake within seconds, about fifteen measured on
+dev, with a production backlog of 109 games drained in under forty. The
+**batch path** is `.github/workflows/nightly.yml`: silver, gold, train,
+promote, drift, the quality gate and the publish, on a GitHub-hosted runner
+against the lake in S3, every day at 10:00 UTC and again on Sunday at 09:00
+with a backfill in front of it. The laptop path further down, `data/` under
+`op run` with Airflow and MLflow in Compose, is the development mode: it is how
+the pipeline is worked on and demonstrated, not how the product runs.
+Operations, below, is where to look when either half misbehaves.
+
+The lake is location independent, which is what makes that possible.
+`PIPELINE_DATA_DIR` and the `--data-dir` style flags take an
+`s3://bucket/prefix` as readily as a directory, the layout underneath is
+identical, and every stage below works unchanged against either, so the
+difference between a laptop run and the nightly is one environment variable
 (docs/stages.md, "Where the lake lives").
 
 Bronze ingest is real. The backfill has run against the production bucket:
 **128 games, 0 quarantined, 10 play-date partitions**, all handles anonymized
 and leak-checked before anything was written. The event path is the same code
-in two shapes: `python -m pipeline.consume` long-polls the queue from a laptop,
-and `pipeline.lambda_consumer.handler` is that routine as a Lambda on an SQS
-event source mapping, returning partial batch failures so one bad message
-reaches the dead-letter queue without taking nine good ones with it, packaged
-by `Dockerfile.lambda` into an image of boto3, pydantic and pyarrow with no
-Spark, MLflow or LangChain in it.
+in two shapes: `pipeline.lambda_consumer.handler` is the deployed one, a Lambda
+on an SQS event source mapping with reserved concurrency 1, returning partial
+batch failures so one bad message reaches the dead-letter queue after three
+deliveries without taking nine good ones with it, packaged by
+`Dockerfile.lambda` into an image of boto3, pydantic and pyarrow with no Spark,
+MLflow or LangChain in it; `python -m pipeline.consume` is the same routine as
+a long-poll loop, which is the shape it is developed and tested in.
 
 Silver is real too. `python -m pipeline.silver` reads those bronze partitions
 with PySpark and writes four tables (`games`, `game_sides`, `turns`,
@@ -140,7 +156,7 @@ the `win-probability-drift` experiment, prints one verdict line and exits 0
 whether or not it flagged. It never retrains: on a corpus this small the flag
 is a prompt to look, and `train` then `promote` is what acts on it.
 
-Orchestration is real, in two shapes over one list of stages.
+Orchestration is real, in three shapes over one list of stages.
 `python -m pipeline.run_all` runs every stage in order as a subprocess of the
 same interpreter, under one `PRA_RUN_ID`, stopping at the first non-zero exit
 and closing with a table of what ran, what was skipped and how long each took:
@@ -149,11 +165,17 @@ the whole pipeline over the committed fixtures is about twenty seconds.
 `backfill >> spark_silver >> dbt_run >> dbt_test >> build_features >> train >>
 promote >> drift >> quality_gate >> publish`, every task a `BashOperator`
 calling one of the commands below so the DAG holds no pipeline logic of its own.
-Both run `python -m pipeline.quality_gate` before the publish, which reads
-`mart_pipeline_health` and fails the run when a stage's last run failed or its
-quarantine rate is over the threshold: that is what turns a telemetry row into a
-red run, and it is why numbers a gate would have refused never reach the
-application.
+`.github/workflows/nightly.yml` is the third shape and the one the product
+actually runs on: the same `run_all` over the same list, on a runner that
+exists for the length of the run, against the lake in S3, with the backfill
+turned into a logged skip on the nights the consumer has already landed bronze
+([docs/nightly.md](docs/nightly.md)). Airflow is the shape to reach for while
+developing, because a DAG run with a `--conf` is easier to poke at than a
+workflow dispatch. All three run `python -m pipeline.quality_gate` before the
+publish, which reads `mart_pipeline_health` and fails the run when a stage's
+last run failed or its quarantine rate is over the threshold: that is what
+turns a telemetry row into a red run, and it is why numbers a gate would have
+refused never reach the application.
 
 The loop closes. `python -m pipeline.publish` writes the marts into the
 application's DynamoDB table (`PRA_INSIGHTS_TABLE`), keyed the way its pages
@@ -233,7 +255,7 @@ containers it has always been.
 ```bash
 uv sync --group dev                                            # install, dev group included
 op run --env-file=.env.op -- uv run python -m pipeline.backfill # full backfill from S3
-uv run python -m pipeline.consume                              # drain the event queue into bronze
+uv run python -m pipeline.consume                              # the event path as a local loop
 uv run python -m pipeline.silver                               # bronze -> silver, needs Java
 uv run python -m pipeline.gold                                 # silver -> gold, dbt on DuckDB
 uv run python -m pipeline.train                                # gold -> model, tracked in MLflow
@@ -308,10 +330,11 @@ Query the result with DuckDB, which reads the Parquet files in place:
 uv run python -c "import duckdb; duckdb.sql(\"select play_date, count(*) games from read_parquet('data/lake/bronze/**/*.parquet', hive_partitioning=true) group by 1 order by 1\").show()"
 ```
 
-The event path exists as a command: `python -m pipeline.consume` drains S3
-notifications from an SQS queue into the same bronze write and removes a game
-when its object is deleted, with the queue, its dead-letter queue and the bucket
-notification still to be deployed ([docs/stages.md](docs/stages.md)).
+The event path also exists as a command: `python -m pipeline.consume` drains S3
+notifications from the queue into the same bronze write and removes a game when
+its object is deleted. Nobody runs it against a deployed environment, because
+the Lambda is already draining that queue; it is the shape to run against a
+scratch lake while changing the ingest ([docs/stages.md](docs/stages.md)).
 
 The four test commands are one suite split by cost: the default run skips
 anything marked `spark`, `dbt` or `ml`, `-m spark` runs the silver tests, each
@@ -344,8 +367,9 @@ PRA_RUN_ID=nightly-1 uv run python -m pipeline.backfill --source-dir tests/fixtu
 uv run python -c "import duckdb; duckdb.sql(\"select stage, last_status, last_duration_s, quarantine_rate from read_parquet('data/lake/run_metrics/*.parquet')\").show()"
 ```
 
-Under the scheduler that identifier is Airflow's own, so one DAG run is one
-string in the user interface, in every log line and in every `run_metrics` row:
+Under the nightly that identifier is the workflow run's, and under Airflow it
+is the DAG run's, so one run of the graph is one string in the user interface,
+in every log line and in every `run_metrics` row:
 
 ```bash
 docker compose build airflow
@@ -364,11 +388,11 @@ event-driven consumer is the one landing bronze. Details in
 [docs/stages.md](docs/stages.md) section 7.
 
 AWS (Amazon Web Services) Step Functions, the managed alternative in the
-roadmap below, stayed a design rather than a build: this pipeline already has
-an orchestrator that runs anywhere Docker does, with one command and no AWS
-account, and standing up a state machine, an ECS (Elastic Container Service)
-task role and a database for MLflow to run what a laptop already runs
-correctly would be infrastructure with no user. The design, a state machine
+roadmap below, stayed a design rather than a build: the batch stages already
+run unattended from a scheduled workflow that costs nothing between runs, and
+standing up a state machine, an ECS (Elastic Container Service) task role and a
+database for MLflow to run what a cron in CI already runs correctly would be
+infrastructure with no user. The design, a state machine
 mirroring the DAG above one to one, its retries, its cost, and when it would
 actually be worth building, is in
 [docs/orchestration-on-aws.md](docs/orchestration-on-aws.md).
@@ -377,6 +401,50 @@ Quality gates, all enforced in continuous integration (CI) on Python 3.11 and
 3.12: `ruff check` and `ruff format --check`, `mypy` with untyped definitions
 disallowed, all four pytest runs with a 70% coverage floor on the combined
 number, and the checked-in contract file tested against the reader.
+
+## Operations
+
+**Last night's run.** Actions tab, the `Nightly` workflow, newest run. The job
+summary is the page to read: the run identifier, the environment, whether the
+backfill ran, what the quality gate said and whether the publish ran, with the
+whole `run_all` stage table under it. That run identifier is also the one
+`/insights` shows in the application, so the numbers a reader is looking at
+name the run that produced them.
+
+**Where the logs are.** The event path writes JSON lines to CloudWatch, log
+group `/aws/lambda/pra-<stage>-parsed-games-consumer`, one invocation per
+request id. The batch path writes them to the Actions job log, with
+`run_summary.txt` and `drift_report.md` attached to the run for thirty days.
+Both halves also write a `run_metrics` row per stage to the lake, which is the
+one place that counts them together: the `ops` dbt models read it back as
+`run_metrics` and `mart_pipeline_health`.
+
+**When the gate goes red.** `quality_gate` runs before `publish`, so a refusal
+means nothing was written and `/insights` is still serving the last good run's
+numbers. There is nothing to roll back. Read the job summary for the stage it
+named, then the artifacts, fix the cause, and run it again:
+
+```bash
+gh workflow run nightly.yml -f stage=prod                  # -f full_backfill=true to catch up
+```
+
+**When the dead-letter queue is not empty.** A message reaches it after three
+deliveries, so anything on it is a game the consumer failed three times and a
+retry alone will not fix: a contract break, an object that went away, a bug.
+Depth is the alarm worth having, because by construction it is zero. Read the
+bodies in the SQS console for the object key, find that request id in the log
+group above for the reason, then redrive once the cause is fixed. The bronze
+write is idempotent, so a replay lands the same row.
+
+**The off switch.** `-c consumerEnabled=false` on the application's CDK stack
+disables the event source mapping and leaves the queue filling, which is what
+to reach for when a bad image is landing bad rows; the application repository
+documents it. The weekly backfill is what catches up afterwards.
+
+Longer form in [docs/nightly.md](docs/nightly.md), the stage plan in
+[docs/stages.md](docs/stages.md), and the managed alternative that was designed
+and not built in
+[docs/orchestration-on-aws.md](docs/orchestration-on-aws.md).
 
 ## Roadmap
 
@@ -388,8 +456,10 @@ Stage by stage, as defined in [docs/stages.md](docs/stages.md).
 - [x] HMAC anonymization with a post-write leak check
 - [x] Committed anonymized fixtures and a refresh script
 - [x] Data-handling, consent, deletion and key-rotation policy
-- [ ] Event-driven ingest: S3 notification to an Amazon Simple Queue Service
-      (SQS) queue with a dead-letter queue, drained by a consumer
+- [x] Event-driven ingest: S3 notification to an Amazon Simple Queue Service
+      (SQS) queue with a dead-letter queue, drained by a Lambda consumer
+- [x] The batch stages unattended: a scheduled workflow per environment, with
+      the identifiers on GitHub Environments and no stored credential
 - [x] Silver in PySpark: typed tables, cards exploded, archetypes resolved
 - [x] Gold in dbt on DuckDB: star schema and marts, with dbt tests
 - [x] Per-turn feature table in dbt, with a date-based train and holdout split
@@ -427,9 +497,10 @@ Each limit is a deliberate choice, with the reason and what changes at scale.
   into one SQS queue with a dead-letter queue covers the requirement. At higher
   volume the consumer is the piece that changes (batch reads, more workers, or
   a Spark job over an S3 inventory report); the contract does not.
-- **No Kubernetes.** The producer is Lambda, local runs are containers and
-  Compose, and the orchestration layer is Airflow with Step Functions as the
-  AWS-managed option. Nothing here needs a cluster to stay up.
+- **No Kubernetes.** The producer is Lambda, so is the event consumer, the
+  batch stages are a scheduled workflow on a runner that exists for forty
+  minutes a day, and local runs are containers and Compose. Nothing here needs
+  a cluster to stay up.
 - **No geospatial data.** Games carry no location, so nothing here pretends to.
 - **Cards seen are not decklists.** A stock export reveals only the cards a
   side played or revealed, so inclusion rates over stock games are lower
@@ -528,7 +599,8 @@ orchestration/airflow/dags/  the DAG: one BashOperator per stage command
   things the battle log cannot say
 - [data-handling.md](docs/data-handling.md) collection, anonymization, what is
   never published, deletion and key rotation
-- [demo.md](docs/demo.md) running the pipeline on the fixtures, no AWS account
+- [demo.md](docs/demo.md) the development mode: the whole pipeline on the
+  fixtures, no AWS account
 - [nightly.md](docs/nightly.md) the scheduled run: what runs when, the
   variables it expects, and what a red run means
 - [orchestration-on-aws.md](docs/orchestration-on-aws.md) the Step Functions

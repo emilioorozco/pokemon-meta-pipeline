@@ -262,9 +262,12 @@ change.
 Command: `python -m pipeline.consume` (`--once`, `--max-messages N`,
 `--wait-seconds N`, `--bronze-dir`, `--quarantine-dir`), or the `consumer`
 service in `compose.yaml`, which is the same command in a container with the
-lake mounted from the host. That command is the local shape of this stage; the
-deployed shape is the Lambda in 1c below, which runs the same routine without
-a laptop. Either way the bucket notification on `parsed/` for
+lake mounted from the host. This is the development shape of the stage and
+nothing operational depends on it: the deployed shape is the Lambda in 1c
+below, which runs the same routine with no machine of its own, and the queue
+of a deployed environment already has that function on it. Reach for the
+command to point the ingest at a scratch lake while changing it, not to drain
+a real queue. Either way the bucket notification on `parsed/` for
 `s3:ObjectCreated:*` and `s3:ObjectRemoved:*`, the `parsed-games` queue and its
 dead-letter queue at three deliveries are defined in the application's stack.
 The command-line consumer reads `PRA_QUEUE_URL`, which nothing else does.
@@ -390,11 +393,16 @@ is waiting on the reply.
 `.github/workflows/consumer-image.yml` builds and pushes it on every push to
 `main` that touches `pipeline/`, `contract/` or the Dockerfile, tags it
 `:latest` and `:<commit>`, then runs `aws lambda update-function-code` on the
-commit tag and waits for the update to finish. It assumes its role by OpenID
-Connect, so no access key is stored; the role, the region, the registry
-repository and the function name are repository variables set by hand, and the
-workflow skips with a notice when they are unset, so a fork does not see a red
-build for not having an account.
+commit tag and waits for the update to finish. It does that once per
+environment: the job is a matrix over `dev` and `prod`, `fail-fast` off so a
+broken dev deploy does not hold prod back, and a `workflow_dispatch` input
+narrows it to one when only one needs rebuilding. It assumes its role by
+OpenID Connect, so no access key is stored; the role, the region, the registry
+repository and the function name are variables on the GitHub Environment of
+the same name, set by hand, which is also what puts the stage in the token's
+subject that the role's trust policy is bound to. The workflow skips an
+environment with a notice when its variables are unset, so a fork does not see
+a red build for not having an account.
 
 How to watch it. The logs are JSON lines in the function's CloudWatch log
 group, carrying the same `run_id`, `stage` and event fields every other stage
@@ -1429,10 +1437,12 @@ win-rate baseline, which is the gate working.
 
 ### Still to come
 
-Sensors rather than a clock, once the SQS consumer is live: a DAG that starts
-when bronze has new partitions is a better shape than one that starts at 06:00
-and finds nothing. AWS Step Functions remains the managed alternative (stage
-list, stretch).
+Sensors rather than a clock: now that the consumer is live and landing bronze
+continuously, a graph that starts when there are new partitions is a better
+shape than one that starts at a fixed hour and finds nothing. The scheduled
+workflow in [nightly.md](nightly.md) is the clock version, and it is what runs
+today. AWS Step Functions remains the managed alternative (stage list,
+stretch).
 
 ## 8. Publish (in progress)
 
@@ -1444,9 +1454,12 @@ pipeline, and the application cannot read that, so the last step copies the
 public-safe marts into the store it already reads on every request.
 
 Command: `python -m pipeline.publish` (`--warehouse`, `--table`, `--dry-run`,
-`--tracking-uri`). It is the last task of the DAG, after `quality_gate` rather
-than before it: a run whose gate refused must not put its numbers in front of
-the application's readers, and a failed task stops what follows it. The runner
+`--tracking-uri`). Nobody runs it as routine: it is the last stage of the
+nightly, after `quality_gate` rather than before it, because a run whose gate
+refused must not put its numbers in front of the application's readers and a
+failed stage stops what follows it. A publish by hand is a recovery, and the
+way to do it is to rerun the whole nightly (`gh workflow run nightly.yml -f
+stage=prod`) so the gate is in front of it as usual. The runner
 and the DAG both skip it with a logged reason when `PRA_INSIGHTS_TABLE` is
 unset, which is the normal state of a clone. The runner skips it a second way:
 a run given `--source-dir` read its blobs from a directory rather than from the
