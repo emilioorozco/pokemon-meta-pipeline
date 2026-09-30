@@ -1,0 +1,64 @@
+# The event consumer as a Lambda container image.
+#
+#   docker build -f Dockerfile.lambda -t pipeline-consumer .
+#   docker run --rm -p 9000:8080 pipeline-consumer
+#   curl -s localhost:9000/2015-03-31/functions/function/invocations -d @event.json
+#
+# A third image file rather than a stage in `Dockerfile`, for the same reason
+# `Dockerfile.serve` is its own: the base is different. This one starts from
+# the AWS runtime interface image, which brings the client that turns an
+# invocation into a call to `pipeline.lambda_consumer.handler`, and the other
+# two start from `python:3.12-slim` because they are a process with an
+# entrypoint of their own.
+#
+# Why a container image and not a zip: pyarrow is about 100 MB installed, which
+# is over the 250 MB unzipped layer limit only once anything else joins it, and
+# the zip route would mean a build step that prunes the wheel. An image is up to
+# 10 GB, is built from the same lock file the tests ran against, and is what the
+# rest of this repository already knows how to build. The cost is cold start:
+# an image this size takes a few seconds to come up the first time, which for a
+# queue consumer is invisible (the event source mapping retries and the message
+# is still there) and is why the function is not on a synchronous path.
+#
+# x86_64 explicitly, because the function is defined that way in the
+# application's stack and a manifest built on an arm64 laptop would be refused
+# at update time rather than at build time. BuildKit warns that a constant
+# platform on a FROM is usually a mistake; here it is the point, and pinning it
+# in the file rather than only in `docker build --platform` means a build
+# started without that flag still produces an image the function can run.
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# The dependency set is the project's own runtime dependencies from the lock
+# file, minus DuckDB. The handler's import graph is `pipeline.consume` ->
+# `pipeline.backfill`, `pipeline.bronze`, `pipeline.contract`,
+# `pipeline.anonymize`, `pipeline.quarantine`, `pipeline.source`,
+# `pipeline.storage`, `pipeline.observability`, `pipeline.settings`, and what
+# those need is boto3, pydantic, pyarrow and python-dotenv. DuckDB is a core
+# dependency of the project but is imported inside `bronze.read_smoke`, which
+# only the command line calls, so it is dropped here. A test asserts that
+# importing the handler loads no Spark, MLflow or LangChain, none of which are
+# installed here at all.
+#
+# `uv export` rather than a hand-written list, so the versions are the ones
+# `uv.lock` pins and the ones CI tested, and a new transitive dependency of
+# boto3 or pydantic arrives here without anyone remembering to add it.
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes --format requirements-txt \
+      | grep -v '^duckdb==' > /tmp/requirements.txt \
+    && uv pip install --python /var/lang/bin/python3.12 --no-cache -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt pyproject.toml uv.lock /usr/local/bin/uv
+
+# The package, and the vendored producer schema beside it. `contract/` is not
+# imported at run time (`pipeline.contract` is the Pydantic mirror of it), but
+# it is what the mirror is checked against and it is two files, so the image
+# carries the document it validates by.
+COPY pipeline ${LAMBDA_TASK_ROOT}/pipeline
+COPY contract ${LAMBDA_TASK_ROOT}/contract
+
+# Everything else is the function's environment, set in the application's
+# stack: PRA_BUCKET, PRA_PREFIX, AWS_REGION, PIPELINE_DATA_DIR (the s3:// lake
+# root) and HANDLE_HMAC_KEY_SECRET_ARN. PRA_QUEUE_URL is not one of them: the
+# event source mapping reads the queue, not this code.
+CMD ["pipeline.lambda_consumer.handler"]
