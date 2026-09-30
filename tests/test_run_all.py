@@ -25,7 +25,7 @@ from pipeline import run_all
 from pipeline.observability import STATUS_FAILED, STATUS_OK
 from pipeline.quality_gate import EXIT_FAILED
 from pipeline.run_all import STATUS_SKIPPED, Stage
-from tests.conftest import FIXTURES_DIR, TEST_HMAC_KEY
+from tests.conftest import FIXTURES_DIR, TEST_HMAC_KEY, DuplicateUpload
 
 # The gate's verdict is tested next door, over a hand-written mart; the refusal
 # this module needs is the same warehouse, so the builder is shared rather than
@@ -314,14 +314,21 @@ def _extra(row: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.spark
 def test_bronze_through_gold_runs_end_to_end_under_one_run_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, duplicate_upload: DuplicateUpload
 ) -> None:
     """The real commands, in real subprocesses, over the committed games.
 
     `--stop-after gold` because everything after it is the model loop, which has
     its own marked suite; what this proves is that three separate interpreters
     write three rows of one run.
+
+    The source directory is the committed games with one of them uploaded twice
+    (PLA-175), so the run also proves the grain change end to end: bronze lands
+    a row per blob, silver collapses to a row per game, and the warehouse comes
+    out with one game and two seats for the duplicated match.
     """
+    import duckdb
+
     monkeypatch.setenv("HANDLE_HMAC_KEY", TEST_HMAC_KEY.decode("utf-8"))
 
     code = run(
@@ -329,7 +336,7 @@ def test_bronze_through_gold_runs_end_to_end_under_one_run_id(
         tmp_path,
         [
             "--source-dir",
-            str(FIXTURES_DIR),
+            str(duplicate_upload.source_dir),
             "--skip",
             "train,promote,drift,build_card_index",
             "--stop-after",
@@ -344,5 +351,15 @@ def test_bronze_through_gold_runs_end_to_end_under_one_run_id(
     assert {row["stage"] for row in rows} == {"bronze_backfill", "silver", "gold", "run_all"}
     assert {row["status"] for row in rows} == {"ok"}
     landed = next(row for row in rows if row["stage"] == "bronze_backfill")
-    assert landed["rows_out"] == len(sorted(FIXTURES_DIR.glob("*.json")))
-    assert (tmp_path / "warehouse" / "meta.duckdb").is_file()
+    games = len(sorted(FIXTURES_DIR.glob("*.json")))
+    assert landed["rows_out"] == duplicate_upload.blobs == games + 1
+    built = next(row for row in rows if row["stage"] == "silver")
+    assert (built["rows_in"], built["rows_out"]) == (duplicate_upload.blobs, games)
+
+    warehouse = tmp_path / "warehouse" / "meta.duckdb"
+    assert warehouse.is_file()
+    with duckdb.connect(str(warehouse), read_only=True) as connection:
+        fact = connection.sql(
+            "select count(*), count(distinct game_id), max(upload_count) from fct_game_side"
+        ).fetchone()
+    assert fact == (2 * games, games, 2)

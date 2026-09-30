@@ -57,7 +57,11 @@ select
     s.decklist_card_count,
     g.has_full_decklists,
     g.export_variant,
-    g.excluded_from_stats
+    g.excluded_from_stats,
+    -- Game-level, carried here because there is no game dimension: the fact is
+    -- where the game's own attributes live. Above 1 means both players uploaded
+    -- the same match and silver kept the first upload.
+    g.upload_count
 from sides as s
 inner join games as g on s.game_id = g.game_id
 left join opponents as o on s.game_id = o.game_id and s.seat <> o.seat

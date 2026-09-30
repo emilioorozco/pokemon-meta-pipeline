@@ -10,6 +10,11 @@ shapes the committed games do not contain (a renamed archetype, a manual game,
 a token that is a member on one game and a stranger on another) are written as
 bronze rows through the bronze writer itself, so they go through the same
 schema and the same partition layout as everything else.
+
+The fourth such shape is a game uploaded twice, once by each player, which the
+collapse tests build both ways: by hand through the bronze writer, for the rule
+itself, and out of `bronze_with_duplicate_upload` for a whole run over the
+committed games plus the duplicate.
 """
 
 from datetime import UTC, datetime
@@ -30,6 +35,7 @@ from pipeline.contract import (
     SideStats,
     SubEntry,
 )
+from tests.conftest import DuplicateUpload
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
@@ -163,7 +169,8 @@ def write_bronze(bronze_dir: Path, blobs: list[ParsedBlobV2], ingested_at: datet
 
 
 def bronze_of(spark: "SparkSession", bronze_dir: Path) -> "DataFrame":
-    return silver.read_bronze(spark, bronze_dir)
+    """Bronze as every builder below sees it: collapsed to one row per game, as a run does."""
+    return silver.collapse_uploads(silver.read_bronze(spark, bronze_dir))
 
 
 def sides_of(spark: "SparkSession", bronze_dir: Path) -> "DataFrame":
@@ -314,11 +321,113 @@ def test_a_run_without_a_catalog_leaves_the_catalog_columns_null(
     assert cards.where("catalog_name is not null").count() == 0
 
 
+def test_two_uploads_of_one_game_collapse_into_one_game(
+    spark: "SparkSession", tmp_path: Path
+) -> None:
+    """Both players uploaded the same match: one game, the first upload's row, count of two."""
+    bronze_dir = tmp_path / "bronze"
+    shared = blob("2222000000000001", "2026-08-10T12:00:00.000Z")
+    write_partitions(
+        [
+            # Out of upload order on purpose: the rule is the timestamp, not the
+            # order the writer happened to see the blobs in.
+            BronzeRecord(
+                blob=shared,
+                source_key="parsed/user-b/second.json",
+                source_last_modified=LATER,
+            ),
+            BronzeRecord(
+                blob=shared,
+                source_key="parsed/user-a/first.json",
+                source_last_modified=EARLIER,
+            ),
+            BronzeRecord(
+                blob=blob("2222000000000002", "2026-08-11T12:00:00.000Z"),
+                source_key="parsed/user-a/alone.json",
+                source_last_modified=EARLIER,
+            ),
+        ],
+        bronze_dir,
+        EARLIER,
+    )
+    assert silver.read_bronze(spark, bronze_dir).count() == 3
+    collapsed = bronze_of(spark, bronze_dir)
+
+    games = {row["game_id"]: row for row in silver.build_games(collapsed).collect()}
+
+    assert len(games) == 2
+    assert games["2222000000000001"]["upload_count"] == 2
+    # The earlier upload is the row that survived, lineage columns and all.
+    assert games["2222000000000001"]["source_key"] == "parsed/user-a/first.json"
+    assert games["2222000000000002"]["upload_count"] == 1
+    assert games["2222000000000002"]["source_key"] == "parsed/user-a/alone.json"
+
+    sides = silver.build_game_sides(
+        collapsed, silver.archetype_aliases(collapsed), silver.member_tokens(collapsed)
+    ).collect()
+
+    assert sorted(row["seat"] for row in sides if row["game_id"] == "2222000000000001") == [0, 1]
+    assert len(sides) == 4
+
+
+def test_two_uploads_with_the_same_timestamp_break_the_tie_on_the_key(
+    spark: "SparkSession", tmp_path: Path
+) -> None:
+    """A tie is broken by `source_key` ascending, so a rerun keeps the same row."""
+    bronze_dir = tmp_path / "bronze"
+    shared = blob("3333000000000001", "2026-08-12T12:00:00.000Z")
+    write_partitions(
+        [
+            BronzeRecord(
+                blob=shared, source_key="parsed/user-b/b.json", source_last_modified=EARLIER
+            ),
+            BronzeRecord(
+                blob=shared, source_key="parsed/user-a/a.json", source_last_modified=EARLIER
+            ),
+        ],
+        bronze_dir,
+        EARLIER,
+    )
+
+    rows = silver.build_games(bronze_of(spark, bronze_dir)).collect()
+
+    assert len(rows) == 1
+    assert rows[0]["source_key"] == "parsed/user-a/a.json"
+    assert rows[0]["upload_count"] == 2
+
+
+def test_a_whole_run_collapses_the_duplicated_fixture_upload(
+    spark: "SparkSession",
+    bronze_with_duplicate_upload: Path,
+    duplicate_upload: DuplicateUpload,
+    tmp_path: Path,
+) -> None:
+    """The PLA-175 batch end to end: eleven blobs in, ten games out, every count on the grain."""
+    result = silver.run_silver(spark, bronze_with_duplicate_upload, tmp_path / "silver", CATALOG)
+
+    assert result.uploads_in == duplicate_upload.blobs
+    assert result.games_in == result.uploads_in - 1
+    assert result.duplicated_games == 1
+    assert result.rows["games"] == result.games_in
+    assert result.rows["game_sides"] == 2 * result.games_in
+    assert f"uploads_in: {result.uploads_in}" in str(result)
+
+    games = spark.read.parquet(str(tmp_path / "silver" / "games"))
+    row = games.where(games.game_id == duplicate_upload.game_id).collect()
+
+    assert len(row) == 1
+    assert row[0]["upload_count"] == 2
+    assert row[0]["source_key"] == duplicate_upload.first_key
+    assert games.where("upload_count = 1").count() == result.games_in - 1
+
+
 def test_reconciliation_holds_on_the_fixtures(
     spark: "SparkSession", bronze_from_fixtures: Path, tmp_path: Path
 ) -> None:
     result = silver.run_silver(spark, bronze_from_fixtures, tmp_path / "silver", CATALOG)
 
+    assert result.uploads_in == 10
+    assert result.duplicated_games == 0
     assert result.games_in == 10
     assert result.rows["games"] == result.games_in
     assert result.rows["game_sides"] == 2 * result.games_in
