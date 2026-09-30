@@ -97,7 +97,11 @@ jobs:
           REPOSITORY: ${{ steps.ecr.outputs.registry }}/${{ vars.CONSUMER_ECR_REPOSITORY }}
         run: |
           set -eu
-          docker build --platform linux/amd64 -f Dockerfile.lambda \
+          # Lambda pulls a single-platform image manifest and refuses an OCI
+          # image index; BuildKit writes an index whenever it attaches
+          # provenance or SBOM attestations, so both are turned off here.
+          docker build --platform linux/amd64 --provenance=false --sbom=false \
+            -f Dockerfile.lambda \
             -t "$REPOSITORY:${{ github.sha }}" \
             -t "$REPOSITORY:latest" .
           docker push "$REPOSITORY:${{ github.sha }}"
