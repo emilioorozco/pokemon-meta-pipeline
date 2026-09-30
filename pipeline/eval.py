@@ -96,7 +96,7 @@ from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
-from pipeline.storage import AnyLocation, location, tracking_store
+from pipeline.storage import AnyLocation, experiment_id, location, tracking_store
 
 logger = logging.getLogger(__name__)
 
@@ -805,7 +805,10 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
         # directory store behind a flag, and a directory is what the default is.
         os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment(experiment)
+    # The same call the other model stages make: an experiment in a synced
+    # store has to name an `s3://` artifact location when it is created, or its
+    # runs point at a temporary directory that is gone by the next command.
+    mlflow.set_experiment(experiment_id=experiment_id(experiment, tracking_uri))
     with mlflow.start_run(run_name="golden") as run:
         mlflow.log_params(
             {

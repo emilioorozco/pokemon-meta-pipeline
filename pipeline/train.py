@@ -82,7 +82,13 @@ from pipeline.observability import (
     git_commit,
     stage_run,
 )
-from pipeline.storage import AnyLocation, duckdb_connect, location, tracking_store
+from pipeline.storage import (
+    AnyLocation,
+    duckdb_connect,
+    experiment_id,
+    location,
+    tracking_store,
+)
 
 logger = logging.getLogger(__name__)
 STAGE: Final = "train"
@@ -622,7 +628,10 @@ def run_training(
         # `MLFLOW_TRACKING_URI` at the compose service and this never fires.
         os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
     mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment(experiment)
+    # Through `experiment_id` rather than `set_experiment(name)`, because a
+    # store synced out of the lake needs its artifacts on S3 rather than in the
+    # temporary directory this command was handed; `pipeline.storage` says why.
+    mlflow.set_experiment(experiment_id=experiment_id(experiment, tracking_uri))
 
     # Two sibling runs rather than a parent and a child: they are two answers
     # to the same question on the same holdout, and a run table that puts them

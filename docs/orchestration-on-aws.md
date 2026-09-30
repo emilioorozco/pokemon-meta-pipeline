@@ -101,7 +101,10 @@ task's local disk every run and uploaded as an artifact, so there is no EFS
 volume and no lock contention; `mlruns/` is synced to the lake around each model
 command, which is the file store on a schedule rather than the server, and the
 paragraph below is still why the server is the answer the day there is a second
-writer.
+writer. Only the metadata is synced: experiments on a lake are created with an
+`s3://` artifact location under `mlruns-artifacts/`, so a model registered by
+one task is loadable from another, which a path inside a task's own scratch
+directory is not.
 
 With no laptop, `meta.duckdb` needs a home a stateless task can reach: an EFS
 (Elastic File System) volume mounted into every task, or no persistent

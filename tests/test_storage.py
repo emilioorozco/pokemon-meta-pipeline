@@ -20,6 +20,7 @@ from pipeline.settings import DATA_DIR_VAR, DataRootError, validate_data_root
 from pipeline.storage import (
     Location,
     StorageError,
+    artifact_root,
     duckdb_s3_profile,
     local_file,
     location,
@@ -193,6 +194,35 @@ def test_a_synced_directory_comes_back_with_what_was_written(root: Location) -> 
     assert (store / "0" / "a-run" / "metrics").read_text() == "logloss 0.5\n"
 
 
+def test_a_synced_directory_keeps_a_directory_that_holds_nothing(root: Location) -> None:
+    """An empty directory survives the round trip, which object storage does not do for free.
+
+    MLflow's file store reads a run that has no `metrics`, `params` and
+    `artifacts` subdirectories as a run that is not there, and with the
+    artifacts on S3 the local `artifacts` directory of every run is empty. A
+    sync that carried only files would therefore delete every run in the store
+    from the next command's point of view.
+    """
+    store = root / "mlruns"
+    with synced_dir(store) as working:
+        (working / "0" / "a-run" / "artifacts").mkdir(parents=True)
+        (working / "0" / "a-run" / "meta.yaml").write_text("run_id: a-run\n")
+
+    with synced_dir(store, write_back=False) as working:
+        assert (working / "0" / "a-run" / "artifacts").is_dir()
+        assert (working / "0" / "a-run" / "meta.yaml").read_text() == "run_id: a-run\n"
+
+
+def test_an_empty_directory_marker_is_not_a_file(s3_lake: Location) -> None:
+    """The markers are invisible to every reader but the sync that wrote them."""
+    store = s3_lake / "mlruns"
+    with synced_dir(store) as working:
+        (working / "0" / "artifacts").mkdir(parents=True)
+        (working / "0" / "meta.yaml").write_text("experiment_id: 0\n")
+
+    assert [item.name for item in store.iter_files()] == ["meta.yaml"]
+
+
 def test_a_reader_does_not_write_the_synced_store_back(s3_lake: Location) -> None:
     """`write_back=False` is what keeps a read-only command from being a second writer."""
     store = s3_lake / "mlruns"
@@ -221,6 +251,20 @@ def test_the_tracking_store_yields_a_file_uri_for_an_s3_store(s3_lake: Location)
     with tracking_store(str(store)) as uri:
         assert uri.startswith("file:")
         assert (Path(uri[len("file:") :]) / "0" / "meta.yaml").is_file()
+
+
+def test_the_tracking_store_names_an_artifact_prefix_beside_the_store(s3_lake: Location) -> None:
+    """Artifacts go next to the store and not inside it, so the sync never walks them."""
+    store = s3_lake / "mlruns"
+    with tracking_store(str(store)) as uri:
+        assert artifact_root(uri) == str(s3_lake / "mlruns-artifacts")
+    assert artifact_root(uri) is None
+
+
+def test_a_local_tracking_store_names_no_artifact_prefix(tmp_path: Path) -> None:
+    """A laptop keeps the artifacts beside the runs, which is where `mlflow ui` looks."""
+    with tracking_store(f"file:{tmp_path}") as uri:
+        assert artifact_root(uri) is None
 
 
 def test_the_tracking_store_passes_a_server_uri_through() -> None:

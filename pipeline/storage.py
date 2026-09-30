@@ -5,8 +5,9 @@ Every stage already takes a directory (`--data-dir`, `--bronze-dir`,
 the one change that lets that directory be `s3://bucket/prefix` instead of
 `./data`, with the layout under the prefix unchanged: `lake/bronze`,
 `lake/silver`, `lake/quarantine`, `lake/run_metrics`, `catalog/`, `warehouse/`,
-`mlruns/`, `drift/`. Only the root moves, so a run on a laptop and a run in a
-container differ by one environment variable and nothing else.
+`mlruns/`, `mlruns-artifacts/`, `drift/`. Only the root moves, so a run on a
+laptop and a run in a container differ by one environment variable and nothing
+else.
 
 `Location` is the whole interface. The operations on it are the ones the stages
 actually perform and no others: list the files under a prefix, read bytes,
@@ -95,6 +96,10 @@ S3_SCHEME: Final = "s3://"
 SPARK_SCHEME: Final = "s3a://"
 # S3 takes at most this many keys in one `delete_objects` call.
 DELETE_BATCH: Final = 1000
+# The suffix that makes a synced store's artifact prefix out of its own name:
+# `.../mlruns` keeps its metadata and `.../mlruns-artifacts` holds the files.
+# A sibling rather than a child, so the sync never walks the artifacts.
+ARTIFACTS_SUFFIX: Final = "-artifacts"
 # The Hadoop S3 connector, matched to the Hadoop client PySpark 4 ships.
 # Overridable, because the pairing is a property of the image and not of this code.
 DEFAULT_SPARK_PACKAGES: Final = "org.apache.hadoop:hadoop-aws:3.4.2"
@@ -107,6 +112,12 @@ _client: "S3Client | None" = None
 # per process and both go away when it does.
 _downloads: dict[str, Path] = {}
 _scratch: tempfile.TemporaryDirectory[str] | None = None
+# The artifact prefix that goes with each synced tracking store, keyed by the
+# `file:` URI `tracking_store` handed out. Filled on entry and dropped on exit,
+# so it only ever holds the store the running command is inside; `experiment_id`
+# is the only reader. See `tracking_store` for why it is a lookup rather than a
+# second yielded value.
+_artifact_roots: dict[str, str] = {}
 
 
 class StorageError(RuntimeError):
@@ -335,17 +346,14 @@ class Location:
             found = [item for item in self._path.rglob("*") if item.is_file()]
             chosen = [item for item in found if suffix is None or item.name.endswith(suffix)]
             return [Location(item) for item in sorted(chosen)]
-        prefix = f"{self._key}/" if self._key else ""
-        keys: list[str] = []
-        paginator = s3_client().get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
-            for item in page.get("Contents", []):
-                key = item["Key"]
-                if key.endswith("/"):
-                    continue
-                if suffix is None or key.rsplit("/", 1)[-1].endswith(suffix):
-                    keys.append(key)
-        return [Location(f"{S3_SCHEME}{self._bucket}/{key}") for key in sorted(keys)]
+        keys = [
+            key
+            for key in self._all_keys()
+            # A key ending in a slash is an empty-directory marker, not a file;
+            # `upload_tree` says what it is for.
+            if not key.endswith("/") and (suffix is None or key.rsplit("/", 1)[-1].endswith(suffix))
+        ]
+        return [Location(f"{S3_SCHEME}{self._bucket}/{key}") for key in keys]
 
     # ------------------------------------------------------------- content --
 
@@ -422,7 +430,9 @@ class Location:
         if self._path is not None:
             shutil.rmtree(self._path, ignore_errors=True)
             return
-        self._delete_keys([found.key for found in self.iter_files()])
+        # Every key and not only the files, so the empty-directory markers
+        # `upload_tree` writes go with the rest: a local root is removed whole.
+        self._delete_keys(self._all_keys())
 
     def _delete_keys(self, keys: list[str]) -> None:
         """Delete the named objects, in the batches the API takes."""
@@ -446,19 +456,38 @@ class Location:
         s3_client().download_file(self._bucket, self._key, str(destination))
         return destination
 
+    def _all_keys(self) -> list[str]:
+        """Every key under this prefix, including the empty-directory markers.
+
+        `iter_files` drops the markers because a marker is not a file and no
+        caller wants one; the tree sync is the one place that has to see them.
+        """
+        prefix = f"{self._key}/" if self._key else ""
+        keys: list[str] = []
+        paginator = s3_client().get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            keys.extend(item["Key"] for item in page.get("Contents", []))
+        return sorted(keys)
+
     def download_tree(self, destination: Path) -> Path:
-        """Copy everything under this prefix into a local directory and return it."""
+        """Copy everything under this prefix into a local directory and return it.
+
+        Empty directories come back too, from the markers `upload_tree` left;
+        see there for why a directory with nothing in it is worth carrying.
+        """
         destination.mkdir(parents=True, exist_ok=True)
         if self._path is not None:
             if self._path.is_dir():
                 shutil.copytree(self._path, destination, dirs_exist_ok=True)
             return destination
         prefix = f"{self._key}/" if self._key else ""
-        for found in self.iter_files():
-            relative = found.key[len(prefix) :]
-            target = destination / relative
+        for key in self._all_keys():
+            target = destination / key[len(prefix) :]
+            if key.endswith("/"):
+                target.mkdir(parents=True, exist_ok=True)
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            found.download_file(target)
+            Location(f"{S3_SCHEME}{self._bucket}/{key}").download_file(target)
         return destination
 
     def upload_tree(self, source: Path) -> None:
@@ -467,6 +496,16 @@ class Location:
         Not a mirror: nothing is deleted. The one caller is the MLflow sync,
         where the local copy came from this prefix in the first place and a
         deletion would mean a run disappearing because a file was not read back.
+
+        An empty directory is written as a zero-byte object whose key ends in a
+        slash, the convention every S3 tool already draws as a folder, because
+        the sync has to round-trip a directory and not only its contents.
+        MLflow's file store validates that every run holds `metrics`, `params`
+        and `artifacts` subdirectories and treats a run missing any of them as a
+        run that does not exist; with the artifacts on S3 the local `artifacts`
+        directory is always empty, so without the markers the first command to
+        sync a store would delete every run in it from the next command's view.
+        `iter_files` skips the markers, so nothing else sees them.
         """
         if self._path is not None:
             if source.resolve() == self._path.resolve():
@@ -474,9 +513,12 @@ class Location:
             shutil.copytree(source, self._path, dirs_exist_ok=True)
             return
         for item in sorted(source.rglob("*")):
+            relative = item.relative_to(source).as_posix()
             if item.is_file():
-                relative = item.relative_to(source).as_posix()
                 (self / relative).upload_file(item)
+            elif item.is_dir() and not any(item.iterdir()):
+                marker = f"{self._key}/{relative}/" if self._key else f"{relative}/"
+                s3_client().put_object(Bucket=self._bucket, Key=marker, Body=b"")
 
     def upload_file(self, source: Path) -> None:
         """Copy one local file here."""
@@ -624,12 +666,86 @@ def tracking_store(uri: str, *, write_back: bool = True) -> Iterator[str]:
 
     Nothing is deleted on the way back up, so a run that was in the store before
     this command is still there afterwards even if the command never read it.
+
+    Only the metadata is synced. The artifacts stay on S3 and are read and
+    written in place, because a file store records absolute paths and a
+    temporary directory is a different absolute path in every command;
+    `experiment_id` is where that is arranged and why.
+
+    The temporary directory is still temporary, and can stay that way: the only
+    thing that used to outlive a command through it was an artifact, and
+    artifacts are no longer in it. A stable path per run would buy nothing and
+    would cost the guarantee that two commands never share a half-written copy.
     """
     if not uri.startswith(S3_SCHEME):
         yield uri
         return
-    with synced_dir(uri, write_back=write_back) as local:
-        yield f"file:{local}"
+    store = location(uri)
+    with synced_dir(store, write_back=write_back) as local:
+        tracking_uri = f"file:{local}"
+        _artifact_roots[tracking_uri] = str(store.parent / (store.name + ARTIFACTS_SUFFIX))
+        try:
+            yield tracking_uri
+        finally:
+            _artifact_roots.pop(tracking_uri, None)
+
+
+def artifact_root(tracking_uri: str) -> str | None:
+    """Where a synced store's artifacts belong, or `None` when MLflow's default is right.
+
+    `None` for a local directory, for a tracking server and for anything this
+    process is not currently inside a `tracking_store` block for. Each of those
+    already puts artifacts somewhere that is still there next time: a laptop
+    writes them beside the runs and a server owns its own store.
+    """
+    return _artifact_roots.get(tracking_uri)
+
+
+def experiment_id(name: str, tracking_uri: str) -> str:
+    """The named experiment's id, created with an S3 artifact location when the store is synced.
+
+    The one place an experiment is obtained, because an experiment's artifact
+    location is written once, when it is created, and is then copied onto every
+    run and every logged model underneath it. Getting it wrong in one command
+    poisons the records the other commands read, so there is one call and not
+    four.
+
+    What goes wrong without this: MLflow's file store writes absolute paths. An
+    experiment created inside a synced store records `artifact_location` as the
+    temporary directory of the command that created it, every run under it
+    records an `artifact_uri` under that, and every registered version points at
+    the same place. The directory is gone by the time the next command runs, so
+    `promote` cannot read a candidate's artifacts, `serve` cannot load
+    `models:/win-probability@production`, and `drift` cannot open the reference
+    it just wrote. Naming an `s3://` location instead makes every one of those
+    URIs absolute in a place that outlives the command and is the same from any
+    machine.
+
+    The location is a sibling of the store (`mlruns` and `mlruns-artifacts`),
+    not a directory inside it, and that is the whole reason for the sibling: the
+    sync copies the store down and back on every command, so artifacts under it
+    would mean downloading every model and figure ever logged in order to record
+    one metric. Both sit under the lake root, so a lake is still one prefix to
+    grant, to copy and to delete.
+
+    The experiment name becomes a path component, so it is expected to read like
+    one; the three this repository uses are `win-probability`, `drift` and the
+    evaluation experiment, all plain identifiers.
+
+    A local root keeps exactly the behaviour it had: no artifact location is
+    named and MLflow puts the files beside the runs, which is what a laptop
+    wants and what `mlflow ui` expects to find.
+    """
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient(tracking_uri=tracking_uri)
+    existing = client.get_experiment_by_name(name)
+    if existing is not None:
+        return str(existing.experiment_id)
+    root = artifact_root(tracking_uri)
+    if root is None:
+        return str(client.create_experiment(name))
+    return str(client.create_experiment(name, artifact_location=f"{root}/{name}"))
 
 
 def spark_configuration(*targets: AnyLocation) -> dict[str, str]:

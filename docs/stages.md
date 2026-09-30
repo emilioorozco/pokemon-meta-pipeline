@@ -49,7 +49,8 @@ is the same either way:
   lake/run_metrics/<run id>-<stage>.parquet
   catalog/cards.json, catalog/card_text.jsonl, catalog/card_index/
   warehouse/meta.duckdb, warehouse/marts/<mart>.parquet
-  mlruns/
+  mlruns/                        MLflow's runs, params, metrics, tags, registry
+  mlruns-artifacts/<experiment>/ the files those runs logged
   drift/drift_report.md, drift/drift_summary.json
 ```
 
@@ -121,7 +122,7 @@ can be `s3://.../meta.duckdb`. It is downloaded once per process and opened
 read-only, with `httpfs` loaded: the `ops` models are views over the run-metrics
 Parquet, so reading the published warehouse means reading the lake too.
 
-### MLflow is a synced file store, and there is one writer
+### MLflow is a synced file store with its artifacts left on S3
 
 With an `s3://` root, `mlruns/` is downloaded to a temporary directory at the
 start of `train`, `promote`, `drift` and `eval`, used as the local file store
@@ -129,6 +130,28 @@ for the length of the command, and uploaded back at the end. `publish` and the
 serving application read it the same way and do not upload, so a reader is never
 briefly a writer. Nothing is deleted on the way up, and a command that raises
 uploads nothing.
+
+**Only the metadata is synced.** The runs, parameters, metrics, tags and the
+registry are small and are what the sync carries; the artifacts stay on S3 under
+`mlruns-artifacts/<experiment>/` and are read and written in place. The reason
+is that MLflow's file store records absolute paths. An experiment created inside
+one command's temporary directory writes that directory into its
+`artifact_location`, every run under it inherits it as its `artifact_uri`, and
+every registered version points at the same place, so the next command reads a
+store whose files are all in a directory that no longer exists: `serve` cannot
+load `models:/win-probability@production`, `promote` cannot open a candidate's
+artifacts, `drift` cannot read the reference it wrote yesterday. Creating each
+experiment with an `s3://` artifact location instead makes every one of those
+URIs absolute somewhere that outlives the command and is the same from any
+machine. `pipeline.storage.experiment_id` is the one place that does it, and
+`train`, `drift` and `eval` all go through it.
+
+The artifact prefix is a sibling of `mlruns/` and not a directory inside it,
+because the sync copies the whole store down and back on every command: under
+it, logging one metric would mean downloading every model ever trained.
+
+A local root is unchanged. No artifact location is named, MLflow puts the files
+beside the runs, and `mlflow ui --backend-store-uri data/mlruns` finds them.
 
 **The single writer is an assumption, not a guarantee.** Two commands syncing
 the same prefix at once will each upload their own view, and the later one wins
@@ -141,6 +164,20 @@ A tracking server is the design the day there is a second writer, and
 `docs/orchestration-on-aws.md` already recommends it and says why: the file
 store's own documentation warns it is unsafe under concurrent writers, and the
 registry it protects is what decides which model answers `/predict`.
+
+**One-time operator step.** An experiment's artifact location is written when
+the experiment is created and cannot be corrected afterwards, so experiments
+created on a lake before this change keep pointing at a temporary directory that
+is gone. Delete the `mlruns/` prefix under the lake root once, before the first
+run with this behaviour, and let `train` recreate it:
+
+```
+aws s3 rm "$PIPELINE_DATA_DIR/mlruns" --recursive
+```
+
+Nothing downstream depends on what is there: the warehouse and the lake are
+rebuilt from bronze, and a registered version is reproduced by the next training
+run. Do this only against a lake whose registry you are willing to lose.
 
 ### What the tests cover, and what the live run has to
 

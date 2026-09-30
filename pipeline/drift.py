@@ -98,7 +98,14 @@ from pipeline.ml_features import CATEGORICAL, LABEL, MODEL_FEATURES
 # explicit column list, and a drift report built from a second copy of that
 # list would be a report about a table nobody trains on.
 from pipeline.observability import RunMetrics, configure_logging, emit_summary, stage_run
-from pipeline.storage import AnyLocation, Location, local_file, location, tracking_store
+from pipeline.storage import (
+    AnyLocation,
+    Location,
+    experiment_id,
+    local_file,
+    location,
+    tracking_store,
+)
 from pipeline.train import FEATURE_TABLE, TrainingDataError, load_features
 
 logger = logging.getLogger(__name__)
@@ -734,6 +741,7 @@ def log_run(
     report_path: Location,
     summary_path: Location,
     experiment: str,
+    tracking_uri: str,
 ) -> None:
     """One MLflow run carrying the two files, the windows as parameters and the verdict as metrics.
 
@@ -741,8 +749,13 @@ def log_run(
     is a run: the question asked of a drift report is almost always "and what
     did it say last month", and a directory of overwritten markdown cannot
     answer it.
+
+    The tracking URI is a parameter and not read back off `mlflow`, because
+    `experiment_id` needs it to decide where this experiment's artifacts belong:
+    the two files below are the report a later run is asked to compare against,
+    and in a synced store they have to land on S3 to still be readable then.
     """
-    mlflow.set_experiment(experiment)
+    mlflow.set_experiment(experiment_id=experiment_id(experiment, tracking_uri))
     with mlflow.start_run(run_name="drift"):
         mlflow.log_params(
             {
@@ -909,7 +922,7 @@ def run_drift(
         return EXIT_TOO_SMALL
 
     report_path, summary_path = write_outputs(report, out_dir)
-    log_run(report, reference, report_path, summary_path, experiment)
+    log_run(report, reference, report_path, summary_path, experiment, tracking_uri)
     emit_summary(
         logger,
         "drift summary",
