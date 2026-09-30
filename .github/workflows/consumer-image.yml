@@ -14,10 +14,16 @@
 # built.
 #
 # Nothing in this file names an account, a region, a repository or a function.
-# All four are repository variables set by hand in the GitHub settings, so the
-# identifiers stay out of the history the way `scripts/check_history.sh`
-# insists; a fork, or a clone with none of them set, skips every step with a
-# notice instead of failing.
+# All four are variables on a GitHub Environment, `dev` and `prod`, set by hand
+# in the settings, so the identifiers stay out of the history the way
+# `scripts/check_history.sh` insists and each stage supplies its own values for
+# the same four names. That is also why the job declares `environment:` rather
+# than reading repository-level variables: the environment is part of the
+# OpenID Connect subject GitHub signs, and the CI role's trust policy in the
+# application stack is bound to it per stage, so a dev job cannot deploy the
+# prod function even if it asked for it. A push to main builds once per
+# environment; a fork, or a clone with none of the variables set, skips every
+# step with a notice instead of failing.
 
 name: Consumer image
 
@@ -30,29 +36,66 @@ on:
       - "Dockerfile.lambda"
       - ".github/workflows/consumer-image.yml"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy one environment only, or both"
+        type: choice
+        required: false
+        default: both
+        options: [both, dev, prod]
 
 # `id-token: write` is what lets the job ask GitHub for an OpenID Connect token
 # and trade it for the role below. No access key is stored anywhere: the trust
-# policy on the role names this repository and this workflow, so a credential
-# exists only for the length of the job.
+# policy on the role names this repository and this environment, so a
+# credential exists only for the length of the job.
 permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
-
 jobs:
-  image:
-    name: build and deploy
+  # A choice input always carries a value, so "both" is a named option rather
+  # than an empty one, and this job turns whichever was chosen into the matrix
+  # the build job fans out over. It exists because a job-level `if:` cannot see
+  # the matrix context, so narrowing has to happen before the matrix is built.
+  plan:
+    name: choose environments
     runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.pick.outputs.environments }}
+    steps:
+      - name: Choose the environments to build for
+        id: pick
+        env:
+          ONLY: ${{ inputs.environment }}
+        run: |
+          set -eu
+          case "$ONLY" in
+            dev|prod) environments="[\"$ONLY\"]" ;;
+            *) environments='["dev","prod"]' ;;
+          esac
+          echo "::notice::consumer image targeting $environments"
+          echo "environments=$environments" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: build and deploy (${{ matrix.environment }})
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.plan.outputs.environments) }}
+    # Per environment, so dev and prod build side by side while two pushes to
+    # the same environment queue rather than racing to tag `:latest`.
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.environment }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
-      # One gate for the whole job. A repository without the four variables is
-      # a fork or a fresh clone, and neither should see a red build for not
-      # having an AWS account.
+      # One gate for the whole job. An environment without the four variables
+      # is a fork, a fresh clone, or a stage nobody has wired up yet, and none
+      # of them should see a red build for not having an AWS account.
       - name: Check the deployment variables are set
         id: configured
         env:
@@ -67,7 +110,7 @@ jobs:
             [ -n "$value" ] || missing="$missing $name"
           done
           if [ -n "$missing" ]; then
-            echo "::notice::consumer image skipped; unset repository variable(s):$missing"
+            echo "::notice::consumer image skipped for ${{ matrix.environment }}; unset environment variable(s):$missing"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -122,4 +165,4 @@ jobs:
             --no-cli-pager
           aws lambda wait function-updated \
             --function-name "${{ vars.CONSUMER_FUNCTION_NAME }}"
-          echo "::notice::consumer function updated to ${{ github.sha }}"
+          echo "::notice::${{ matrix.environment }} consumer function updated to ${{ github.sha }}"
