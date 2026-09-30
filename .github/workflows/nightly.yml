@@ -241,7 +241,9 @@ jobs:
         run: |
           set -eu
           mkdir -p artifacts
-          report="$PIPELINE_DATA_DIR/drift/drift_report.md"
+          # The root may carry a trailing slash; two slashes in an S3 key is a
+          # different key, and a missing one.
+          report="${PIPELINE_DATA_DIR%/}/drift/drift_report.md"
           case "$PIPELINE_DATA_DIR" in
             s3://*) aws s3 cp "$report" artifacts/drift_report.md --no-progress || true ;;
             *) cp "$report" artifacts/drift_report.md || true ;;
