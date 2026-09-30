@@ -89,6 +89,22 @@ def test_the_gate_does_not_judge_its_own_last_run(tmp_path: Path) -> None:
     assert quality_gate.main(["--warehouse", str(path)]) == 0
 
 
+def test_the_gate_does_not_judge_the_stages_that_run_after_it(tmp_path: Path) -> None:
+    """`publish` and `run_all` write their rows after the gate returns, so their last
+    row is always the previous run's; the first scheduled runs failed on exactly that."""
+    path = warehouse_with(
+        tmp_path,
+        [
+            healthy("silver"),
+            healthy("gold"),
+            ("publish", "run-0", "failed", "dynamodb:Scan denied", 0.0, False),
+            ("run_all", "run-0", "failed", "publish exited 1", 0.0, False),
+        ],
+    )
+
+    assert quality_gate.main(["--warehouse", str(path)]) == 0
+
+
 def test_an_empty_mart_is_not_a_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = warehouse_with(tmp_path, [])
 

@@ -20,10 +20,11 @@ gate twice says the same thing twice.
 Two deliberate choices. The gate reads the mart rather than the Parquet files,
 because the rule it enforces (the rate over a window, weighted by rows rather
 than by run) is defined in SQL in one place and a second definition in Python
-would be the one that drifts. And it judges every stage the warehouse knows
-about, not only the stages of the current run: a stage that failed last night
-and was not rerun is still a broken stage this morning, and a gate that looked
-only at what just ran would report green over it.
+would be the one that drifts. And it judges every stage that runs before it,
+not only the stages of the current run: a stage that failed last night and was
+not rerun is still a broken stage this morning, and a gate that looked only at
+what just ran would report green over it. The stages that run after it are a
+different matter, see `NOT_JUDGED` below.
 
 `mart_pipeline_health` is a view, so a stage that finished a second ago is
 already in it and the gate does not need a dbt rebuild between the last stage
@@ -57,11 +58,18 @@ HEALTH_TABLE: Final = "mart_pipeline_health"
 # be run at all", which is a different thing to wake up to.
 EXIT_FAILED: Final = 1
 
-# The gate's own row is excluded from what the gate judges. It writes one like
-# every other stage, and it writes it as `failed` when it refused, which is the
-# truth about that run; but a gate that then read its own refusal back would
-# stay red for ever, long after the stage that caused it was fixed. The verdict
-# is about the pipeline, not about the verdict.
+# Three rows are excluded from what the gate judges: its own, and the two
+# stages that run after it. The gate writes a row like every other stage, and
+# writes it as `failed` when it refused, which is the truth about that run; but
+# a gate that read its own refusal back would stay red for ever, long after the
+# stage that caused it was fixed. `publish` and `run_all` write their rows after
+# the gate has returned, so during a run their "last" row is by construction the
+# previous run's, and judging it would make one failed night fail the next one
+# before it had a chance: the first scheduled runs did exactly that, a refused
+# publish on one night refusing the next night's gate. A stage the gate cannot
+# have seen rerun is not evidence about this run. The verdict is about what came
+# before it, not about the verdict and not about what comes after.
+NOT_JUDGED: Final = (STAGE, "publish", "run_all")
 QUERY: Final = f"""
 select
     stage,
@@ -71,7 +79,7 @@ select
     quarantine_rate,
     quarantine_rate_over_threshold
 from {HEALTH_TABLE}
-where stage != '{STAGE}'
+where stage not in ({", ".join(f"'{name}'" for name in NOT_JUDGED)})
 order by stage
 """
 

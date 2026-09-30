@@ -1419,10 +1419,14 @@ train            ok             0.0%  ok
 gate passed: 8 stage(s) healthy.
 ```
 
-It judges every stage the warehouse knows about, not only the ones that just
-ran: a stage that failed last night and was not rerun is still broken this
-morning. The one stage it does not judge is itself, because a gate that read its
-own refusal back would stay red for ever.
+It judges every stage that runs before it, not only the ones that just ran: a
+stage that failed last night and was not rerun is still broken this morning.
+Three rows are left out. Its own, because a gate that read its own refusal back
+would stay red for ever; and `publish` and `run_all`, because they write their
+rows after the gate has returned, so during a run their last row is always the
+previous run's. The first scheduled runs showed why that matters: a publish
+refused by a missing grant one night would otherwise have refused the next
+night's gate before it had a chance.
 
 ### Nothing to do is not a failure
 
