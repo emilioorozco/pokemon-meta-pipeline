@@ -1,9 +1,15 @@
 """Silver stage: bronze Parquet in, four typed tables out, on PySpark.
 
-Bronze is one nested row per game. Silver is the grain change: a game row, a
-seat row, a turn row and a card row, each with plain columns a query can filter
-on without walking a struct. Everything here is a projection of bronze, so the
-stage is rerunnable from scratch and holds no state of its own.
+Bronze is one nested row per uploaded blob. Silver is the grain change: a game
+row, a seat row, a turn row and a card row, each with plain columns a query can
+filter on without walking a struct. Everything here is a projection of bronze,
+so the stage is rerunnable from scratch and holds no state of its own.
+
+A blob is an upload and a game is a game, and the two are not the same count:
+both players of a match can upload their own log of it, and the two blobs carry
+one `game_id` between them. Bronze is raw and keeps both rows. `collapse_uploads`
+is where the grain becomes one row per game, before any table is derived, so a
+duplicated upload can never reach a seat row, a turn row or a gold key.
 
 The four tables, all partitioned by `play_date`:
 
@@ -168,13 +174,20 @@ class ReconciliationError(RuntimeError):
 class SilverSummary:
     """What one run produced: rows per table, the reconciliation lines, and how long it took.
 
+    `uploads_in` is bronze rows read and `games_in` is what they collapse to,
+    one per `game_id`; they differ by exactly the duplicated uploads this run
+    folded away. Every count below is against `games_in`, because that is the
+    grain silver writes.
+
     `checks` holds one readable line per reconciliation check, filled in by
     `reconcile`. They are carried on the summary rather than printed where they
     are computed because `reconcile` is a library function and stdout belongs to
     the command line; the command prints the block it is handed.
     """
 
+    uploads_in: int = 0
     games_in: int = 0
+    duplicated_games: int = 0
     rows: dict[str, int] = field(default_factory=dict)
     checks: list[str] = field(default_factory=list)
     duration_s: float = 0.0
@@ -183,7 +196,9 @@ class SilverSummary:
         counts = " ".join(f"{table}={self.rows.get(table, 0)}" for table in TABLES)
         return "\n".join(
             [
+                f"uploads_in: {self.uploads_in}",
                 f"games_in: {self.games_in}",
+                f"duplicated_games: {self.duplicated_games}",
                 f"rows: {counts}",
                 *self.checks,
                 f"duration_s: {self.duration_s:.2f}",
@@ -230,6 +245,7 @@ SILVER_SCHEMAS: Final[dict[str, T.StructType]] = {
             T.StructField("unparsed_count", _INT, True),
             T.StructField("contract_version", _INT, True),
             T.StructField("source_key", _STR, True),
+            T.StructField("upload_count", _INT, True),
             T.StructField("ingested_at", _TS, True),
         ]
     ),
@@ -375,8 +391,45 @@ def load_catalog(spark: SparkSession, catalog_path: AnyLocation | None) -> DataF
     return spark.createDataFrame(rows, CATALOG_SCHEMA)
 
 
+def collapse_uploads(bronze: DataFrame) -> DataFrame:
+    """One bronze row per `game_id`, with `upload_count` recording how many there were.
+
+    The grain change this stage exists for starts here. A bronze row is an
+    upload, not a game: both players of a match can upload their own log of it,
+    and the two blobs land under two uploader prefixes with one `game_id`
+    between them. Bronze is raw and keeps a row per blob, which is correct
+    there; every table below is per game, so the extra uploads are folded in
+    before anything is derived. Left alone they would double a game row, a pair
+    of seat rows, every turn row and every card row of that game.
+
+    The row that survives is the earliest `source_last_modified`, ties broken by
+    `source_key` ascending: the first upload wins. A row with no upload time at
+    all sorts last, because a known time is better evidence than a missing one.
+    Both keys are properties of the object rather than of the run, so the rule
+    picks the same row on every rerun and is answerable to a reader asking why
+    their copy of the game is the one that got dropped.
+
+    `upload_count` is carried onto the surviving row, and from there into silver
+    `games` and gold, so the uploads that were folded away are still countable.
+    """
+    game = Window.partitionBy("game_id")
+    first_upload = game.orderBy(
+        F.col("source_last_modified").asc_nulls_last(), F.col("source_key").asc()
+    )
+    return (
+        bronze.withColumn("upload_count", F.count(F.lit(1)).over(game).cast(_INT))
+        .withColumn("upload_rank", F.row_number().over(first_upload))
+        .where(F.col("upload_rank") == 1)
+        .drop("upload_rank")
+    )
+
+
 def build_games(bronze: DataFrame) -> DataFrame:
-    """One row per game: the summary's scalars, with handles resolved to seats."""
+    """One row per game: the summary's scalars, with handles resolved to seats.
+
+    Reads the collapsed frame `collapse_uploads` returns, so `upload_count` is
+    already on the row and there is exactly one row per `game_id` to project.
+    """
     summary = F.col("summary")
     my_side = summary["my_side"].cast(_INT)
     winner_seat = F.when(
@@ -408,6 +461,7 @@ def build_games(bronze: DataFrame) -> DataFrame:
             summary["unparsed_count"].alias("unparsed_count"),
             F.col("contract_version"),
             F.col("source_key"),
+            F.col("upload_count"),
             F.col("ingested_at"),
         ),
         "games",
@@ -652,7 +706,8 @@ def run_silver(
     """
     started = time.monotonic()
     silver = location(silver_dir)
-    bronze = read_bronze(spark, bronze_dir).cache()
+    uploads = read_bronze(spark, bronze_dir).cache()
+    bronze = collapse_uploads(uploads).cache()
     catalog = load_catalog(spark, catalog_path)
     aliases = archetype_aliases(bronze)
 
@@ -663,7 +718,20 @@ def run_silver(
         "cards_seen": build_cards_seen(bronze, catalog),
     }
 
-    summary = SilverSummary(games_in=bronze.count())
+    summary = SilverSummary(
+        uploads_in=uploads.count(),
+        games_in=bronze.count(),
+        duplicated_games=bronze.where(F.col("upload_count") > 1).count(),
+    )
+    logger.info(
+        "collapsed uploads to games",
+        extra={
+            "uploads_in": summary.uploads_in,
+            "games_in": summary.games_in,
+            "duplicated_games": summary.duplicated_games,
+            "uploads_dropped": summary.uploads_in - summary.games_in,
+        },
+    )
     written: dict[str, DataFrame] = {}
     for name in TABLES:
         frame = tables[name].cache()
@@ -935,10 +1003,15 @@ def main(argv: list[str] | None = None) -> int:
                 # should read as a success.
                 metrics.extra = {"failures": list(exc.failures)}
                 raise
-            metrics.rows_in = summary.games_in
+            metrics.rows_in = summary.uploads_in
             metrics.rows_out = summary.rows.get("games", 0)
             metrics.rows_quarantined = 0
-            metrics.extra = {"rows": summary.rows, "checks": summary.checks}
+            metrics.extra = {
+                "games_in": summary.games_in,
+                "duplicated_games": summary.duplicated_games,
+                "rows": summary.rows,
+                "checks": summary.checks,
+            }
     except ReconciliationError as exc:
         logger.error("reconciliation failed", extra={"failures": list(exc.failures)})
         return 1
@@ -949,7 +1022,9 @@ def main(argv: list[str] | None = None) -> int:
         logger,
         "silver summary",
         {
+            "uploads_in": summary.uploads_in,
             "games_in": summary.games_in,
+            "duplicated_games": summary.duplicated_games,
             "rows": summary.rows,
             "checks": summary.checks,
             "duration_s": round(summary.duration_s, 4),

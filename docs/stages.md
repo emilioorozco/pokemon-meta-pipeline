@@ -425,14 +425,19 @@ Command: `python -m pipeline.silver` (`--bronze-dir`, `--silver-dir`,
 `--catalog`, `--master`). It needs a Java Virtual Machine (JVM); everything else
 is the `spark` extra.
 
-Bronze is one nested row per game. Silver is the grain change, four tables under
-`data/lake/silver/<table>/play_date=YYYY-MM-DD/`:
+Bronze is one nested row per upload. Silver is the grain change, four tables
+under `data/lake/silver/<table>/play_date=YYYY-MM-DD/`, and the first thing the
+stage does is collapse bronze to one row per `game_id`, keeping the earliest
+`source_last_modified` and breaking ties on `source_key` ascending, so a match
+both players uploaded becomes one game with `upload_count = 2` rather than two
+of everything downstream:
 
 - `games`: one row per game. Identity and lineage (`game_id`, `user_id`,
-  `play_date`, `played_at`, `source_key`, `ingested_at`, `contract_version`),
-  the export's own description of itself (`export_variant`, `upload_source`,
-  `parser_version`, `unparsed_count`, `played_at_source`, `has_full_decklists`,
-  `excluded_from_stats`, `season_id`, `season_name`), and the outcome with every
+  `play_date`, `played_at`, `source_key`, `upload_count`, `ingested_at`,
+  `contract_version`), the export's own description of itself
+  (`export_variant`, `upload_source`, `parser_version`, `unparsed_count`,
+  `played_at_source`, `has_full_decklists`, `excluded_from_stats`, `season_id`,
+  `season_name`), and the outcome with every
   handle already resolved to a seat: `result` (the uploader's), `winner_seat`,
   `went_first_seat`, `coin_toss_winner_seat`, `first_player`, `my_side`,
   `turn_count`, `end_reason`.

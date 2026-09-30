@@ -274,6 +274,13 @@ the days it touches, and projected onto a schema pinned in
 same reason bronze pins its own. Silver filters nothing: excluded games and
 manual games are present and flagged, and gold decides what to drop.
 
+Silver is also where the grain becomes one row per game. Bronze is one row per
+uploaded blob, and both players of a match can upload their own log of it, so
+one `game_id` can arrive under two uploader prefixes. `collapse_uploads` keeps
+the earliest `source_last_modified`, ties broken by `source_key` ascending, and
+records how many uploads there were in `games.upload_count` (docs/concepts.md,
+Grain).
+
 ### 8.1 `games`
 
 One row per game.
@@ -299,7 +306,8 @@ One row per game.
 | `my_side` | int | yes | `summary.mySide` |
 | `season_id`, `season_name` | string | yes | `summary` |
 | `parser_version`, `unparsed_count`, `contract_version` | int | no | `summary`, bronze |
-| `source_key` | string | no | bronze |
+| `source_key` | string | no | bronze, the upload that won the collapse |
+| `upload_count` | int | no | bronze rows collapsed into this game |
 | `ingested_at` | timestamp | no | bronze |
 
 `went_first_seat` and `first_player` answer the same question from two sources:

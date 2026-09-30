@@ -1,5 +1,10 @@
 """Gold end to end: build silver from the committed games, then run dbt over it.
 
+The silver under it is built from the committed games plus one duplicated
+upload (`bronze_with_duplicate_upload`), which is the batch that failed the
+first nightly run on dev: every uniqueness test dbt runs below is therefore
+also a test that silver's collapse held.
+
 Every test here is marked `dbt` and the default `uv run pytest` skips them, the
 same split the Spark tests get and for the same reason: the module builds a
 real silver lake (a Java Virtual Machine) and then a real DuckDB warehouse
@@ -7,7 +12,7 @@ real silver lake (a Java Virtual Machine) and then a real DuckDB warehouse
 
 The point of the module is that the dbt project is exercised as a project.
 `run_gold` is the same entry point orchestration will call, the profile is the
-committed one, and the 67 generic and singular dbt tests run as part of it, so
+committed one, and the 116 generic and singular dbt tests run as part of it, so
 a broken key or a broken relationship fails here without a Python assertion
 having to name it. The assertions below are the handful of numbers a dbt test
 cannot state: the grain against the fixture count, the symmetry of the matchup
@@ -21,7 +26,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from tests.conftest import FIXTURES_DIR
+from tests.conftest import FIXTURES_DIR, DuplicateUpload
 
 pytestmark = pytest.mark.dbt
 
@@ -79,6 +84,27 @@ def test_the_build_produced_every_model(warehouse: duckdb.DuckDBPyConnection) ->
 def test_the_fact_has_two_rows_per_fixture_game(warehouse: duckdb.DuckDBPyConnection) -> None:
     assert scalar(warehouse, "select count(*) from fct_game_side") == SIDES_PER_GAME * FIXTURE_GAMES
     assert scalar(warehouse, "select count(distinct game_id) from fct_game_side") == FIXTURE_GAMES
+
+
+def test_a_game_uploaded_twice_reaches_gold_once(
+    warehouse: duckdb.DuckDBPyConnection, duplicate_upload: DuplicateUpload
+) -> None:
+    """PLA-175: the silver bronze under this build holds two blobs for one game.
+
+    Uncollapsed it broke five tests at once, `unique_stg_games_game_id`,
+    `unique_fct_game_side_game_side_key`, `unique_features_turn_feature_key`,
+    `assert_two_sides_per_game` and `assert_features_turn_covers_both_seats`.
+    Those run as part of the build this fixture asserts the exit code of, so
+    what is left to state here is the count the duplicate was folded into.
+    """
+    duplicated = f"where game_id = '{duplicate_upload.game_id}'"
+    assert scalar(warehouse, f"select count(*) from stg_games {duplicated}") == 1
+    assert scalar(warehouse, f"select upload_count from stg_games {duplicated}") == 2
+    assert scalar(warehouse, f"select count(*) from fct_game_side {duplicated}") == SIDES_PER_GAME
+    assert scalar(warehouse, "select count(*) from fct_game_side where upload_count = 2") == (
+        SIDES_PER_GAME
+    )
+    assert scalar(warehouse, "select min(upload_count) from stg_games") == 1
 
 
 def test_every_fact_row_has_a_key_and_a_dimension(warehouse: duckdb.DuckDBPyConnection) -> None:

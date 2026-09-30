@@ -1,6 +1,10 @@
 -- One row per game, straight off silver.games. Renames and casts only: the
 -- nulls silver preserved on purpose stay null, except the two flags that are
 -- read as false everywhere downstream and are coalesced once, here.
+--
+-- One row per game and not per upload: silver collapses the blobs that share
+-- a game id, keeping the first one uploaded, and `upload_count` says how many
+-- there were (docs/concepts.md, Grain).
 select
     game_id,
     user_id,
@@ -19,5 +23,6 @@ select
     coalesce(has_full_decklists, false) as has_full_decklists,
     season_id,
     season_name,
+    cast(upload_count as integer) as upload_count,
     cast(ingested_at as timestamp) as ingested_at
 from {{ source('silver', 'games') }}

@@ -131,6 +131,14 @@ models:
       - name: excluded_from_stats
         description: The uploader asked for this game to be kept out of analytics. Every mart drops these rows; this table keeps them so the count is answerable.
         data_tests: [not_null]
+      - name: upload_count
+        description: >
+          Blobs in bronze carrying this game id, a game-level attribute carried
+          onto the seat row because there is no game dimension. Two means both
+          players uploaded the same match and silver kept the first upload, so
+          this table still has exactly two rows for it. At least 1 by
+          construction, which `assert_upload_count_is_at_least_one` checks.
+        data_tests: [not_null]
 
   # ------------------------------------------------------------ dimensions --
   - name: dim_player

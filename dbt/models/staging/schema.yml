@@ -46,6 +46,13 @@ models:
         description: Competitive season the game was played in, present only when the debug client printed the season trailer.
       - name: season_name
         description: Display name of that season.
+      - name: upload_count
+        description: >
+          How many blobs in bronze carry this game id. One for almost every
+          game, and two when both players of the match uploaded their own log
+          of it; silver keeps the first upload and counts the rest here, which
+          is what keeps this model one row per game (docs/concepts.md, Grain).
+        data_tests: [not_null]
       - name: ingested_at
         description: When the bronze run that landed this game read it.
 

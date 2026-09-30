@@ -77,6 +77,18 @@ represent? Get it wrong and every count is subtly wrong. We chose one row per
 `AVG(is_winner)`. A "matchup" view is derived by pairing the two rows of a game,
 not stored at a different grain.
 
+The grain changes once on the way up, and it is worth knowing where. Bronze is
+one row per upload: a blob is a file somebody sent us, and both players of a
+match can send their own log of the same game, which arrives under two uploader
+prefixes with one `game_id` between them. Bronze is the raw layer and keeps both
+rows, because throwing one away there would mean the lake no longer matches the
+bucket. From silver on it is one row per game: `collapse_uploads` keeps the
+earliest `source_last_modified`, ties broken by `source_key` ascending, so the
+first upload wins and the same row wins on every rerun. `upload_count` remembers
+the rest, one for almost every game and two when both players uploaded, and it
+is carried into `stg_games` and `fct_game_side` so "how often does this happen"
+stays an answerable question rather than a silently dropped row.
+
 ## Spark (PySpark)
 
 A compute engine that splits a job across many cores or machines: you write
