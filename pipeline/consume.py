@@ -14,6 +14,15 @@ the same object seen by a later backfill walk are handled by one implementation.
 What this module owns is the queue: which messages to act on, what to write for a
 delete, and when a message is deleted rather than redelivered.
 
+There are two consumers of that queue and one routine between them.
+`MessageHandler.apply` is everything a consumer does with a message body and
+nothing it does with a queue: it routes the records, writes the rows, files the
+rejects, and answers True when the message is finished with. This module's
+`_Consumer` wraps it in a long poll and deletes the message;
+`pipeline.lambda_consumer` wraps it in a Lambda invocation and reports the
+message id back to SQS. Neither reimplements any of the routing, which is the
+same reason `process_object` is imported from the backfill rather than copied.
+
 Which records are acted on: `ObjectCreated*` and `ObjectRemoved*` for a key that
 is under the configured prefix, ends in `.json` and names the configured bucket.
 Everything else is counted as ignored and the message is deleted: the S3 test
@@ -144,6 +153,21 @@ class _Tally:
 
 
 @dataclass
+class MessageCounts:
+    """What applying message bodies did to the lake, with no queue in the answer.
+
+    Kept apart from `ConsumeSummary` because the two consumers share the
+    routine that fills these three and share nothing else: the polling
+    consumer adds `received` and `left_for_redelivery`, the Lambda adds a list
+    of message ids for SQS to deliver again.
+    """
+
+    landed: int = 0
+    deleted: int = 0
+    ignored: int = 0
+
+
+@dataclass
 class ConsumeSummary:
     """What one drain did. `quarantined` maps reason to blobs filed under it."""
 
@@ -210,8 +234,147 @@ def run_consumer(
     return summary
 
 
+class MessageHandler:
+    """One queue message applied to the lake: the routine both consumers run.
+
+    Everything a consumer does with a message and nothing it does with a
+    queue, which is what makes this the piece `pipeline.lambda_consumer` can
+    reuse without a second copy of the routing. It holds the four things
+    applying a message needs (the settings that say which bucket and prefix
+    count, the source blobs are read from, the bronze root rows are written
+    to, and the quarantine bad blobs are filed in) and tallies what it did in
+    `counts` and in `rejects.counts`.
+
+    `apply` returns True when every record in the body was handled, where
+    handled is what the module docstring argues for: landed, removed from
+    bronze, ignored, or quarantined for a reason that belongs to the blob. It
+    returns False for what a retry can fix, and it does not decide what the
+    caller does about that: the polling consumer leaves the message on the
+    queue and the Lambda names it in `batchItemFailures`, and both get the
+    same redelivery and the same dead-letter queue out of it.
+
+    Nothing here raises for a blob, and nothing here logs a handle or any blob
+    content: the logs carry keys, reasons, counts and message ids.
+    """
+
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        source: Source,
+        bronze_dir: AnyLocation,
+        rejects: Quarantiner,
+    ) -> None:
+        self.settings = settings
+        self.source = source
+        self.bronze_dir = location(bronze_dir)
+        self.rejects = rejects
+        self.counts = MessageCounts()
+
+    @property
+    def quarantined(self) -> int:
+        """Blobs filed under any reason so far, which is the quarantiner's own tally."""
+        return sum(self.rejects.counts.values())
+
+    def apply(self, body: str, *, message_id: str = "unknown") -> bool:
+        """True when every record in the body was handled and the message is finished."""
+        try:
+            event = json.loads(body)
+        except json.JSONDecodeError:
+            # Not JSON, so not an S3 event and not something to guess at: the
+            # dead-letter queue is where this belongs, with the body intact.
+            logger.error("message %s is not JSON", message_id)
+            return False
+        if not isinstance(event, dict):
+            logger.error("message %s is not an S3 event", message_id)
+            return False
+        if event.get("Event") == TEST_EVENT:
+            # The bucket sends this once when the notification is configured.
+            logger.info("s3:TestEvent acknowledged")
+            self.counts.ignored += 1
+            return True
+        records = event.get("Records") or []
+        if not records:
+            logger.info("message with no records; nothing to apply")
+            self.counts.ignored += 1
+            return True
+        return all([self._record(record) for record in records])
+
+    def _record(self, record: Any) -> bool:
+        """Apply one S3 event record. True when it was handled."""
+        try:
+            name = str(record["eventName"])
+            bucket = str(record["s3"]["bucket"]["name"])
+            # S3 URL-encodes the key in the event; a space arrives as `+`.
+            key = unquote_plus(str(record["s3"]["object"]["key"]))
+        except (KeyError, TypeError):
+            logger.error("record is not an S3 event notification record")
+            return False
+
+        if bucket != self.settings.bucket:
+            logger.warning("record names another bucket; ignored")
+            self.counts.ignored += 1
+            return True
+        if not key.startswith(self.settings.prefix) or not key.endswith(BLOB_SUFFIX):
+            logger.info("key is not a parsed blob; ignored: %s", key)
+            self.counts.ignored += 1
+            return True
+
+        try:
+            if name.startswith(CREATED):
+                return self._created(key)
+            if name.startswith(REMOVED):
+                return self._removed(key)
+        except Exception:
+            # Everything the blob itself can be wrong about is already a
+            # quarantine reason, so what reaches here is infrastructure: an S3
+            # error, a filesystem error. Those are what a redelivery is for.
+            logger.exception("%s failed for %s; leaving it for redelivery", name, key)
+            return False
+        logger.info("event %s is neither a create nor a delete; ignored", name)
+        self.counts.ignored += 1
+        return True
+
+    def _created(self, key: str) -> bool:
+        """Land one new object, or record why it was quarantined."""
+        outcome = process_object(self.source, key, self.settings, self.rejects)
+        if outcome.prepared is None:
+            return outcome.reason in HANDLED_REASONS
+        try:
+            written = land_records(
+                [outcome.prepared],
+                self.bronze_dir,
+                self.rejects.when,
+                outcome.prepared.handles,
+                merge=True,
+            )
+        except BronzeLeakError as exc:
+            # The paths are already masked: a leaking dict key reads as `<key>`.
+            detail = f"{len(exc.paths)} path(s) still hold a handle: {exc.paths[:LEAK_PATHS_SHOWN]}"
+            self.rejects.add(key, outcome.prepared.raw, HANDLE_LEAK_CHECK_FAILED, detail)
+            return True
+        self.counts.landed += sum(written.values())
+        logger.info("landed %s into %s", key, _counts(written))
+        return True
+
+    def _removed(self, key: str) -> bool:
+        """Drop the game that was landed from a now-deleted object."""
+        game = find_by_source_key(self.bronze_dir, key)
+        if game is None:
+            logger.info("no bronze row for the deleted key; nothing to remove")
+            self.counts.ignored += 1
+            return True
+        removed = delete_game(self.bronze_dir, game.play_date, game.game_id)
+        if not removed:
+            self.counts.ignored += 1
+            return True
+        self.counts.deleted += removed
+        logger.info("removed the game landed from %s (play_date=%s)", key, game.play_date)
+        return True
+
+
 class _Consumer:
-    """One drain: the queue, where blobs are read from, and where rows are written."""
+    """One drain: the queue, the shared per-message routine, and the summary of both."""
 
     def __init__(
         self,
@@ -228,9 +391,10 @@ class _Consumer:
     ) -> None:
         self.settings = settings
         self.sqs = sqs
-        self.source = source
-        self.bronze_dir = location(bronze_dir)
         self.rejects = rejects
+        self.messages = MessageHandler(
+            settings=settings, source=source, bronze_dir=bronze_dir, rejects=rejects
+        )
         self.now = now
         self.max_messages = max_messages
         self.wait_seconds = wait_seconds
@@ -248,6 +412,10 @@ class _Consumer:
                     break
         except KeyboardInterrupt:
             logger.info("interrupted: finishing the current batch and reporting")
+        counts = self.messages.counts
+        self.summary.landed = counts.landed
+        self.summary.deleted = counts.deleted
+        self.summary.ignored = counts.ignored
         self.summary.quarantined = dict(sorted(self.rejects.counts.items()))
         return self.summary
 
@@ -276,12 +444,13 @@ class _Consumer:
 
     def _tally(self) -> _Tally:
         """The counters as they stand, quarantines included, for one end of a batch."""
+        counts = self.messages.counts
         return _Tally(
             received=self.summary.received,
-            landed=self.summary.landed,
-            quarantined=sum(self.rejects.counts.values()),
-            deleted=self.summary.deleted,
-            ignored=self.summary.ignored,
+            landed=counts.landed,
+            quarantined=self.messages.quarantined,
+            deleted=counts.deleted,
+            ignored=counts.ignored,
             left_for_redelivery=self.summary.left_for_redelivery,
         )
 
@@ -301,111 +470,14 @@ class _Consumer:
         # A consumer runs for days, so each message is stamped and quarantined at
         # the time it was handled rather than at the time the process started.
         self.rejects.when = self.now or datetime.now(UTC)
-        if self._records(message):
+        message_id = message.get("MessageId", "unknown")
+        if self.messages.apply(message.get("Body", ""), message_id=message_id):
             self.sqs.delete_message(
                 QueueUrl=self.settings.queue_url, ReceiptHandle=message["ReceiptHandle"]
             )
             return
         self.summary.left_for_redelivery += 1
-        logger.warning(
-            "message %s left on the queue for redelivery", message.get("MessageId", "unknown")
-        )
-
-    def _records(self, message: "MessageTypeDef") -> bool:
-        """True when every record in the message was handled and it can be deleted."""
-        try:
-            event = json.loads(message.get("Body", ""))
-        except json.JSONDecodeError:
-            # Not JSON, so not an S3 event and not something to guess at: the
-            # dead-letter queue is where this belongs, with the body intact.
-            logger.error("message %s is not JSON", message.get("MessageId", "unknown"))
-            return False
-        if not isinstance(event, dict):
-            logger.error("message %s is not an S3 event", message.get("MessageId", "unknown"))
-            return False
-        if event.get("Event") == TEST_EVENT:
-            # The bucket sends this once when the notification is configured.
-            logger.info("s3:TestEvent acknowledged")
-            self.summary.ignored += 1
-            return True
-        records = event.get("Records") or []
-        if not records:
-            logger.info("message with no records; nothing to apply")
-            self.summary.ignored += 1
-            return True
-        return all([self._record(record) for record in records])
-
-    def _record(self, record: Any) -> bool:
-        """Apply one S3 event record. True when it was handled."""
-        try:
-            name = str(record["eventName"])
-            bucket = str(record["s3"]["bucket"]["name"])
-            # S3 URL-encodes the key in the event; a space arrives as `+`.
-            key = unquote_plus(str(record["s3"]["object"]["key"]))
-        except (KeyError, TypeError):
-            logger.error("record is not an S3 event notification record")
-            return False
-
-        if bucket != self.settings.bucket:
-            logger.warning("record names another bucket; ignored")
-            self.summary.ignored += 1
-            return True
-        if not key.startswith(self.settings.prefix) or not key.endswith(BLOB_SUFFIX):
-            logger.info("key is not a parsed blob; ignored: %s", key)
-            self.summary.ignored += 1
-            return True
-
-        try:
-            if name.startswith(CREATED):
-                return self._created(key)
-            if name.startswith(REMOVED):
-                return self._removed(key)
-        except Exception:
-            # Everything the blob itself can be wrong about is already a
-            # quarantine reason, so what reaches here is infrastructure: an S3
-            # error, a filesystem error. Those are what a redelivery is for.
-            logger.exception("%s failed for %s; leaving it for redelivery", name, key)
-            return False
-        logger.info("event %s is neither a create nor a delete; ignored", name)
-        self.summary.ignored += 1
-        return True
-
-    def _created(self, key: str) -> bool:
-        """Land one new object, or record why it was quarantined."""
-        outcome = process_object(self.source, key, self.settings, self.rejects)
-        if outcome.prepared is None:
-            return outcome.reason in HANDLED_REASONS
-        try:
-            written = land_records(
-                [outcome.prepared],
-                self.bronze_dir,
-                self.rejects.when,
-                outcome.prepared.handles,
-                merge=True,
-            )
-        except BronzeLeakError as exc:
-            # The paths are already masked: a leaking dict key reads as `<key>`.
-            detail = f"{len(exc.paths)} path(s) still hold a handle: {exc.paths[:LEAK_PATHS_SHOWN]}"
-            self.rejects.add(key, outcome.prepared.raw, HANDLE_LEAK_CHECK_FAILED, detail)
-            return True
-        self.summary.landed += sum(written.values())
-        logger.info("landed %s into %s", key, _counts(written))
-        return True
-
-    def _removed(self, key: str) -> bool:
-        """Drop the game that was landed from a now-deleted object."""
-        game = find_by_source_key(self.bronze_dir, key)
-        if game is None:
-            logger.info("no bronze row for the deleted key; nothing to remove")
-            self.summary.ignored += 1
-            return True
-        removed = delete_game(self.bronze_dir, game.play_date, game.game_id)
-        if not removed:
-            self.summary.ignored += 1
-            return True
-        self.summary.deleted += removed
-        logger.info("removed the game landed from %s (play_date=%s)", key, game.play_date)
-        return True
+        logger.warning("message %s left on the queue for redelivery", message_id)
 
 
 def _s3_source(settings: Settings, s3: "S3Client | None") -> S3Source:

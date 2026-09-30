@@ -63,7 +63,6 @@ from enum import Enum
 from types import UnionType
 from typing import Any, Final, Literal, Union, get_args, get_origin
 
-import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel
@@ -314,6 +313,12 @@ def read_smoke(bronze_dir: AnyLocation) -> list[tuple[str, int]]:
         f"FROM read_parquet('{root}/**/*.parquet', hive_partitioning=true) "
         "GROUP BY 1 ORDER BY 1"
     )
+    # Imported here rather than at the top of the module: this is the only
+    # function in the bronze writer that touches DuckDB, and the event consumer
+    # never calls it. Keeping the import local is what lets the Lambda image
+    # (Dockerfile.lambda) ship boto3, pydantic, pyarrow and nothing else.
+    import duckdb
+
     with duckdb.connect() as con:
         return [(str(date), int(count)) for date, count in con.execute(query).fetchall()]
 
