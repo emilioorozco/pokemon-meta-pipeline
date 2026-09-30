@@ -529,6 +529,8 @@ orchestration/airflow/dags/  the DAG: one BashOperator per stage command
 - [data-handling.md](docs/data-handling.md) collection, anonymization, what is
   never published, deletion and key rotation
 - [demo.md](docs/demo.md) running the pipeline on the fixtures, no AWS account
+- [nightly.md](docs/nightly.md) the scheduled run: what runs when, the
+  variables it expects, and what a red run means
 - [orchestration-on-aws.md](docs/orchestration-on-aws.md) the Step Functions
   design that replaced the AWS stretch goal, and why it was not built
 - [adr/](docs/adr/) architecture decision records

@@ -1,0 +1,296 @@
+# Run the batch half of the pipeline on a schedule, with nothing to keep up.
+#
+# Why a scheduled workflow and not an orchestrator: the batch stages are a
+# straight line with one failure rule, they run once a night, and the machine
+# they need exists for forty minutes a day. Airflow, or the Step Functions
+# state machine designed in `docs/orchestration-on-aws.md`, buys retries per
+# task, a graph and a history, and costs a scheduler that has to be running at
+# three in the morning whether or not anything happened. A cron in continuous
+# integration buys none of that and costs nothing, and it is the honest choice
+# until a stage needs its own retry or its own machine. The design document is
+# the plan for the day that changes.
+#
+# Two schedules, one job. The nightly run leaves `backfill` out: the event
+# consumer (`pipeline.lambda_consumer`) lands each parsed game as it is
+# written, so bronze is already current and a backfill would be a second pass
+# over rows that are there. The weekly run puts it back, as the safety net for
+# anything the queue dropped, a notification that never fired, or a window the
+# consumer was broken for. `PRA_INGEST_MODE` is what says which, because that
+# is the variable `pipeline.run_all` already reads to make the same decision.
+#
+# Credentials are a two-step role chain over OpenID Connect and no stored key.
+# Step one trades the job's OIDC token for the continuous-integration role,
+# whose trust policy names this repository; step two assumes the pipeline
+# reader role from it, which is the one holding lake read and write, the
+# parsed bucket's read, and the insights table's write. Splitting them keeps
+# the trust policy (who may assume anything at all) apart from the permission
+# set (what a pipeline run may touch), so widening the second is not a change
+# to the first. A role-chained session cannot outlive one hour, whatever is
+# asked for, which is why the duration below is 3600 and the job's timeout is
+# under it: a run that needed longer would lose its credentials mid-stage, and
+# the honest fix then is a machine that is not a shared runner, not a longer
+# session.
+#
+# The anonymization key is not a secret of this repository. Only the stages
+# that write bronze need it, which is the backfill and nothing else, so the
+# nightly run never has it at all and the weekly run reads it from Secrets
+# Manager with the credentials it already has and masks it in the same breath.
+# A key held as a GitHub secret would be a second copy to rotate.
+#
+# `build_card_index` is in the stage list and reports a skip here: its corpus
+# is fetched by `scripts/fetch_card_text.py` and is not on the runner, which
+# `pipeline.run_all` states as the reason rather than treating as a failure.
+#
+# Nothing in this file names a bucket, a prefix, a table, a role, a region or
+# a secret. Every one of them is a GitHub Environment variable set by hand, so
+# the identifiers stay out of the history the way `scripts/check_history.sh`
+# insists; a fork, or an environment with any of them unset, skips the run
+# with a notice instead of failing.
+
+name: Nightly
+
+on:
+  schedule:
+    # Daily, 10:00 UTC: after the night's games on the west coast of the
+    # United States have been played and landed.
+    - cron: "0 10 * * *"
+    # Weekly, Sunday 09:00 UTC: the same run with the backfill in front of it.
+    - cron: "0 9 * * 0"
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "which environment to run against"
+        type: choice
+        options: [prod, dev]
+        default: prod
+      full_backfill:
+        description: "list the bucket first, as the weekly run does"
+        type: boolean
+        default: false
+
+# `id-token: write` is what lets the job ask GitHub for an OpenID Connect
+# token and trade it for the role below. No access key is stored anywhere: the
+# trust policy on the role names this repository, so a credential exists only
+# for the length of the job.
+permissions:
+  contents: read
+  id-token: write
+
+# Per stage, and never cancelled: a run that is half way through writing
+# silver partitions should finish or fail on its own, not be killed by the
+# next one. Two runs against the same lake would race, so they queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.stage || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: pipeline
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stage || 'prod' }}
+    # Under the hour a role-chained session lasts, with room to upload the
+    # artifacts after the run rather than losing them with the credentials.
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      # One gate for the whole job. An environment without these variables is
+      # a fork, a fresh clone or an environment nobody has configured yet, and
+      # none of the three should see a red run for not having an AWS account.
+      - name: Check the pipeline variables are set
+        id: configured
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_CI_ROLE_ARN: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          PIPELINE_READER_ROLE_ARN: ${{ vars.PIPELINE_READER_ROLE_ARN }}
+          PIPELINE_DATA_DIR: ${{ vars.PIPELINE_DATA_DIR }}
+          PRA_BUCKET: ${{ vars.PRA_BUCKET }}
+          PRA_PREFIX: ${{ vars.PRA_PREFIX }}
+          PRA_INSIGHTS_TABLE: ${{ vars.PRA_INSIGHTS_TABLE }}
+          HANDLE_HMAC_KEY_SECRET_ID: ${{ vars.HANDLE_HMAC_KEY_SECRET_ID }}
+        run: |
+          missing=
+          for name in AWS_REGION PIPELINE_CI_ROLE_ARN PIPELINE_READER_ROLE_ARN \
+            PIPELINE_DATA_DIR PRA_BUCKET PRA_PREFIX PRA_INSIGHTS_TABLE \
+            HANDLE_HMAC_KEY_SECRET_ID; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::nightly skipped; unset environment variable(s):$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # What kind of run this is, decided once and read by every step after
+      # it. The weekly cron is told apart from the daily one by the schedule
+      # string itself, which is the only thing a scheduled event carries.
+      - name: Decide what this run is
+        id: plan
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          REQUESTED: ${{ inputs.full_backfill }}
+        run: |
+          set -eu
+          backfill=false
+          if [ "$SCHEDULE" = "0 9 * * 0" ] || [ "$REQUESTED" = "true" ]; then
+            backfill=true
+          fi
+          if [ "$backfill" = "true" ]; then
+            ingest_mode=backfill
+          else
+            ingest_mode=consumer
+          fi
+          {
+            echo "backfill=$backfill"
+            echo "ingest_mode=$ingest_mode"
+            echo "run_id=gha-${{ github.run_id }}-${{ github.run_attempt }}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Silver is PySpark, which needs a Java Virtual Machine on the runner;
+      # the same install the test job uses for the same reason.
+      - name: Install Java
+        if: steps.configured.outputs.ready == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install uv
+        if: steps.configured.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # The three extras the batch stages need and nothing else: Spark for
+      # silver, the dbt adapter for gold, and the model stack for train,
+      # promote and drift. No test dependencies, and no `agent` extra, whose
+      # embedder is most of a torch install and is only needed by the card
+      # index this run skips.
+      - name: Install dependencies
+        if: steps.configured.outputs.ready == 'true'
+        run: uv sync --locked --no-dev --extra spark --extra dbt --extra ml
+
+      - name: Assume the CI role
+        if: steps.configured.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Chained from the session above rather than from the OIDC token again:
+      # one hour is the ceiling on a chained session, so it is asked for
+      # explicitly instead of being cut to the default.
+      - name: Assume the pipeline reader role
+        if: steps.configured.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_READER_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-chaining: true
+          role-duration-seconds: 3600
+
+      # Only when the run writes bronze. Masked on the line after it is read,
+      # so nothing downstream can echo it into the log by accident, and put on
+      # the environment rather than on a command line, where it would be
+      # visible to every process on the runner.
+      - name: Read the anonymization key
+        if: steps.configured.outputs.ready == 'true' && steps.plan.outputs.backfill == 'true'
+        env:
+          SECRET_ID: ${{ vars.HANDLE_HMAC_KEY_SECRET_ID }}
+        run: |
+          set -eu
+          value=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_ID" --query SecretString --output text)
+          echo "::add-mask::$value"
+          echo "HANDLE_HMAC_KEY=$value" >> "$GITHUB_ENV"
+
+      # One run identifier for every stage, exported rather than left to each
+      # command, so one night is one filter over `run_metrics` and one value
+      # to look up on `/insights`.
+      - name: Run the pipeline
+        id: pipeline
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_DATA_DIR: ${{ vars.PIPELINE_DATA_DIR }}
+          PRA_BUCKET: ${{ vars.PRA_BUCKET }}
+          PRA_PREFIX: ${{ vars.PRA_PREFIX }}
+          PRA_INSIGHTS_TABLE: ${{ vars.PRA_INSIGHTS_TABLE }}
+          PRA_INGEST_MODE: ${{ steps.plan.outputs.ingest_mode }}
+          PRA_RUN_ID: ${{ steps.plan.outputs.run_id }}
+          PRA_LOG_FORMAT: json
+        run: |
+          set -eu
+          mkdir -p artifacts
+          uv run python -m pipeline.run_all \
+            --data-dir "$PIPELINE_DATA_DIR" \
+            --run-id "$PRA_RUN_ID" \
+            --summary-path artifacts/run_summary.txt
+
+      # `always()`, because the summary of the run that failed is the one
+      # worth having. The drift report is written into the lake like every
+      # other output, so it is fetched back rather than found on disk.
+      - name: Collect the drift report
+        if: always() && steps.configured.outputs.ready == 'true'
+        env:
+          PIPELINE_DATA_DIR: ${{ vars.PIPELINE_DATA_DIR }}
+        run: |
+          set -eu
+          mkdir -p artifacts
+          report="$PIPELINE_DATA_DIR/drift/drift_report.md"
+          case "$PIPELINE_DATA_DIR" in
+            s3://*) aws s3 cp "$report" artifacts/drift_report.md --no-progress || true ;;
+            *) cp "$report" artifacts/drift_report.md || true ;;
+          esac
+          if [ ! -f artifacts/drift_report.md ]; then
+            echo "::notice::no drift report this run; the drift stage was skipped or failed"
+          fi
+
+      - name: Upload the run's output
+        if: always() && steps.configured.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ inputs.stage || 'prod' }}-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The page an operator reads first: which run this was, what the gate
+      # said, and whether anything reached the application. A refused gate
+      # stops `run_all` before the publish, so "publish: did not run" and a red
+      # job are the same fact said twice.
+      - name: Write the job summary
+        if: always() && steps.configured.outputs.ready == 'true'
+        env:
+          RUN_ID: ${{ steps.plan.outputs.run_id }}
+          STAGE_NAME: ${{ inputs.stage || 'prod' }}
+          BACKFILL: ${{ steps.plan.outputs.backfill }}
+          OUTCOME: ${{ steps.pipeline.outcome }}
+        run: |
+          set -eu
+          summary=artifacts/run_summary.txt
+          gate=$(awk '$1 == "quality_gate" { print $2 }' "$summary" 2>/dev/null || true)
+          published=$(awk '$1 == "publish" { print $2 }' "$summary" 2>/dev/null || true)
+          {
+            echo "## Nightly run"
+            echo
+            echo "- run id: \`${RUN_ID}\`"
+            echo "- environment: ${STAGE_NAME}"
+            echo "- backfill: ${BACKFILL}"
+            echo "- quality gate: ${gate:-did not run}"
+            echo "- publish: ${published:-did not run}"
+            echo "- result: ${OUTCOME}"
+            echo
+            echo "The run identifier is the filter over \`run_metrics\` and the one"
+            echo "shown on \`/insights\`. \`docs/nightly.md\` says what a red run means."
+            if [ -f "$summary" ]; then
+              echo
+              echo '```'
+              cat "$summary"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

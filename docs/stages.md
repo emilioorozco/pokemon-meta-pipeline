@@ -1249,6 +1249,9 @@ scheduler at all. Neither holds any pipeline logic: a task that called the
 stages as Python functions would be a second way to invoke them, and the second
 way is the one that drifts.
 
+What actually runs every night is the plain runner on a schedule:
+`.github/workflows/nightly.yml`, documented in [nightly.md](nightly.md).
+
 ### The task graph
 
 ```
@@ -1355,8 +1358,10 @@ in the logs:
 | `ingest_mode` | `backfill` | `consumer` means the event-driven ingest is already landing bronze, so the first task is a logged no-op |
 
 `run_all` takes the same two as `--source-dir` and the `PRA_INGEST_MODE`
-environment variable, plus `--publish`, `--skip`, `--stop-after`, `--data-dir`
-and `--run-id`.
+environment variable, plus `--publish`, `--skip`, `--stop-after`, `--data-dir`,
+`--run-id` and `--summary-path`. The last one writes the stage table to a local
+file as well as to the log, which is how the scheduled run gets it back off a
+runner whose lake root is an `s3://` prefix.
 
 ### The run identifier
 
