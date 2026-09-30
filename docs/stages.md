@@ -834,6 +834,13 @@ curl -s -X POST localhost:8000/predict -H 'content-type: application/json' -d '{
 8000, `MLFLOW_TRACKING_URI` pointed at the `mlflow` service) for running it
 next to the tracking server. The image carries no model, on purpose.
 
+Deployed, the same application runs as a Lambda container function behind a
+function URL: `Dockerfile.agent` builds it with the `agent` extra as well, so
+`/ask` answers there, and `pipeline/lambda_serve.py` is the handler.
+[agent-service.md](agent-service.md) is what runs where, the environment the
+function is given, the rule that decides when a warm container re-reads the
+warehouse, and the measured cost of a cold start.
+
 It is also the one stage that is traced and scraped rather than writing a
 `run_metrics` row: `GET /metrics` is a Prometheus exposition, every request is a
 span, and `docker compose --profile observability up -d predict grafana` puts
