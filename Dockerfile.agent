@@ -27,22 +27,26 @@ RUN dnf install -y libgomp && dnf clean all && rm -rf /var/cache/dnf
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# The dependency layer, and the one thing to know about this image: it is big.
-# `ml` brings LightGBM, MLflow, scikit-learn, pandas, matplotlib, FastAPI and
-# the OpenTelemetry stack; `agent` brings LangChain and `sentence-transformers`,
-# and `sentence-transformers` brings torch.
+# The dependency layer. `ml` brings LightGBM, MLflow, scikit-learn, pandas,
+# matplotlib, FastAPI and the OpenTelemetry stack; `agent` brings LangChain and
+# `sentence-transformers`, and `sentence-transformers` brings torch.
 #
-# The torch in `uv.lock` is the PyPI `torch==2.14.0`, whose Linux dependency
-# set is the CUDA runtime: `cuda-toolkit`, `nvidia-cudnn`, `nccl`, `triton` and
-# the rest, some 2.5 GB of wheels this function will never execute a kernel
-# from. They are not dropped here, and dropping them would not work: the PyPI
-# Linux wheel's `libtorch_global_deps.so` links against those libraries, and
-# `import torch` preloads them, so an image without them fails on the first
-# embedding rather than saving anything. A CPU-only torch is an index change in
-# `pyproject.toml` (`[tool.uv.sources]` against the PyTorch CPU index) and a
-# re-lock that every other consumer of this lock file would take with it, which
-# is a change of its own and not this one. `docs/agent-service.md` records what
-# it costs today.
+# The torch here is `2.14.1+cpu` from the PyTorch CPU index, which
+# `pyproject.toml` pins for Linux and nowhere else. The PyPI Linux wheel
+# depends on the CUDA runtime (`cuda-toolkit`, `nvidia-cudnn-cu13`,
+# `nvidia-nccl-cu13`, `triton` and the rest), its `libtorch_global_deps.so`
+# links against those libraries and `import torch` preloads them, so some
+# 2.5 GB of wheels no kernel here will ever run were being paged in off lazily
+# fetched image layers before the first question could be answered. The CPU
+# wheel links against none of it. `docs/agent-service.md` has the numbers on
+# either side.
+#
+# `--emit-index-url` and `--index-strategy unsafe-best-match` are what that
+# pin costs the install: the export has to name the second index, and uv's
+# default is to take a package only from the first index that carries its
+# name, which would look for `2.14.1+cpu` on PyPI and fail. Every version in
+# the file is an exact pin out of `uv.lock`, so the wider strategy chooses
+# between indexes and never between versions.
 #
 # `uv export` rather than a hand-written list, for the reason
 # `Dockerfile.lambda` gives: the versions are the ones `uv.lock` pins and the
@@ -55,11 +59,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # layer and it is several seconds off the first import in a fresh execution
 # environment, which is the number this function is judged on.
 COPY pyproject.toml uv.lock ./
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes \
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes --emit-index-url \
       --extra ml --extra agent --extra serve-lambda \
       --format requirements-txt > /tmp/requirements.txt \
     && uv pip install --python /var/lang/bin/python3.12 --no-cache --compile-bytecode \
-      -r /tmp/requirements.txt \
+      --index-strategy unsafe-best-match -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt pyproject.toml uv.lock /usr/local/bin/uv
 
 # DuckDB reads the warehouse, and over an `s3://` lake the gold views inside it

@@ -47,6 +47,12 @@ agent = [
     # index costs nothing per query and works with no key at all. It pulls
     # torch, which is most of the install.
     "sentence-transformers>=3",
+    # torch is `sentence-transformers`' dependency and would arrive without
+    # this line. It is named anyway because `[tool.uv.sources]` below only
+    # applies to a direct dependency, and that entry is what keeps the Linux
+    # resolution on the CPU wheel instead of the CUDA one. See the comment
+    # there, and `docs/agent-service.md` for what it is worth.
+    "torch>=2.14",
     # The agent reads the marts through the same engine dbt wrote them with,
     # and the SQL tool opens that file read-only. Already a core dependency;
     # named here so the extra is installable on its own.
@@ -113,6 +119,27 @@ dev = [
     # handler through it in the fast suite with a stub loader and no AWS.
     "mangum>=0.17",
 ]
+
+# The PyTorch CPU wheel index. `explicit` means nothing resolves from it
+# unless `[tool.uv.sources]` below sends it here, so every other package still
+# comes from PyPI and the index is not a second place to look for them.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+# Linux gets `torch==2.14.0+cpu` from that index; everything else keeps the
+# PyPI wheel, which is already CPU-only on macOS and Windows, so a development
+# machine installs exactly what it did before.
+#
+# The reason is the Linux PyPI wheel's dependency set: `cuda-toolkit`,
+# `nvidia-cudnn-cu13`, `nvidia-nccl-cu13`, `triton` and the rest, some 2.5 GB
+# of CUDA runtime that `libtorch_global_deps.so` links against and `import
+# torch` therefore preloads. Nothing here ever runs a kernel on a GPU, and
+# under Lambda, which fetches image layers the first time they are touched,
+# paging that in was the whole of the first question's cost.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [build-system]
 requires = ["setuptools>=68"]
