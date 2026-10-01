@@ -597,6 +597,32 @@ def local_file(target: AnyLocation) -> Path:
     return local
 
 
+def forget_download(target: AnyLocation) -> None:
+    """Drop the cached local copy of one file, so the next `local_file` fetches it again.
+
+    The cache above assumes nothing rewrites the object underneath a running
+    process, which holds for a command that ends and does not hold for a
+    long-lived container: the nightly replaces the warehouse once a day, and a
+    Lambda execution environment can outlive that. `pipeline.lambda_serve`
+    calls this when the object's ETag says the copy in hand is not the object
+    any more, and rebuilds whatever was reading it.
+
+    The file is removed as well as forgotten, so a container does not
+    accumulate one warehouse per nightly in its scratch space. A reader that
+    still holds it open keeps reading the copy it opened: an unlinked file
+    stays readable until the last descriptor closes, which is what makes the
+    swap safe while a question is in flight.
+
+    Nothing happens for a local location, which was never copied, or for one
+    that has not been downloaded in this process.
+    """
+    cached = _downloads.pop(str(location(target)), None)
+    if cached is None:
+        return
+    with contextlib.suppress(OSError):
+        cached.unlink()
+
+
 def _scratch_dir() -> str:
     """The process's scratch directory, made on first use and removed on exit."""
     global _scratch

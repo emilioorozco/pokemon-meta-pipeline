@@ -1,0 +1,19 @@
+# What never belongs in a build context. None of it is copied by any of the
+# four image files, and `.venv` and `data/` are gigabytes each: without this
+# every `docker build` here ships the local virtual environment and, on a
+# machine that has run the pipeline, the lake, to the daemon before the first
+# instruction runs.
+#
+# `data/` is the one that matters beyond speed. It is gitignored and may hold
+# the real lake, so an image built on a laptop must not be able to carry it
+# even by accident.
+.venv/
+data/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage

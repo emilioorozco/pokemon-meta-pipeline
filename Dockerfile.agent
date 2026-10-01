@@ -1,0 +1,124 @@
+# The serving application as a Lambda container image: `/ask` and `/predict`
+# behind a function URL, reading the lake.
+#
+#   docker build -f Dockerfile.agent -t pipeline-agent .
+#   docker run --rm -p 9000:8080 -e PIPELINE_DATA_DIR=/mnt/lake -v "$PWD/scratch:/mnt/lake" \
+#     -e ANTHROPIC_API_KEY=not-a-real-key pipeline-agent
+#   curl -s localhost:9000/2015-03-31/functions/function/invocations -d @event.json
+#
+# A fourth image file, beside `Dockerfile` (the stages), `Dockerfile.serve`
+# (the compose-era predictor) and `Dockerfile.lambda` (the event consumer), and
+# for the same reason each of those is its own: the base differs. This one
+# starts from the AWS runtime interface image, whose client turns an invocation
+# into a call to `pipeline.lambda_serve.handler`. `Dockerfile.serve` stays
+# exactly as it is; it is the image `compose.yaml` builds next to the tracking
+# server and it carries the `ml` extra only, so `/ask` answers 503 in it. This
+# one is the deployed one and carries the agent as well.
+#
+# x86_64 explicitly, for the reason `Dockerfile.lambda` gives: the function is
+# defined that way in the application's stack, and a manifest built on an arm64
+# laptop would be refused at update time rather than at build time.
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12
+
+# LightGBM links against the OpenMP runtime, and the Lambda base image does not
+# ship it. One package, and without it `/predict` fails at model load with a
+# missing `libgomp.so.1` rather than with anything that names LightGBM.
+RUN dnf install -y libgomp && dnf clean all && rm -rf /var/cache/dnf
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# The dependency layer, and the one thing to know about this image: it is big.
+# `ml` brings LightGBM, MLflow, scikit-learn, pandas, matplotlib, FastAPI and
+# the OpenTelemetry stack; `agent` brings LangChain and `sentence-transformers`,
+# and `sentence-transformers` brings torch.
+#
+# The torch in `uv.lock` is the PyPI `torch==2.14.0`, whose Linux dependency
+# set is the CUDA runtime: `cuda-toolkit`, `nvidia-cudnn`, `nccl`, `triton` and
+# the rest, some 2.5 GB of wheels this function will never execute a kernel
+# from. They are not dropped here, and dropping them would not work: the PyPI
+# Linux wheel's `libtorch_global_deps.so` links against those libraries, and
+# `import torch` preloads them, so an image without them fails on the first
+# embedding rather than saving anything. A CPU-only torch is an index change in
+# `pyproject.toml` (`[tool.uv.sources]` against the PyTorch CPU index) and a
+# re-lock that every other consumer of this lock file would take with it, which
+# is a change of its own and not this one. `docs/agent-service.md` records what
+# it costs today.
+#
+# `uv export` rather than a hand-written list, for the reason
+# `Dockerfile.lambda` gives: the versions are the ones `uv.lock` pins and the
+# ones CI tested, and a new transitive dependency arrives without anyone
+# remembering to add it. No dev group, so no pytest, no moto and no pyspark;
+# no `spark`, `dbt` or `orchestration` extras either.
+#
+# `--compile-bytecode` trades image size for cold start. Writing `.pyc` for
+# torch, MLflow and LangChain at build time is a few hundred megabytes of
+# layer and it is several seconds off the first import in a fresh execution
+# environment, which is the number this function is judged on.
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes \
+      --extra ml --extra agent --extra serve-lambda \
+      --format requirements-txt > /tmp/requirements.txt \
+    && uv pip install --python /var/lang/bin/python3.12 --no-cache --compile-bytecode \
+      -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt pyproject.toml uv.lock /usr/local/bin/uv
+
+# DuckDB reads the warehouse, and over an `s3://` lake the gold views inside it
+# are `read_parquet('s3://...')`, so the connection needs `httpfs` and `aws`.
+# DuckDB installs those from its own network repository into `$HOME/.duckdb` on
+# first use, which under Lambda would be a download on the critical path of the
+# first question. They are installed here instead, into a directory of the
+# image, and `pipeline.lambda_serve.prime_duckdb_extensions` copies them into
+# `$HOME` once per container.
+ENV PRA_DUCKDB_EXTENSION_CACHE=/opt/duckdb/.duckdb
+RUN mkdir -p /opt/duckdb \
+    && HOME=/opt/duckdb /var/lang/bin/python3.12 -c \
+      "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL aws')" \
+    && test -d /opt/duckdb/.duckdb/extensions
+
+# The package. Copied before the model is baked, so that the download below is
+# the one the card index code performs rather than a model name written twice.
+COPY pipeline ${LAMBDA_TASK_ROOT}/pipeline
+
+# The embedding model, baked in. The retriever embeds the question locally, so
+# a cold container that had to fetch a few hundred megabytes from Hugging Face
+# before it could answer would be a function that needs egress, a mirror that
+# can be down, and seconds nobody is paying for. `make_embedder(DEFAULT_MODEL)`
+# is the same call `pipeline.card_index` makes, and reading `.dimensions` is
+# what forces `SentenceTransformer(...)` to actually load, so the build fails
+# here if the model cannot be fetched instead of the first question failing in
+# production.
+#
+# `HF_HOME` and `SENTENCE_TRANSFORMERS_HOME` both point at the baked cache
+# because the two libraries have each owned that decision at different
+# versions, and the offline flags go on afterwards: set before the download
+# they would forbid it. Offline rather than merely cached, so that a cache miss
+# is a clear error at load time and never a silent network call from inside a
+# VPC that has no route out.
+ENV HF_HOME=/opt/models \
+    SENTENCE_TRANSFORMERS_HOME=/opt/models
+RUN /var/lang/bin/python3.12 -c \
+      "from pipeline.card_index import DEFAULT_MODEL, make_embedder; \
+       print(DEFAULT_MODEL, make_embedder(DEFAULT_MODEL).dimensions)" \
+    && /var/lang/bin/python3.12 -c \
+      "import pathlib; root = pathlib.Path('/opt/models'); \
+       [p.unlink() for pattern in ('**/*.onnx', '**/*.h5', '**/tf_model*', '**/*.msgpack') \
+        for p in root.glob(pattern) if p.is_file()]" \
+    && /var/lang/bin/python3.12 -m compileall -q "${LAMBDA_TASK_ROOT}/pipeline"
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+# `/tmp` is the only writable path in a Lambda execution environment, and three
+# things want a home directory: DuckDB's extension cache, matplotlib's font
+# cache and anything else that reaches for `~`. Pointing `HOME` at `/tmp` costs
+# nothing (the ephemeral volume is 2 GB and the warehouse copy is the only
+# large thing in it) and turns three possible read-only-filesystem failures
+# into none. `TMPDIR` is already `/tmp` under Lambda, which is where
+# `pipeline.storage`'s `tempfile` scratch directories land.
+ENV HOME=/tmp \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Everything else is the function's environment, set in the application's
+# stack: PIPELINE_DATA_DIR (the s3:// lake root), AGENT_KEYS_SECRET_ARN, the
+# four PRA_SQL_GATE_* settings and PRA_LOG_FORMAT. AWS_REGION is the
+# platform's. See docs/agent-service.md.
+CMD ["pipeline.lambda_serve.handler"]

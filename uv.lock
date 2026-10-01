@@ -3202,6 +3202,18 @@ wheels = [
 ]
 
 [[package]]
+name = "mangum"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/c8/1579c705908d02a4526a748e8d0f0419151d4498c59033840f5df3a14822/mangum-0.22.0.tar.gz", hash = "sha256:701936891aaed8ed66479b871c2bda87ba288fd01c7d5dd6ba6c8e9ba1c239d1", size = 118290, upload-time = "2026-08-22T12:54:48.396Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/a2/21ee5d457ae79a2587ff0d4652990670b7cac84ba0eaab6e6865a3bd2515/mangum-0.22.0-py3-none-any.whl", hash = "sha256:a0595e3cc7a8091b22d8b3997bab5b2ad6aae7a5e40865e19c2015f5c959a93b", size = 17143, upload-time = "2026-08-22T12:54:46.924Z" },
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4939,6 +4951,9 @@ ml = [
 orchestration = [
     { name = "apache-airflow" },
 ]
+serve-lambda = [
+    { name = "mangum" },
+]
 spark = [
     { name = "pyspark" },
 ]
@@ -4954,6 +4969,7 @@ dev = [
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
     { name = "lightgbm" },
+    { name = "mangum" },
     { name = "matplotlib" },
     { name = "mlflow" },
     { name = "moto", extra = ["dynamodb", "s3"] },
@@ -4989,6 +5005,7 @@ requires-dist = [
     { name = "langchain-anthropic", marker = "extra == 'agent'", specifier = ">=1.0" },
     { name = "langchain-core", marker = "extra == 'agent'", specifier = ">=1.0" },
     { name = "lightgbm", marker = "extra == 'ml'", specifier = ">=4.3" },
+    { name = "mangum", marker = "extra == 'serve-lambda'", specifier = ">=0.17" },
     { name = "matplotlib", marker = "extra == 'ml'", specifier = ">=3.8" },
     { name = "mlflow", marker = "extra == 'ml'", specifier = ">=3" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'ml'", specifier = ">=1.25" },
@@ -5004,7 +5021,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'agent'", specifier = ">=3" },
     { name = "uvicorn", marker = "extra == 'ml'", specifier = ">=0.29" },
 ]
-provides-extras = ["spark", "dbt", "ml", "orchestration", "agent"]
+provides-extras = ["spark", "dbt", "ml", "orchestration", "agent", "serve-lambda"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5017,6 +5034,7 @@ dev = [
     { name = "langchain-anthropic", specifier = ">=1.0" },
     { name = "langchain-core", specifier = ">=1.0" },
     { name = "lightgbm", specifier = ">=4.3" },
+    { name = "mangum", specifier = ">=0.17" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mlflow", specifier = ">=3" },
     { name = "moto", extras = ["dynamodb", "s3"], specifier = ">=5" },
