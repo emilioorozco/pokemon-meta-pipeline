@@ -215,7 +215,7 @@ def test_an_archetype_with_no_decided_game_omits_the_rate() -> None:
     assert "winRate" not in items[0]
 
 
-def test_the_meta_row_omits_the_model_when_nothing_holds_the_alias() -> None:
+def test_the_meta_row_carries_the_model_fields_as_null_when_nothing_holds_the_alias() -> None:
     item = meta_item(
         run_id=RUN_ID,
         published_at=PUBLISHED_AT,
@@ -235,8 +235,12 @@ def test_the_meta_row_omits_the_model_when_nothing_holds_the_alias() -> None:
     assert item["matchupRows"] == Decimal("42")
     assert item["weeklyRows"] == Decimal("17")
     assert item["archetypeRows"] == Decimal("9")
-    assert "modelVersion" not in item
-    assert "modelAlias" not in item
+    # The keys stay on the row with no model promoted, unlike a missing rate:
+    # a reader needs to tell "no model yet" apart from "field never written".
+    assert "modelVersion" in item
+    assert item["modelVersion"] is None
+    assert "modelAlias" in item
+    assert item["modelAlias"] is None
     assert "sourceCommit" not in item
     assert "minGames" not in item
 
@@ -464,8 +468,10 @@ def test_one_publish_writes_the_meta_row_and_every_mart_row(
     assert meta["archetypeRows"] == Decimal(summary.archetypes)
     assert meta["gamesTotal"] > Decimal("0")
     assert meta["minGames"] == Decimal("5")
-    # No registry at that URI, so the alias is unheld and the row says nothing.
-    assert "modelVersion" not in meta
+    # No registry at that URI, so the alias is unheld, but the keys still come
+    # back out of the table: moto's NULL round-trips to None, not a dropped key.
+    assert meta["modelVersion"] is None
+    assert meta["modelAlias"] is None
 
 
 @pytest.mark.dbt

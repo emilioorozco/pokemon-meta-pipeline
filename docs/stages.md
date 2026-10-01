@@ -1569,9 +1569,16 @@ boundary is where the scaling happens so that it happens once.
 **A rate that does not exist is left out.** A matchup with no decided game has
 no win rate, and the attribute is absent rather than null, so
 `attribute_exists(winRate)` is a filter the application can use. The same goes
-for `shareOfWeek`, for `modelVersion` and `modelAlias` when nothing holds the
-`production` alias, for `sourceCommit` outside a checkout, and for `minGames`
+for `shareOfWeek`, for `sourceCommit` outside a checkout, and for `minGames`
 when the dbt project cannot be read.
+
+**`modelVersion` and `modelAlias` are always present, and `null` until a model
+is promoted.** Every META row carries both keys, on every stage: `null` when no
+model version holds the `production` alias yet, the version string and
+`"production"` once one does. Unlike a missing rate, the two are part of the
+row's shape from the first publish, so a reader can tell "no model promoted"
+apart from "this field was never written" instead of treating an absent key as
+either.
 
 **The ISO week is zero padded.** `2026-W09`, not `2026-W9`, because without the
 padding week 9 sorts after week 10 and a `between` over a range of weeks

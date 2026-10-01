@@ -461,20 +461,29 @@ def meta_item(
     The application reads this first: it is how a page can say "128 games, as of
     this morning" without counting anything, and how a stale publish is visible
     rather than inferred from rows that look fine individually.
+
+    `modelVersion` and `modelAlias` are always present, `None` when no model
+    holds the `production` alias yet: unlike a rate, where the attribute goes
+    out because "not enough games" is not a value, here the field is part of
+    the row's shape on every stage, and a reader needs to tell "no model
+    promoted yet" apart from "this META row predates the two fields existing".
+    boto3's resource layer writes a Python `None` as DynamoDB's `NULL` type, so
+    it round-trips back to `None` rather than vanishing.
     """
+    model_version, model_alias = model if model is not None else (None, None)
     item: Item = {
         KEY_PK: PK_META,
         KEY_SK: SK_META,
         RUN_ID_ATTRIBUTE: run_id,
         "publishedAt": published_at,
         "modelName": REGISTERED_MODEL_NAME,
+        "modelVersion": model_version,
+        "modelAlias": model_alias,
         "gamesTotal": number(games_total),
         "matchupRows": number(matchup_rows),
         "weeklyRows": number(weekly_rows),
         "archetypeRows": number(archetype_rows),
     }
-    if model is not None:
-        item["modelVersion"], item["modelAlias"] = model
     if source_commit:
         item["sourceCommit"] = source_commit
     if min_games is not None:
