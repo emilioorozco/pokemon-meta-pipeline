@@ -79,7 +79,9 @@ import os
 import shutil
 import tempfile
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, cast
 
@@ -106,6 +108,8 @@ DEFAULT_SPARK_PACKAGES: Final = "org.apache.hadoop:hadoop-aws:3.4.2"
 # Only used to spell an endpoint when `AWS_REGION` is unset; every client here
 # resolves its own region from the environment the same way boto3 does.
 DEFAULT_REGION: Final = "us-west-2"
+# How many objects of a tree sync are in flight at once. See `_in_parallel`.
+SYNC_WORKERS: Final = 16
 
 _client: "S3Client | None" = None
 # Files pulled down by `local_file`, and the directory they live in. Both are
@@ -122,6 +126,41 @@ _artifact_roots: dict[str, str] = {}
 
 class StorageError(RuntimeError):
     """A root, or an operation on one, that cannot mean what the caller asked for."""
+
+
+def _in_parallel(tasks: list[Callable[[], None]]) -> None:
+    """Run one small transfer per task, `SYNC_WORKERS` at a time, and raise the first failure.
+
+    Only the tree sync uses this, and only because of what a tree sync is: the
+    MLflow store is hundreds of files of a few hundred bytes each, so the cost
+    is one HTTPS round trip per object and almost no bytes. Serially that is
+    hundreds of round trips end to end, which on a Lambda cold start was the
+    whole cold start: the first `/health` of a deployed container spent nearly
+    thirty seconds inside `download_tree`. Sixteen at a time turns the same
+    work into a sixteenth of the round trips of wall clock, and sixteen rather
+    than more because the objects are tiny, the gain flattens, and a wide pool
+    against one prefix is how a sync starts getting throttled.
+
+    The client is built before the pool rather than inside a worker: `boto3`
+    clients are safe to call from several threads, but the lazy build in
+    `s3_client` is a read-modify-write of a module global and two workers
+    racing on it would make two clients and keep one.
+
+    Order is not preserved and must not matter. It does not: every task here
+    writes a different object or a different local file, and a directory that
+    two of them need is created with `exist_ok`.
+    """
+    if not tasks:
+        return
+    if len(tasks) == 1:
+        tasks[0]()
+        return
+    s3_client()
+    with ThreadPoolExecutor(max_workers=min(SYNC_WORKERS, len(tasks))) as pool:
+        # `map` rather than `as_completed`, so the first failure raised is the
+        # first task's and not whichever one lost the race to finish.
+        for _ in pool.map(lambda task: task(), tasks):
+            pass
 
 
 def s3_client() -> "S3Client":
@@ -474,6 +513,11 @@ class Location:
 
         Empty directories come back too, from the markers `upload_tree` left;
         see there for why a directory with nothing in it is worth carrying.
+
+        The files come down `SYNC_WORKERS` at a time, which is why this is a
+        list of closures rather than a loop; `_in_parallel` says what that is
+        worth and why it is safe. The markers are made first and serially, so a
+        directory exists before anything is written beside it.
         """
         destination.mkdir(parents=True, exist_ok=True)
         if self._path is not None:
@@ -481,13 +525,15 @@ class Location:
                 shutil.copytree(self._path, destination, dirs_exist_ok=True)
             return destination
         prefix = f"{self._key}/" if self._key else ""
+        pending: list[Callable[[], None]] = []
         for key in self._all_keys():
             target = destination / key[len(prefix) :]
             if key.endswith("/"):
                 target.mkdir(parents=True, exist_ok=True)
                 continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            Location(f"{S3_SCHEME}{self._bucket}/{key}").download_file(target)
+            source = Location(f"{S3_SCHEME}{self._bucket}/{key}")
+            pending.append(partial(_download_one, source, target))
+        _in_parallel(pending)
         return destination
 
     def upload_tree(self, source: Path) -> None:
@@ -512,13 +558,19 @@ class Location:
                 return
             shutil.copytree(source, self._path, dirs_exist_ok=True)
             return
+        pending: list[Callable[[], None]] = []
         for item in sorted(source.rglob("*")):
             relative = item.relative_to(source).as_posix()
             if item.is_file():
-                (self / relative).upload_file(item)
+                pending.append(partial(_upload_one, self / relative, item))
             elif item.is_dir() and not any(item.iterdir()):
                 marker = f"{self._key}/{relative}/" if self._key else f"{relative}/"
-                s3_client().put_object(Bucket=self._bucket, Key=marker, Body=b"")
+                pending.append(partial(_put_marker, self._bucket, marker))
+        # The same pool the download uses, for the same reason: a store written
+        # back one `PutObject` at a time is hundreds of round trips of a few
+        # hundred bytes each. Nothing here depends on the order, because an
+        # object store has no directories to create first.
+        _in_parallel(pending)
 
     def upload_file(self, source: Path) -> None:
         """Copy one local file here."""
@@ -527,6 +579,21 @@ class Location:
             shutil.copyfile(source, self._path)
             return
         s3_client().upload_file(str(source), self._bucket, self._key)
+
+
+def _download_one(source: Location, target: Path) -> None:
+    """One object of a tree, as something `_in_parallel` can be handed."""
+    source.download_file(target)
+
+
+def _upload_one(target: Location, source: Path) -> None:
+    """One file of a tree, as something `_in_parallel` can be handed."""
+    target.upload_file(source)
+
+
+def _put_marker(bucket: str, key: str) -> None:
+    """The zero-byte object that stands for an empty directory; `upload_tree` says why."""
+    s3_client().put_object(Bucket=bucket, Key=key, Body=b"")
 
 
 AnyLocation = Location | Path | str

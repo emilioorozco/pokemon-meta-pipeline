@@ -18,6 +18,7 @@ import pytest
 
 from pipeline.settings import DATA_DIR_VAR, DataRootError, validate_data_root
 from pipeline.storage import (
+    SYNC_WORKERS,
     Location,
     StorageError,
     artifact_root,
@@ -211,6 +212,57 @@ def test_a_synced_directory_keeps_a_directory_that_holds_nothing(root: Location)
     with synced_dir(store, write_back=False) as working:
         assert (working / "0" / "a-run" / "artifacts").is_dir()
         assert (working / "0" / "a-run" / "meta.yaml").read_text() == "run_id: a-run\n"
+
+
+def relative_files(root: Path) -> dict[str, bytes]:
+    """Every file under a directory, keyed by its path relative to it."""
+    return {
+        item.relative_to(root).as_posix(): item.read_bytes()
+        for item in sorted(root.rglob("*"))
+        if item.is_file()
+    }
+
+
+def empty_directories(root: Path) -> list[str]:
+    """Every directory under a root that holds nothing, relative to it."""
+    return sorted(
+        item.relative_to(root).as_posix()
+        for item in root.rglob("*")
+        if item.is_dir() and not any(item.iterdir())
+    )
+
+
+def test_a_tree_wider_than_the_pool_round_trips_unchanged(
+    s3_lake: Location, tmp_path: Path
+) -> None:
+    """The sync runs `SYNC_WORKERS` objects at a time, and that may change only the clock.
+
+    One object at a time was the whole of a deployed cold start: a production
+    MLflow store is several hundred files of a few hundred bytes each, and the
+    cost of each one is a round trip rather than its bytes. The pool is the
+    fix, and the only ways it could be a bad trade are a file landing in the
+    wrong place, landing truncated, or not landing at all. So a store several
+    times wider than the pool goes up, comes back down into a different
+    directory, and is compared path by path and byte by byte, empty
+    directories included: the markers are the half an object store does not
+    carry for free and the half a concurrent walk would drop first.
+    """
+    written = tmp_path / "written"
+    for experiment in range(3):
+        for run in range(SYNC_WORKERS):
+            run_dir = written / str(experiment) / f"run-{run:02d}"
+            (run_dir / "metrics").mkdir(parents=True)
+            (run_dir / "metrics" / "holdout_logloss").write_text(f"{experiment}.{run}\n")
+            (run_dir / "meta.yaml").write_text(f"run_id: {experiment}-{run:02d}\n")
+            (run_dir / "artifacts").mkdir()
+    assert len(relative_files(written)) > SYNC_WORKERS
+
+    store = s3_lake / "mlruns"
+    store.upload_tree(written)
+    read_back = store.download_tree(tmp_path / "read-back")
+
+    assert relative_files(read_back) == relative_files(written)
+    assert empty_directories(read_back) == empty_directories(written)
 
 
 def test_an_empty_directory_marker_is_not_a_file(s3_lake: Location) -> None:
