@@ -118,10 +118,11 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # The image is several gigabytes, most of it torch and the CUDA runtime
-      # its PyPI wheel depends on, and a hosted runner starts with about
-      # fourteen free. This clears the toolchains the build never touches
-      # rather than letting the push fail on a full disk.
+      # The image is about a gigabyte, and the build holds the layers, the
+      # export cache and the pushed blobs at once on a hosted runner that
+      # starts with about fourteen free. It was 3.72 GB before the CPU-only
+      # torch and this step is what kept the push off a full disk; it is kept
+      # because clearing toolchains the build never touches costs seconds.
       - name: Make room for the image
         if: steps.configured.outputs.ready == 'true'
         run: |

@@ -1161,6 +1161,24 @@ text inside the warehouse the SQL tool is deliberately restricted from reading.
 At millions of rows the trade goes the other way, and the storage is one file
 and one loader.
 
+**On Linux, torch comes from the PyTorch CPU index, not from PyPI.**
+`pyproject.toml` declares that index as `explicit`, so nothing resolves from it
+unless asked, and `[tool.uv.sources]` asks for `torch` under
+`sys_platform == 'linux'` and nothing else. The reason is that the PyPI Linux
+wheel depends on the whole CUDA runtime (`cuda-toolkit`, `nvidia-cudnn-cu13`,
+`nvidia-nccl-cu13`, `triton`), about 2.5 GB that `libtorch_global_deps.so`
+links against and `import torch` therefore preloads, and the embedder runs on a
+CPU everywhere this project runs: a laptop, a GitHub runner and a Lambda
+function, none of which has a GPU. `docs/agent-service.md` has what it was
+costing the deployed function. macOS and Windows keep the PyPI wheel, which is
+already CPU-only there, so `uv sync` on a development machine installs exactly
+what it did before; `uv.lock` carries both and the only visible difference is
+that a Linux install reports its version as `2.14.1+cpu`. The one place this
+has to be spelled out again is `Dockerfile.agent`, which installs from an
+exported requirements file rather than from the lock and so needs
+`--emit-index-url` and `--index-strategy unsafe-best-match` to find that
+version; the comment there says why.
+
 `HashingEmbedder` is the third implementation and needs no download at all: it
 hashes word tokens, with a five-character stem, into 256 buckets. It is not a
 semantic model and does not pretend to be one. It exists so that the build, the
