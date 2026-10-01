@@ -128,7 +128,7 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-# Linux gets `torch==2.14.0+cpu` from that index; everything else keeps the
+# Linux gets `torch==2.14.1+cpu` from that index; everything else keeps the
 # PyPI wheel, which is already CPU-only on macOS and Windows, so a development
 # machine installs exactly what it did before.
 #
