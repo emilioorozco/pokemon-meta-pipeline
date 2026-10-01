@@ -220,6 +220,29 @@ def test_the_tool_returns_readable_card_text_and_counts_its_call(
     assert value == 1.0
 
 
+def test_the_tool_records_the_cards_the_answer_can_cite(
+    hashed_index: Path, metrics: ServiceMetrics, exporter: InMemorySpanExporter
+) -> None:
+    """What the evidence panel shows: a card, where it was printed, and its text.
+
+    The heading `render` puts over a card is not in `text`, because the name
+    and the printing are fields of their own and the application lays them
+    out itself.
+    """
+    tracer = build_tracer_provider(exporter=exporter).get_tracer("tests")
+    tool = card_index.make_lookup_cards_tool(hashed_index, tracer=tracer, metrics=metrics)
+
+    with agent.collect_evidence() as log:
+        tool.invoke({"query": "bench damage", "k": 2})
+    cards = log.finish().cards
+
+    assert [card.name for card in cards][0] == BENCH_CARD
+    assert len(cards) == 2
+    assert all(card.set_code and card.number for card in cards)
+    assert all("**" not in card.text for card in cards)
+    assert any("Phantom Dive" in card.text for card in cards)
+
+
 def test_an_empty_corpus_is_refused_rather_than_indexed(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no cards"):
         card_index.build_index([], card_index.HashingEmbedder(), tmp_path / "index")

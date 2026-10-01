@@ -60,6 +60,10 @@ for one route. Its agent is injected exactly as the model loader is, so the
 tests drive the real agent loop with a scripted chat model and no API key, and
 it is built on the first question rather than at startup: a service whose
 `/predict` works should not fail to start because a provider key is missing.
+Its body carries the evidence as well as the answer, because the application
+shows a member what was looked up: every statement in full with its first
+rows, the cards that matched, the gate's worst verdict over the run, how long
+the call took and which run's warehouse answered (docs/agent-service.md).
 
 A sixth, `GET /warm`, is the other side of that laziness. Everything the first
 question pays for is paid once per container, so something has to ask for it
@@ -97,7 +101,7 @@ from pipeline.config import (
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
 from pipeline.sql_gate import GateConfigError, gate_from_env
-from pipeline.storage import tracking_store
+from pipeline.storage import AnyLocation, duckdb_connect, local_file, location, tracking_store
 from pipeline.telemetry import INFERENCE_SPAN, route_label, setup_metrics, setup_tracing
 
 logger = logging.getLogger(__name__)
@@ -125,6 +129,16 @@ NO_PROVIDER_KEY: Final = f"the agent has no provider key configured; ${PROVIDER_
 # a fault: `/health` builds nothing on purpose, so until a question or a ping
 # has been through, whether there is a card tool is unknown rather than false.
 NO_AGENT_YET: Final = "the agent has not been built yet; a question or `GET /warm` builds it"
+# Which run built the warehouse an answer came from. Every stage of a nightly
+# shares one run id (`pipeline.run_all` sets it for all of them), so the gold
+# stage's row in `mart_pipeline_health` carries the same id the publish stage
+# wrote beside the rows the application reads, which is the point: a member can
+# line an answer up with the night it came from.
+RUN_ID_STAGE: Final = "gold"
+RUN_ID_QUERY: Final = (
+    "select last_run_id from mart_pipeline_health "
+    f"where stage = '{RUN_ID_STAGE}' and last_run_id is not null limit 1"
+)
 
 
 class Predictor(Protocol):
@@ -235,7 +249,7 @@ class AgentResult(Protocol):
     """
 
     def as_dict(self) -> dict[str, Any]:
-        """The answer, its tool calls, the model and the token usage."""
+        """The answer, its tool calls, its evidence, the model and the token usage."""
 
 
 class AskAgent(Protocol):
@@ -290,8 +304,62 @@ class ToolCallResponse(BaseModel):
     rows: int = Field(description="Rows the tool returned; zero for a refusal or an empty result")
 
 
+class QueryEvidenceResponse(BaseModel):
+    """One statement the agent put to the warehouse, and the rows it got back."""
+
+    sql: str = Field(description="The statement in full, as the model wrote it, not shortened")
+    row_count: int = Field(description="Rows the statement returned; zero for a refusal")
+    rows: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="The first 10 rows, as JSON values: numbers, strings, booleans and null, "
+        "with dates as ISO strings and every string cut to 500 characters",
+    )
+    gate: str = Field(
+        description="The SQL gate's verdict on this statement: `off`, `jev:allowed`, "
+        "`jev:allowed_low`, `jev:refused` or `jev:error`"
+    )
+    refused_reason: str | None = Field(
+        default=None,
+        description="Why there are no rows: the validator's refusal, the gate's refusal, or "
+        "the warehouse's own error. Null when the statement ran",
+    )
+
+
+class CardEvidenceResponse(BaseModel):
+    """One printed card the agent looked up, as a reader cites it."""
+
+    name: str = Field(description="The card's printed name")
+    set_code: str = Field(description="The set it is cited from, as the card corpus spells it")
+    number: str = Field(description="Its number in that set")
+    text: str = Field(
+        description="The card's printed text without the name and set over it, cut to "
+        "500 characters"
+    )
+
+
+class EvidenceResponse(BaseModel):
+    """What the answer rests on: the queries that ran and the cards that matched."""
+
+    queries: list[QueryEvidenceResponse] = Field(
+        default_factory=list, description="Every statement of this run, in call order"
+    )
+    cards: list[CardEvidenceResponse] = Field(
+        default_factory=list,
+        description="The cards the run matched, each once, in the order it first saw them, "
+        "at most 10",
+    )
+
+
 class AskResponse(BaseModel):
-    """The agent's answer, and everything it did to get there."""
+    """The agent's answer, and everything it did to get there.
+
+    `tool_calls` is the tally this route has always carried and `evidence` is
+    the same run written out so it can be read: the whole statement rather
+    than a hundred characters of it, the rows rather than their number, and
+    the cards rather than the fact that a lookup happened. Both are here
+    because the evaluation scripts read the first and a member reading the
+    answer reads the second.
+    """
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -303,6 +371,26 @@ class AskResponse(BaseModel):
     model: str = Field(description="Provider model that answered")
     usage: dict[str, int] = Field(
         description="Token counts the provider reported; empty when it reported none"
+    )
+    evidence: EvidenceResponse = Field(
+        default_factory=EvidenceResponse,
+        description="What the answer was built from, for a panel that shows the member "
+        "what was looked up",
+    )
+    gate_summary: str = Field(
+        default="off",
+        description="The worst outcome across this run's queries: `refused` if any was "
+        "refused, `allowed_low` if the gate let one through unsurely, `allowed` if they "
+        "ran under the gate, `off` if there were none or the gate is not on",
+    )
+    latency_ms: int = Field(
+        default=0, description="Wall time of the whole call inside the service, in milliseconds"
+    )
+    run_id: str | None = Field(
+        default=None,
+        description="Which run's data answered: the pipeline run that built the warehouse, "
+        "or that warehouse's last-modified time when the run metadata cannot be read. "
+        "Null when there is no warehouse to ask",
     )
 
 
@@ -861,6 +949,92 @@ def stub_requested() -> bool:
     return os.environ.get(STUB_MODEL_VAR, "").strip().lower() in {"1", "true", "yes"}
 
 
+# The run id of each warehouse copy this process has asked about, keyed by the
+# local file and the modification time of it. The answer changes only when the
+# file does, and on a long-lived container the file is replaced by the nightly
+# and by nothing else (`pipeline.lambda_serve` swaps the copy, which lands here
+# as a new path).
+_run_ids: dict[tuple[str, int], str | None] = {}
+
+
+def warehouse_run_id(warehouse: AnyLocation = WAREHOUSE_PATH) -> str | None:
+    """Which run's data answered, for the member reading the answer.
+
+    `mart_pipeline_health` carries one row per stage with that stage's last
+    run id on it, and the gold stage's row is the run that built the marts in
+    this file. Every stage of a nightly shares one id, so it is also the id
+    the publish stage wrote on the rows the application already shows, and the
+    two can be lined up.
+
+    That mart is a view over the run-metrics Parquet in the lake, so reading
+    it needs the lake as well as the warehouse file, and a serving container
+    may have the file and not the lake. None of that is a failure here: when
+    the query cannot run, or no gold run is recorded, the answer is the
+    warehouse's own last-modified time as an ISO string under the same key.
+    It is a weaker identifier and it still answers "which night is this",
+    which is what the field is for. Null is the third answer, for a service
+    with no warehouse at all.
+
+    Cached per copy of the file. The query is cheap and it is not free, and
+    the answer cannot change while the bytes do not.
+
+    Nothing in here raises. This is provenance on an answer the agent has
+    already produced, and a lake that cannot be reached must not turn a
+    question that was answered into a 500.
+    """
+    try:
+        target = location(warehouse)
+        if not target.is_file():
+            return None
+        local = local_file(target)
+        modified = local.stat().st_mtime_ns
+    except Exception as unreachable:  # noqa: BLE001 - provenance must not fail a question
+        logger.info(
+            "the warehouse could not be reached for its run id",
+            extra={"error": f"{type(unreachable).__name__}: {unreachable}"},
+        )
+        return None
+    key = (str(local), modified)
+    if key in _run_ids:
+        return _run_ids[key]
+    resolved = _published_run_id(target) or _modified_at(modified)
+    _run_ids[key] = resolved
+    return resolved
+
+
+def _published_run_id(warehouse: AnyLocation) -> str | None:
+    """The gold stage's last run id out of the warehouse, or None if it cannot be read."""
+    import duckdb
+
+    try:
+        connection = duckdb_connect(warehouse)
+    except (duckdb.Error, OSError) as unreadable:
+        logger.info(
+            "the warehouse could not be opened for its run id",
+            extra={"error": f"{type(unreadable).__name__}: {unreadable}"},
+        )
+        return None
+    try:
+        row = connection.sql(RUN_ID_QUERY).fetchone()
+    except duckdb.Error as unreadable:
+        # An older warehouse without the ops views, and a container that cannot
+        # reach the lake those views read, both land here. The fallback says
+        # which copy of the data answered, which is most of the question.
+        logger.info(
+            "the warehouse has no readable run metadata; falling back to its timestamp",
+            extra={"error": f"{type(unreadable).__name__}: {unreadable}"},
+        )
+        return None
+    finally:
+        connection.close()
+    return str(row[0]) if row and row[0] else None
+
+
+def _modified_at(modified_ns: int) -> str:
+    """A file's modification time as an ISO string, which is the weaker run id."""
+    return datetime.fromtimestamp(modified_ns / 1_000_000_000, UTC).isoformat()
+
+
 def describe(model: LoadedModel) -> ModelResponse:
     """The loaded model as the `/model` body."""
     return ModelResponse(
@@ -878,6 +1052,7 @@ def create_app(
     span_exporter: SpanExporter | None = None,
     agent_factory: AgentFactory | None = None,
     eager_model: bool = True,
+    warehouse: AnyLocation | None = None,
 ) -> FastAPI:
     """The application, with its model loader and its agent injected.
 
@@ -905,8 +1080,15 @@ def create_app(
     does not read. False moves it to the first `/model`, `/predict` or
     `/reload`, and `/health` says `model_loaded: false` until then without
     setting it off.
+
+    `warehouse` is only ever read for the `run_id` an answer carries: the
+    agent opens its own, through the factory above. It is a parameter, and
+    resolved here rather than in the signature, so that a test can point it at
+    a warehouse it built rather than at whatever is in the data directory of
+    the machine running the suite.
     """
     holder = ModelHolder(loader or mlflow_loader())
+    marts = WAREHOUSE_PATH if warehouse is None else warehouse
     app = FastAPI(
         title="Pokemon win-probability service",
         version="1.0.0",
@@ -1165,9 +1347,19 @@ def create_app(
         No span is opened here: the agent opens `agent.answer` around its own
         run and a span per tool call inside it, and the HTTP span from the
         instrumentation is already the parent of all of them.
+
+        Three fields are the service's rather than the agent's. `latency_ms`
+        is measured from the first line of the handler, so a question that
+        had to build the agent reports what the caller actually waited for;
+        `run_id` says which warehouse answered; and `evidence` is the agent's
+        own and passes through untouched.
         """
+        started = time.perf_counter()
         result = agent.required().ask(request.question)
-        return AskResponse.model_validate(result.as_dict())
+        payload = dict(result.as_dict())
+        payload["run_id"] = warehouse_run_id(marts)
+        payload["latency_ms"] = round((time.perf_counter() - started) * 1000)
+        return AskResponse.model_validate(payload)
 
     return app
 

@@ -23,6 +23,7 @@ missing-category code rather than as a string.
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Final
 
 import pandas as pd
@@ -103,6 +104,18 @@ class Registry:
     def __call__(self) -> serve.LoadedModel:
         self.loads += 1
         return self.model
+
+
+@pytest.fixture(autouse=True)
+def no_warehouse(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """No warehouse unless a test builds one, so `run_id` is the same everywhere.
+
+    `/ask` reads the warehouse for the run that built it, and the default is
+    the one in the data directory, which on a developer's machine is the real
+    thing and in continuous integration is nothing at all. Pointing it at an
+    empty temporary directory is what makes the two agree.
+    """
+    monkeypatch.setattr(serve, "WAREHOUSE_PATH", tmp_path / "no-warehouse.duckdb")
 
 
 @pytest.fixture(autouse=True)
@@ -408,24 +421,108 @@ class StubAgent:
         return self.payload
 
 
+ALLOWED_SQL: Final = (
+    "select archetype_name, games, win_rate, last_played from mart_matchups "
+    "where archetype_name ilike 'Alpha' and opponent_archetype_name ilike 'Beta'"
+)
+REFUSED_SQL: Final = "select * from dim_player"
+REFUSAL: Final = "refused: `dim_player` is not a table this tool can read."
+
+# One run of each of the three things a question does: a query that ran, a
+# query that was refused, and a card the answer leans on. The `/ask` tests
+# drive it through a stub agent, because the real loop is exercised against a
+# real warehouse in `tests/test_agent.py` and the question here is whether the
+# route carries the whole of what the agent produced.
 ANSWER: Final[dict[str, Any]] = {
     "answer": "Alpha wins 58% of 12 games against Beta.",
     "tool_calls": [
-        {"tool": "query_marts", "input_summary": "select ... from mart_matchups", "rows": 1}
+        {"tool": "query_marts", "input_summary": "select ... from mart_matchups", "rows": 1},
+        {"tool": "query_marts", "input_summary": "select * from dim_player", "rows": 0},
+        {"tool": "lookup_cards", "input_summary": "a card that draws cards", "rows": 1},
     ],
     "model": "scripted-fake",
     "usage": {"input_tokens": 120, "output_tokens": 40},
+    "evidence": {
+        "queries": [
+            {
+                "sql": ALLOWED_SQL,
+                "row_count": 1,
+                "rows": [
+                    {
+                        "archetype_name": "Alpha",
+                        "games": 12,
+                        "win_rate": 0.58,
+                        "last_played": "2026-09-28",
+                    }
+                ],
+                "gate": "jev:allowed",
+                "refused_reason": None,
+            },
+            {
+                "sql": REFUSED_SQL,
+                "row_count": 0,
+                "rows": [],
+                "gate": "off",
+                "refused_reason": REFUSAL,
+            },
+        ],
+        "cards": [
+            {
+                "name": "Iono",
+                "set_code": "PAL",
+                "number": "185",
+                "text": "Each player shuffles their hand and puts it on the bottom of their deck.",
+            }
+        ],
+    },
+    "gate_summary": "refused",
 }
 
 
+def agent_fields(response: Any) -> dict[str, Any]:
+    """The body with the two fields the service adds, rather than the agent, taken off."""
+    body = dict(response.json())
+    body.pop("latency_ms")
+    body.pop("run_id")
+    return body
+
+
 def test_ask_returns_the_answer_and_what_the_agent_read(registry: Registry) -> None:
+    """The whole contract the application renders: the answer and its evidence.
+
+    A query that ran with its rows, a query that was refused with the reason
+    and no rows, the card the answer leans on, the worst thing the gate said
+    about the run, and the two fields the service adds around the agent.
+    """
     agent = StubAgent(ANSWER)
     app = serve.create_app(registry, agent_factory=lambda: agent)
     with TestClient(app) as started:
-        body = started.post("/ask", json={"question": "how does Alpha do against Beta"}).json()
+        response = started.post("/ask", json={"question": "how does Alpha do against Beta"})
+    body = response.json()
 
-    assert body == ANSWER
+    assert agent_fields(response) == ANSWER
     assert agent.asked == ["how does Alpha do against Beta"]
+    # The query is carried whole rather than summarized, which is the half
+    # `tool_calls` cannot answer.
+    assert body["evidence"]["queries"][0]["sql"] == ALLOWED_SQL
+    assert body["evidence"]["queries"][0]["rows"][0]["last_played"] == "2026-09-28"
+    assert body["evidence"]["queries"][1]["refused_reason"] == REFUSAL
+    assert body["evidence"]["cards"][0]["set_code"] == "PAL"
+    assert body["gate_summary"] == "refused"
+    assert isinstance(body["latency_ms"], int)
+    # No warehouse under this test, so there is no run to name.
+    assert body["run_id"] is None
+
+
+def test_an_agent_that_reports_no_evidence_still_answers(registry: Registry) -> None:
+    """The evidence is defaulted, not required, so an injected agent owes it nothing."""
+    bare = {"answer": "I cannot tell.", "tool_calls": [], "model": "fake", "usage": {}}
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(bare))
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "anything"}).json()
+
+    assert body["evidence"] == {"queries": [], "cards": []}
+    assert body["gate_summary"] == "off"
 
 
 def test_ask_refuses_an_empty_question(registry: Registry) -> None:
@@ -493,10 +590,76 @@ def test_a_failed_agent_build_is_tried_again_on_the_next_question(
             assert started.get("/health").json()["agent_ready"] is False
             answered = started.post("/ask", json={"question": "two"})
         assert answered.status_code == 200
-        assert answered.json() == ANSWER
+        assert answered.json()["answer"] == ANSWER["answer"]
         assert started.get("/health").json()["agent_ready"] is True
     assert attempts == 2
     assert "building the agent again" in caplog.text
+
+
+# ---------------------------------------------------- which run answered --
+#
+# `run_id` is the one field of the body the service reads out of the warehouse
+# rather than off the agent, so it has its own three cases: the run metadata is
+# there, it is not readable, and there is no warehouse at all.
+
+
+def warehouse_with(path: Path, rows: list[tuple[str, str]]) -> Path:
+    """A DuckDB file holding a `mart_pipeline_health` of (stage, last_run_id)."""
+    import duckdb
+
+    connection = duckdb.connect(str(path))
+    connection.execute("create table mart_pipeline_health (stage varchar, last_run_id varchar)")
+    connection.executemany("insert into mart_pipeline_health values (?, ?)", rows)
+    connection.close()
+    return path
+
+
+def test_the_run_id_is_the_run_that_built_the_warehouse(tmp_path: Path) -> None:
+    """The gold stage's row, which is the run that built the marts in this file."""
+    built = warehouse_with(
+        tmp_path / "meta.duckdb", [("consume", "20260929T0200Z"), ("gold", "20260930T0200Z")]
+    )
+    assert serve.warehouse_run_id(built) == "20260930T0200Z"
+
+
+@pytest.mark.parametrize("built", [True, False])
+def test_a_warehouse_with_no_run_metadata_answers_with_its_timestamp(
+    tmp_path: Path, built: bool
+) -> None:
+    """A container that cannot read the lake still says which copy answered.
+
+    The ops views are views over the run-metrics Parquet, so a warehouse
+    without them, and a file that is not a warehouse at all, both land on the
+    fallback rather than on an error.
+    """
+    import duckdb
+
+    bare = tmp_path / "bare.duckdb"
+    if built:
+        duckdb.connect(str(bare)).close()
+    else:
+        bare.write_bytes(b"not a database")
+
+    run_id = serve.warehouse_run_id(bare)
+    assert run_id is not None
+    # An ISO timestamp of when this copy was written, which a reader can tell
+    # apart from a run id at a glance.
+    assert datetime.fromisoformat(run_id).timestamp() == pytest.approx(
+        bare.stat().st_mtime, abs=1.0
+    )
+
+
+def test_no_warehouse_is_no_run_id(tmp_path: Path) -> None:
+    assert serve.warehouse_run_id(tmp_path / "missing.duckdb") is None
+
+
+def test_ask_names_the_run_whose_data_answered(registry: Registry, tmp_path: Path) -> None:
+    built = warehouse_with(tmp_path / "meta.duckdb", [("gold", "20260930T0200Z")])
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER), warehouse=built)
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "how does Alpha do"}).json()
+
+    assert body["run_id"] == "20260930T0200Z"
 
 
 # -------------------------------------------------- the degraded states --

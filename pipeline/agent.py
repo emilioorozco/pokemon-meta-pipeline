@@ -8,7 +8,7 @@ single SELECT against the warehouse the dbt stage built; `lookup_cards`, when
 `pipeline.card_index` has an index to load, searches the text of printed cards.
 `POST /ask` on the serving application is the same loop over HTTP.
 
-Five choices worth knowing before reading the code.
+Six choices worth knowing before reading the code.
 
 **The tool is a gate, not a wrapper.** A language model writing SQL against a
 warehouse is a useful thing and an obvious hazard, so the SQL it writes goes
@@ -60,6 +60,17 @@ built. The SQL itself is on the span as a length rather than as text: a query
 is short and harmless here, but a span attribute is the wrong place to start
 putting model output.
 
+**A run keeps its evidence, not only its tally.** `tool_calls` says a query ran
+and returned four rows, which is enough for a counter and not enough for a
+reader deciding whether to believe the answer. So a run also collects
+`Evidence`: the full text of every statement, the first rows it returned as
+plain JSON values, the gate's verdict on it, and the cards the card tool
+matched. That is what a "what I looked up" panel is built from, and it is the
+same object on both surfaces, in `POST /ask` and under `--evidence` on the
+command line. It is bounded on purpose, ten rows and ten cards with every
+string cut to 500 characters, because an answer that carries its workings
+should still be a response rather than a page.
+
 **The model is injected.** `build_agent` takes a chat model, so the tests pass
 a scripted fake that returns pre-written `AIMessage`s with `tool_calls` on them
 and the real agent loop, the real tool and the real warehouse run underneath
@@ -71,12 +82,14 @@ import argparse
 import contextlib
 import json
 import logging
+import math
 import os
 import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Final
 
 import duckdb
@@ -138,6 +151,22 @@ MAX_ITERATIONS: Final = 8
 # Cells in the markdown table are cut to this, so one long `aliases` value
 # cannot be most of the tool result.
 MAX_CELL_CHARS: Final = 120
+
+# What the evidence on an answer carries, and what it will not. Ten rows is
+# what a reader checking an answer scans without scrolling, and the hundredth
+# row of a fifty-row scan is not evidence for anything; ten cards is more than
+# any question has matched. Five hundred characters is longer than every cell
+# the marts hold and short enough that ten rows of them stay a response body.
+MAX_EVIDENCE_ROWS: Final = 10
+MAX_EVIDENCE_CARDS: Final = 10
+MAX_EVIDENCE_CHARS: Final = 500
+
+# The four values `gate_summary` takes: the worst thing that happened to a
+# query in this run, which is what a banner over the panel is drawn from.
+SUMMARY_OFF: Final = "off"
+SUMMARY_ALLOWED: Final = "allowed"
+SUMMARY_ALLOWED_LOW: Final = "allowed_low"
+SUMMARY_REFUSED: Final = "refused"
 
 # Statement keywords that are never allowed, whatever else the string contains.
 # Checked on word boundaries against the comment-stripped SQL, so a column
@@ -371,6 +400,198 @@ class ToolCall:
         }
 
 
+# ------------------------------------------------------------- evidence --
+
+
+def clip(text: str, limit: int = MAX_EVIDENCE_CHARS) -> str:
+    """One string cut to a length a response body can afford, ellipsis included."""
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def json_safe(value: Any, limit: int = MAX_EVIDENCE_CHARS) -> Any:
+    """One warehouse value as something JSON carries, strings cut to `limit`.
+
+    DuckDB hands back Python objects, and three of the kinds it hands back are
+    not JSON: a `date` or a `timestamp`, a `Decimal`, and a float that is NaN
+    or an infinity. The first two have an obvious reading, an ISO string and a
+    number, and the third has none: `NaN` is not valid JSON and a parser that
+    accepts it disagrees with one that does not, so it becomes null and the
+    reader sees a missing number rather than a syntax error.
+
+    Anything that can say its own ISO form does, which covers the date, the
+    timestamp and the time without this function naming three types. Anything
+    else that is not a container falls back to `str`, cut to the limit, so an
+    unexpected column is a short string rather than a serialisation failure in
+    the middle of an answer.
+    """
+    if value is None or isinstance(value, bool | int):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Decimal):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    if isinstance(value, str):
+        return clip(value, limit)
+    if isinstance(value, bytes):
+        return clip(value.decode("utf-8", "replace"), limit)
+    if isinstance(value, list | tuple | set):
+        return [json_safe(item, limit) for item in value]
+    if isinstance(value, dict):
+        return {str(key): json_safe(item, limit) for key, item in value.items()}
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return clip(str(isoformat()), limit)
+    return clip(str(value), limit)
+
+
+@dataclass(frozen=True)
+class QueryEvidence:
+    """One statement the run put to the warehouse, and what it got for it.
+
+    The whole statement, not the one-line summary `ToolCall` carries: the
+    reader of this is a person deciding whether the answer follows from the
+    query, and a query cut off at a hundred characters cannot be read for
+    that.
+
+    `refused_reason` is why there are no rows, and it is filled for the three
+    ways that happens: the validator refused the statement, the gate refused
+    it, or DuckDB itself would not run it. Only the first two are refusals,
+    which is what `refused` is for; `gate_summary` counts those and leaves a
+    broken query to be read as the empty result it is.
+    """
+
+    sql: str
+    row_count: int = 0
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    gate: str = GATE_OFF
+    refused_reason: str | None = None
+    # Not serialised: the body already carries the reason, and this only
+    # decides whether the run's `gate_summary` is `refused`.
+    refused: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "sql": self.sql,
+            "row_count": self.row_count,
+            "rows": [dict(row) for row in self.rows],
+            "gate": self.gate,
+            "refused_reason": self.refused_reason,
+        }
+
+
+@dataclass(frozen=True)
+class CardEvidence:
+    """One printed card the run looked up, as the panel cites it.
+
+    The set and the number are their own fields rather than part of the text,
+    because the reader cites a card by them and the application renders them
+    as a heading. `text` is therefore the card without that heading.
+    """
+
+    name: str
+    set_code: str
+    number: str
+    text: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "set_code": self.set_code,
+            "number": self.number,
+            "text": self.text,
+        }
+
+
+def summarize_gate(queries: Sequence[QueryEvidence]) -> str:
+    """The worst thing that happened to a query in this run, as one word.
+
+    A ladder rather than a count, because the question it answers is whether
+    anything in the answer needs a second look. A refusal, from the validator
+    or from the gate, is the worst and ends the walk. A gate that allowed a
+    statement it was not sure about, and a gate that errored and let the
+    statement through under `PRA_SQL_GATE_ON_ERROR`, are both "allowed, with
+    a caveat". `off` is a run that asked the warehouse nothing, and a run
+    whose queries ran with no gate in front of them: in neither case did a
+    gate have an opinion to report.
+    """
+    worst = SUMMARY_OFF
+    for query in queries:
+        if query.refused:
+            return SUMMARY_REFUSED
+        outcome = query.gate.partition(":")[2]
+        if outcome in {"allowed_low", "error"}:
+            worst = SUMMARY_ALLOWED_LOW
+        elif outcome == "allowed" and worst == SUMMARY_OFF:
+            worst = SUMMARY_ALLOWED
+    return worst
+
+
+def dedupe_cards(cards: Sequence[CardEvidence]) -> list[CardEvidence]:
+    """The cards a run matched, each once, in the order it first saw them.
+
+    Two lookups on one question routinely return the same card, and a panel
+    that printed Dragapult ex twice would read as two pieces of evidence for
+    something that is one. The key is the printing a reader cites, so the same
+    card in two sets stays two rows.
+    """
+    seen: set[tuple[str, str, str]] = set()
+    kept: list[CardEvidence] = []
+    for card in cards:
+        key = (card.name, card.set_code, card.number)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(
+            CardEvidence(
+                name=clip(card.name),
+                set_code=clip(card.set_code),
+                number=clip(card.number),
+                text=clip(card.text),
+            )
+        )
+        if len(kept) == MAX_EVIDENCE_CARDS:
+            break
+    return kept
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """What one run read: its queries in call order, and the cards it matched."""
+
+    queries: list[QueryEvidence] = field(default_factory=list)
+    cards: list[CardEvidence] = field(default_factory=list)
+
+    @property
+    def gate_summary(self) -> str:
+        """The worst gate outcome over this run's queries."""
+        return summarize_gate(self.queries)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "queries": [query.as_dict() for query in self.queries],
+            "cards": [card.as_dict() for card in self.cards],
+        }
+
+
+class EvidenceLog:
+    """The evidence of the run in progress, collected as the tools produce it.
+
+    Mutable, and one per run, because the tools hand their evidence over one
+    call at a time and the answer is assembled from all of it at the end.
+    `finish` is where the bounds are applied, so a tool never has to know what
+    the response body can afford.
+    """
+
+    def __init__(self) -> None:
+        self.queries: list[QueryEvidence] = []
+        self.cards: list[CardEvidence] = []
+
+    def finish(self) -> Evidence:
+        """The collected evidence, deduplicated and capped."""
+        return Evidence(queries=list(self.queries), cards=dedupe_cards(self.cards))
+
+
 # The calls made by the run happening on this task, and the question that run
 # is answering. Context variables rather than attributes on the agent, because
 # one agent object serves every request of a serving process and two concurrent
@@ -382,6 +603,11 @@ _calls: ContextVar[list[ToolCall] | None] = ContextVar("pra_agent_calls", defaul
 # question; threading it through the tool's arguments would put it in the
 # model's hands, which is exactly whose judgement the gate is second-guessing.
 _question: ContextVar[str] = ContextVar("pra_agent_question", default="")
+# What the run in progress has read, for the same reason and with the same
+# per-request isolation as `_calls`. Separate from it because `tool_calls` is
+# the tally the evaluation reads and this is the evidence a reader reads, and
+# the two are allowed to change shape independently.
+_evidence: ContextVar[EvidenceLog | None] = ContextVar("pra_agent_evidence", default=None)
 
 
 def record_call(call: ToolCall) -> None:
@@ -389,6 +615,36 @@ def record_call(call: ToolCall) -> None:
     collected = _calls.get()
     if collected is not None:
         collected.append(call)
+
+
+def record_query(query: QueryEvidence) -> None:
+    """Add one query's evidence to the run in progress, if there is one."""
+    log = _evidence.get()
+    if log is not None:
+        log.queries.append(query)
+
+
+def record_cards(cards: Sequence[CardEvidence]) -> None:
+    """Add the cards one lookup matched to the run in progress, if there is one."""
+    log = _evidence.get()
+    if log is not None:
+        log.cards.extend(cards)
+
+
+@contextlib.contextmanager
+def collect_evidence() -> Iterator[EvidenceLog]:
+    """Collect what the tools read inside this block, and nothing outside it.
+
+    `Agent.ask` wraps a run in it. It is public because the tools are usable
+    on their own, by `pipeline.eval` and by anything driving one directly, and
+    "what did that read" is the same question there.
+    """
+    log = EvidenceLog()
+    token = _evidence.set(log)
+    try:
+        yield log
+    finally:
+        _evidence.reset(token)
 
 
 def current_question() -> str:
@@ -436,6 +692,24 @@ def gate_refusal(decision: GateDecision) -> str:
     )
 
 
+@dataclass(frozen=True)
+class QueryResult:
+    """What one statement produced: the model's text, the count, and the rows.
+
+    The text is for the model, which reads a markdown table; `rows` is for the
+    reader, which reads the values. They are two renderings of one result and
+    are produced together rather than by running the query twice.
+
+    `failure` is the message when nothing ran, and None when the query ran,
+    including when it ran and matched nothing.
+    """
+
+    text: str
+    row_count: int = 0
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    failure: str | None = None
+
+
 def run_marts_query(
     sql: str,
     *,
@@ -477,29 +751,49 @@ def guarded_query(
     refusal = validate_sql(sql, allowed_tables)
     if refusal is not None:
         logger.info("tool call refused", extra={"tool": SQL_TOOL, "reason": refusal})
+        record_query(
+            QueryEvidence(sql=sql, gate=NO_GATE.label, refused_reason=refusal, refused=True)
+        )
         return refusal, 0, NO_GATE
     decision = NO_GATE if gate is None else gate.judge(question, sql, schema_summary())
     if not decision.allowed:
-        return gate_refusal(decision), 0, decision
-    answer, rows = execute_marts_query(sql, warehouse=warehouse)
-    return answer, rows, decision
+        refused = gate_refusal(decision)
+        record_query(
+            QueryEvidence(sql=sql, gate=decision.label, refused_reason=refused, refused=True)
+        )
+        return refused, 0, decision
+    result = execute_marts_query(sql, warehouse=warehouse)
+    record_query(
+        QueryEvidence(
+            sql=sql,
+            row_count=result.row_count,
+            rows=result.rows,
+            gate=decision.label,
+            refused_reason=result.failure,
+        )
+    )
+    return result.text, result.row_count, decision
 
 
-def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> tuple[str, int]:
+def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
     """Run one already-checked statement and render what came back.
 
     Split out of `guarded_query` so that "is this allowed" and "what does it
     return" are two functions rather than two halves of one: nothing here
     checks anything, and nothing above here touches a connection.
+
+    At most `MAX_EVIDENCE_ROWS` rows are kept as values, whatever the count
+    says: the count is the answer to "how much did this match" and the rows
+    are there to be read, and nobody reads the fiftieth one.
     """
     limited = with_limit(sql)
     target = location(warehouse)
     if not target.is_file():
-        return (
+        missing = (
             f"the warehouse is not built: nothing at {target.name}. "
-            "Run `python -m pipeline.gold` first.",
-            0,
+            "Run `python -m pipeline.gold` first."
         )
+        return QueryResult(missing, failure=missing)
     connection = open_warehouse(target)
     try:
         result = connection.sql(limited)
@@ -507,13 +801,21 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> tuple[str, int]:
         rows = result.fetchall()
     except duckdb.Error as failure:
         # The class and the message, not a traceback: the model reads this.
-        return f"the query failed: {type(failure).__name__}: {failure}", 0
+        broke = f"the query failed: {type(failure).__name__}: {failure}"
+        return QueryResult(broke, failure=broke)
     finally:
         connection.close()
     if not rows:
-        return "0 rows. The query ran and matched nothing.", 0
+        return QueryResult("0 rows. The query ran and matched nothing.")
     table = markdown_table(columns, rows)
-    return f"{table}\n\n{len(rows)} row(s).", len(rows)
+    return QueryResult(
+        f"{table}\n\n{len(rows)} row(s).",
+        row_count=len(rows),
+        rows=[
+            {str(name): json_safe(value) for name, value in zip(columns, row, strict=True)}
+            for row in rows[:MAX_EVIDENCE_ROWS]
+        ],
+    )
 
 
 def make_query_marts_tool(
@@ -662,12 +964,24 @@ def marts_tools(
 
 @dataclass(frozen=True)
 class Answer:
-    """What one run produced: the text, what it called, and what it cost."""
+    """What one run produced: the text, what it called, what it read, and the cost.
+
+    `tool_calls` is the tally and `evidence` is the workings. Both are here
+    because they have two readers: `pipeline.eval` scores a run on which tools
+    it called, and a person reading the answer wants the statement and the
+    rows. Neither is derived from the other, so neither is dropped.
+    """
 
     answer: str
     tool_calls: list[ToolCall] = field(default_factory=list)
     model: str = ""
     usage: dict[str, int] = field(default_factory=dict)
+    evidence: Evidence = field(default_factory=Evidence)
+
+    @property
+    def gate_summary(self) -> str:
+        """The worst gate outcome over this run's queries, as one word."""
+        return self.evidence.gate_summary
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -675,6 +989,8 @@ class Answer:
             "tool_calls": [call.as_dict() for call in self.tool_calls],
             "model": self.model,
             "usage": dict(self.usage),
+            "evidence": self.evidence.as_dict(),
+            "gate_summary": self.gate_summary,
         }
 
 
@@ -747,7 +1063,7 @@ class Agent:
         token = _calls.set(collected)
         asked = _question.set(question)
         try:
-            with self.tracer.start_as_current_span(ANSWER_SPAN) as span:
+            with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
                 state = self.graph.invoke({"messages": [HumanMessage(content=question)]})
                 messages: list[BaseMessage] = list(state["messages"])
@@ -763,6 +1079,7 @@ class Agent:
             tool_calls=collected,
             model=self.model_name,
             usage=usage,
+            evidence=log.finish(),
         )
         logger.info(
             "agent answered",
@@ -771,6 +1088,7 @@ class Agent:
                 "tool_calls": len(collected),
                 "usage": usage,
                 "answer_length": len(answer.answer),
+                "gate_summary": answer.gate_summary,
             },
         )
         return answer
@@ -896,7 +1214,26 @@ def render(answer: Answer) -> str:
     return "\n".join(lines).rstrip()
 
 
-def repl(agent: Agent) -> int:
+def render_evidence(answer: Answer) -> str:
+    """The evidence as JSON, in the shape `POST /ask` puts it in its body.
+
+    The same object rather than a prettier one: the point of printing it here
+    is that a question answered on the command line and the same question
+    answered over HTTP can be compared without allowing for two renderings.
+    """
+    return json.dumps(
+        {"evidence": answer.evidence.as_dict(), "gate_summary": answer.gate_summary},
+        indent=2,
+    )
+
+
+def rendered(answer: Answer, *, evidence: bool) -> str:
+    """One answer as the block the command line prints, with or without the workings."""
+    text = render(answer)
+    return f"{text}\n\n{render_evidence(answer)}" if evidence else text
+
+
+def repl(agent: Agent, *, evidence: bool = False) -> int:
     """Ask questions until end of file. One run per line, no memory between them."""
     sys.stdout.write("Ask about the metagame. Ctrl-D to stop.\n")
     while True:
@@ -909,7 +1246,7 @@ def repl(agent: Agent) -> int:
         question = line.strip()
         if not question:
             continue
-        sys.stdout.write(render(agent.ask(question)) + "\n")
+        sys.stdout.write(rendered(agent.ask(question), evidence=evidence) + "\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -946,6 +1283,12 @@ def main(argv: list[str] | None = None) -> int:
         "--model", default=None, metavar="NAME", help=f"provider model (default: ${MODEL_VAR})"
     )
     parser.add_argument("--json", action="store_true", help="print the answer as one JSON object")
+    parser.add_argument(
+        "--evidence",
+        action="store_true",
+        help="print the queries, their rows and the cards the answer rests on; "
+        "--json always carries them",
+    )
     args = parser.parse_args(argv)
 
     if not args.repl and not args.question:
@@ -959,7 +1302,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         if args.repl:
-            return repl(agent)
+            return repl(agent, evidence=args.evidence)
         answer = agent.ask(args.question)
     except Exception as failure:
         # A missing key, a rate limit and a provider outage all arrive here, and
@@ -974,7 +1317,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(json.dumps(answer.as_dict(), indent=2) + "\n")
         return 0
-    emit_summary(logger, "agent answer", answer.as_dict(), text=render(answer))
+    # The evidence goes to stdout and not into the log record. It is rows of
+    # mart data rather than a measurement, a log line is the wrong place to
+    # start putting query results, and `gate_summary` is the part of it a
+    # collector can chart.
+    fields = {name: value for name, value in answer.as_dict().items() if name != "evidence"}
+    emit_summary(logger, "agent answer", fields, text=rendered(answer, evidence=args.evidence))
     return 0
 
 
