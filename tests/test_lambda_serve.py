@@ -429,6 +429,75 @@ def test_a_secret_that_holds_no_usable_key_is_read_again_next_time(
     assert len(reads) == 2
 
 
+class StubWarmAgent:
+    """An agent with an embedder to warm and a provider it must never reach.
+
+    `ask` raises rather than returning something, because the one thing
+    `/warm` must not do is cost a question: a warming path that quietly asked
+    the model would show up as a bill rather than as a failure.
+    """
+
+    def __init__(self) -> None:
+        self.warmed = 0
+
+    def warm(self) -> bool:
+        self.warmed += 1
+        return True
+
+    def ask(self, question: str) -> Any:
+        raise AssertionError("/warm must not ask the provider anything")
+
+
+def test_warm_makes_the_agent_and_its_embedder_resident_through_mangum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The keepalive ping, end to end as the infrastructure will call it.
+
+    The first deployed `/ask` about a card hit the 60 s function timeout
+    because a cold container pays for the torch import, the bge load and the
+    first embedding over lazily loaded image layers. Pinging `/health` did not
+    help, because `/health` touches none of it. This is the route that does,
+    with a stub agent so no provider is reachable from the test at all.
+    """
+    from pipeline.serve import create_app, stub_loader
+
+    agent = StubWarmAgent()
+    builds = 0
+
+    def factory() -> Any:
+        nonlocal builds
+        builds += 1
+        return agent
+
+    monkeypatch.setenv(STUB_MODEL_VAR, "1")
+    monkeypatch.setattr(
+        lambda_serve,
+        "build_app",
+        lambda: create_app(stub_loader(), agent_factory=factory, eager_model=False),
+    )
+
+    response = handler(function_url_event("GET", "/warm"), None)
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["status"] == "ok"
+    assert body["agent_ready"] is True
+    assert body["agent_reason"] is None
+    assert body["agent_built"] is True
+    assert body["embedder_loaded"] is True
+    assert sorted(body["seconds"]) == ["agent_built", "embedder_loaded"]
+    assert all(isinstance(value, float) for value in body["seconds"].values())
+    assert (builds, agent.warmed) == (1, 1)
+
+    # The second ping is the one that matters for a warm container: the agent
+    # is the one already on `app.state` and the model is already resident, so
+    # it costs a ping and builds nothing.
+    again = json.loads(handler(function_url_event("GET", "/warm"), None)["body"])
+    assert (again["agent_built"], again["embedder_loaded"]) == (True, True)
+    assert (builds, agent.warmed) == (1, 2)
+    # And nothing in any of it reached the provider.
+    assert "langchain_anthropic" not in sys.modules
+
+
 def test_a_gate_value_the_gate_refuses_is_a_200_health_and_a_503_ask(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -74,7 +74,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -579,6 +579,20 @@ def summarize(text: str, width: int = 100) -> str:
     return flat if len(flat) <= width else flat[: width - 3] + "..."
 
 
+@dataclass(frozen=True)
+class ToolSet:
+    """The agent's tools, and the one thing about them that is worth warming.
+
+    `warm` is `None` whenever there is no card tool, which is the case with no
+    index built and the case where the index could not be read. When there is
+    one it embeds a short fixed string through that tool's own index, so a
+    caller can pay for the embedding model before a question does.
+    """
+
+    tools: list[BaseTool]
+    warm: Callable[[], bool] | None = None
+
+
 def marts_tools(
     *,
     warehouse: AnyLocation = WAREHOUSE_PATH,
@@ -586,7 +600,7 @@ def marts_tools(
     metrics: ServiceMetrics,
     card_index: AnyLocation | None = None,
     gate: SqlGate | None = None,
-) -> list[BaseTool]:
+) -> ToolSet:
     """Every tool the agent gets: the SQL one always, the card one when there is an index.
 
     `pipeline.card_index` is imported here rather than at module scope because
@@ -594,24 +608,33 @@ def marts_tools(
     matchup numbers should not pay several seconds of import for a tool it will
     not call. A missing or unreadable index is a logged skip, not a failure: the
     SQL half of the agent works perfectly well without the card text.
+
+    The index is loaded here and handed to the tool rather than loaded inside
+    it, so that this function can keep it and hand back a warmer over the same
+    object. Two copies would be two resident embedding models, which on a
+    function sized for one is the opposite of the point.
     """
     tools = [
         make_query_marts_tool(warehouse=warehouse, tracer=tracer, metrics=metrics, gate=gate),
     ]
     if card_index is None:
-        return tools
+        return ToolSet(tools)
     from pipeline import card_index as index_module
 
     try:
+        index = index_module.CardIndex.load(card_index)
         tools.append(
-            index_module.make_lookup_cards_tool(card_index, tracer=tracer, metrics=metrics)
+            index_module.make_lookup_cards_tool(
+                card_index, tracer=tracer, metrics=metrics, index=index
+            )
         )
     except (OSError, ValueError) as failure:
         logger.warning(
             "the card lookup tool is off",
             extra={"index": str(card_index), "error": f"{type(failure).__name__}: {failure}"},
         )
-    return tools
+        return ToolSet(tools)
+    return ToolSet(tools, warm=lambda: index_module.warm_index(index))
 
 
 # ----------------------------------------------------------------- agent --
@@ -665,6 +688,7 @@ class Agent:
         model_name: str,
         tool_names: Sequence[str],
         tracer: trace.Tracer,
+        warmer: Callable[[], bool] | None = None,
     ) -> None:
         self.graph = graph
         self.model_name = model_name
@@ -673,6 +697,23 @@ class Agent:
         # provider: `agent.answer` has to be the parent of the tool spans, and
         # a second provider would put them in two unrelated traces.
         self.tracer = tracer
+        self.warmer = warmer
+
+    def warm(self) -> bool:
+        """Make the card tool's embedding model resident, asking the provider nothing.
+
+        `GET /warm` is the only caller. The point is the one thing a first
+        question cannot avoid paying for and a keepalive ping can: the model
+        behind `lookup_cards`. Nothing about the language model is touched,
+        because that one is a network call per question and warming it would
+        be spending money on a ping.
+
+        False when there is no card tool, which is an agent that has only the
+        SQL half and nothing to warm.
+        """
+        if self.warmer is None:
+            return False
+        return self.warmer()
 
     def ask(self, question: str) -> Answer:
         """Run the loop on one question and collect what it did."""
@@ -779,13 +820,14 @@ def build_agent(
     resolved_tracer = tracer or build_tracer_provider(SERVICE_NAME).get_tracer(__name__)
     resolved_gate = gate if gate is not None else gate_from_env()
     chat = model if model is not None else chat_model()
-    tools = marts_tools(
+    toolset = marts_tools(
         warehouse=warehouse,
         tracer=resolved_tracer,
         metrics=resolved_metrics,
         card_index=card_index,
         gate=resolved_gate,
     )
+    tools = toolset.tools
     graph = create_agent(
         model=chat,
         tools=tools,
@@ -796,6 +838,7 @@ def build_agent(
         tracer=resolved_tracer,
         model_name=getattr(chat, "model_name", None) or getattr(chat, "model", "") or "fake",
         tool_names=[tool.name for tool in tools],
+        warmer=toolset.warm,
     )
 
 

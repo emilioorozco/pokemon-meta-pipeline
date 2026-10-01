@@ -130,6 +130,28 @@ variable or a key that has arrived is live on the next question with no
 redeployment. A secret read that produced nothing is not latched either, for
 the same reason.
 
+## The keepalive ping, and why it calls `/warm`
+
+Something outside this repository pings the function every five minutes so a
+reader is not usually the one paying for a cold container. That ping used to
+go to `/health`, which does not work, because `/health` deliberately touches
+nothing: it kept a container alive with none of the expensive things in it and
+the next real question still paid for all of them. The first deployed `/ask`
+about a card proved it, hitting the 60 s function timeout, because a first
+`lookup_cards` has to import torch, load the baked bge model and embed one
+query, over image layers Lambda fetches the first time they are touched.
+`GET /warm` is what the ping calls instead: it builds the agent, which is the
+LangChain import and the tool construction, and runs one short fixed string
+through the card tool's own embedder, so that the model is resident. It never
+calls the provider, because that is a network call per question and warming it
+would be spending money on a ping; it never raises, and it answers 200 with
+the same dependency fields `/health` carries plus `agent_built`,
+`embedder_loaded` and a `seconds` per step, so a ping that found nothing to do
+says so in milliseconds and a ping that rebuilt a cold container says what it
+cost. The embedder it warms is the one the tool holds, not a second copy:
+`pipeline.agent.marts_tools` loads the index once and hands the same object to
+both.
+
 ## The refresh rule
 
 `pipeline.storage.local_file` downloads the warehouse once per process and
@@ -211,6 +233,19 @@ was deployed and called for real. The first cold request on the dev function,
   to create the secret before anyone can put a key in it, so that is a state
   every new deployment passes through.
 
+Then the gate value was corrected and the keys filled in, and the first two
+questions that reached the model showed the rest of it:
+
+- **"Which archetype has the best win rate" answered 200 in 36 s.** About 15 s
+  of that was building the agent on a cold container and the rest was the
+  provider and four tool calls.
+- **"What does Dragapult ex do?" hit the 60 s timeout and came back 502**,
+  because it is the first question that calls `lookup_cards` and so the first
+  that pays for the torch import, the bge load and one embedding, over image
+  layers that are fetched on first touch. Locally that is four to six seconds.
+  `GET /warm` and the five-minute ping onto it are the answer; see the
+  keepalive section above.
+
 `/model` and `/predict` answer 503 on dev, because the dev registry has no
 `production` alias: the corpus is 13 games and the promotion gate has never
 passed a candidate on it. That is correct and is left alone.
@@ -285,6 +320,8 @@ sync made concurrent. Same laptop, same fixtures, same image recipe.
 | cold start to the first `/health` 200 | 2.3 s | **1.12 s** | wall clock from `docker run` returning to the first invocation that answers, retrying while the emulator's port refuses |
 | warm `/health` | 8.1 ms median, 7.6 to 11.4 | 8.0 ms median, 7.4 to 12.1 over 20 | 20 sequential invocations after that, timed by the client |
 | the first `/model`, which now does the loading | part of the cold start | 1.43 s | one invocation after the warm run, timed by the client |
+| cold `/warm` | no such route | 6.34 s, reported as `agent_built` 0.92 s and `embedder_loaded` 4.50 s | the first invocation of a fresh container, `/warm` instead of `/health` |
+| warm `/warm` | no such route | 12 ms, both steps at or near zero | the next invocation of the same container |
 | resident memory answering `/health` | 292 MiB | 178 MiB | `docker stats` after 20 `/health` invocations |
 | resident memory with the model loaded | 292 MiB | 289 MiB | the same, after the first `/model` |
 | peak with the embedder loaded | 1021 MiB | 937 MiB | the same, after a `lookup_cards` in the container |
@@ -425,10 +462,12 @@ is the only caller that matters.
 
 ## What this does not do
 
-No provisioned concurrency, so the first question after an idle period pays the
-cold start. That is deliberate at this traffic: provisioned concurrency is
-billed for every hour of the month whether or not anything asks a question, and
-the reader waiting on the first question of the day is one person.
+No provisioned concurrency. That is deliberate at this traffic: it is billed
+for every hour of the month whether or not anything asks a question, and the
+reader waiting on the first question of the day is one person. The five-minute
+ping to `/warm` is the cheap version of it, and the cheap version has a hole
+in it: a ping keeps one container warm, and a second concurrent question gets
+a cold one.
 
 No streaming. The function URL is in buffered mode, so an answer arrives whole.
 Response streaming would be worth having the day the agent's answers get long

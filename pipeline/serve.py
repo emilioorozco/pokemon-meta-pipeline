@@ -1,12 +1,13 @@
 """Serving: the promoted model behind `POST /predict`, and nothing else.
 
-One FastAPI application with four endpoints. `/predict` answers the question
-the feature table was built to ask, "this side, this board, this far in, who
-wins?", `/health` says which of the service's dependencies are there, `/model`
-says which model is loaded, and `/reload` picks up a promotion without a
-restart. A fifth, `/metrics`, is the
-Prometheus exposition and belongs to the process rather than to the model; it
-is mounted by `pipeline.telemetry`, which also traces the requests.
+One FastAPI application. `/predict` answers the question the feature table was
+built to ask, "this side, this board, this far in, who wins?", `/health` says
+which of the service's dependencies are there, `/warm` makes the expensive
+ones resident before a reader waits on them, `/model` says which model is
+loaded, and `/reload` picks up a promotion without a restart. `POST /ask` is
+the agent, and the last two paragraphs below are about those two. `/metrics`
+is the Prometheus exposition and belongs to the process rather than to the
+model; it is mounted by `pipeline.telemetry`, which also traces the requests.
 
 Five choices worth knowing before reading the code.
 
@@ -59,6 +60,14 @@ for one route. Its agent is injected exactly as the model loader is, so the
 tests drive the real agent loop with a scripted chat model and no API key, and
 it is built on the first question rather than at startup: a service whose
 `/predict` works should not fail to start because a provider key is missing.
+
+A sixth, `GET /warm`, is the other side of that laziness. Everything the first
+question pays for is paid once per container, so something has to ask for it
+when no reader is waiting: `/warm` builds the agent and runs one embedding
+through the card tool's model, calls no provider, and answers 200 whatever
+happens. It is what the keepalive ping calls, because a ping to `/health` kept
+a container alive with nothing in it and the next real question still paid for
+all of it.
 """
 
 import argparse
@@ -232,6 +241,18 @@ class AskAgent(Protocol):
         """Answer one question."""
 
 
+class WarmableAgent(Protocol):
+    """An agent that can make its expensive parts resident without being asked anything.
+
+    Optional, and read off a built agent with `getattr` rather than required
+    of every `AskAgent`: the tests inject agents that answer from a script and
+    have nothing to warm, and `/warm` has to work with those too.
+    """
+
+    def warm(self) -> bool:
+        """Load what a first question would otherwise load. True if anything ran."""
+
+
 AgentFactory = Callable[[], AskAgent]
 
 
@@ -301,6 +322,38 @@ class HealthResponse(BaseModel):
     agent_reason: str | None = Field(
         default=None,
         description="Why the agent is not ready, naming the variable to fix; null when it is",
+    )
+
+
+class WarmResponse(BaseModel):
+    """What a keepalive ping warmed, and what each part of it cost.
+
+    The same dependency fields `/health` carries, so a caller that is pinging
+    rather than checking does not have to call both, plus what this call
+    actually did. It is a 200 whatever happened: a ping that failed the health
+    check it replaced would be a worse monitor than the one it replaced.
+    """
+
+    status: str = Field(description="Always `ok` while the process is answering")
+    keys_loaded: bool = Field(description="False when either of the agent's provider keys is unset")
+    missing_keys: list[str] = Field(
+        default_factory=list, description="The provider-key variables that are unset"
+    )
+    agent_ready: bool = Field(description="False when nothing could be warmed, and why below")
+    agent_reason: str | None = Field(
+        default=None, description="Why nothing was warmed; null when there was nothing to say"
+    )
+    agent_built: bool = Field(
+        description="Whether the agent is built and resident in this process now"
+    )
+    embedder_loaded: bool = Field(
+        description="Whether one embedding ran through the card tool's model. False when "
+        "there is no card index, which is an agent with only its SQL half"
+    )
+    seconds: dict[str, float] = Field(
+        default_factory=dict,
+        description="What this call spent per step, keyed `agent_built` and `embedder_loaded`. "
+        "Near zero on a container that was already warm, which is the point of pinging",
     )
 
 
@@ -452,6 +505,32 @@ def agent_readiness() -> AgentReadiness:
     except GateConfigError as failure:
         return AgentReadiness(False, str(failure))
     return AgentReadiness(True)
+
+
+def run_warmer(built: AskAgent) -> tuple[bool, float | None, str | None]:
+    """Ask a built agent to warm itself: did it, how long, and what went wrong.
+
+    `warm` is optional on an agent, because the agents the tests inject answer
+    from a script and have nothing behind them to make resident. An agent
+    without one reports `(False, None, None)`: nothing ran, nothing took any
+    time, and nothing is wrong.
+
+    A warmer that raises is caught here. The embedding model not loading is
+    worth saying out loud and is not worth failing a keepalive ping over; the
+    next question will try again and fail properly if it has to.
+    """
+    warmer = getattr(built, "warm", None)
+    if not callable(warmer):
+        return False, None, None
+    started = time.perf_counter()
+    try:
+        ran = bool(warmer())
+    except Exception as failure:
+        elapsed = round(time.perf_counter() - started, 3)
+        reason = f"the embedding model could not be warmed: {type(failure).__name__}: {failure}"
+        logger.warning("warming the embedder failed", extra={"error": reason})
+        return False, elapsed, reason
+    return ran, round(time.perf_counter() - started, 3), None
 
 
 class AgentHolder:
@@ -842,6 +921,65 @@ def create_app(
             missing_keys=absent,
             agent_ready=state.ready,
             agent_reason=state.reason,
+        )
+
+    @app.get("/warm", response_model=WarmResponse, summary="Pay a first question's costs early")
+    def warm() -> WarmResponse:
+        """Build the agent and make its embedding model resident. Never raises.
+
+        What a keepalive ping should call instead of `/health`. `/health`
+        touches nothing on purpose, so pinging it kept a container alive with
+        none of the expensive things in it and the next real question still
+        paid for all of them. On the deployed function that was a question
+        about a card hitting the 60 s timeout, because the first
+        `lookup_cards` has to import torch, load the embedding model and
+        embed, over image layers Lambda fetches the first time they are
+        touched.
+
+        The provider is never called. The agent's graph is built, which is the
+        LangChain import and the tool construction, and one short fixed string
+        goes through the card tool's embedder; the language model is a network
+        call per question and warming it would be spending money on a ping.
+
+        Nothing in here raises. Every step is reported, a step that failed is
+        logged and leaves its reason in `agent_reason`, and the answer is 200
+        either way: whatever is pinging this wants a container kept warm, and
+        a 500 would make a dependency's bad afternoon look like a dead
+        function.
+        """
+        absent = missing_keys()
+        state = agent.state()
+        built = agent.current is not None
+        embedded = False
+        spent: dict[str, float] = {}
+        if state.ready:
+            started = time.perf_counter()
+            try:
+                current = agent.required()
+            except HTTPException as refused:
+                spent["agent_built"] = round(time.perf_counter() - started, 3)
+                state = AgentReadiness(False, str(refused.detail))
+            except Exception as failure:
+                spent["agent_built"] = round(time.perf_counter() - started, 3)
+                state = AgentReadiness(False, f"{type(failure).__name__}: {failure}")
+                logger.warning("warming could not build the agent", extra={"error": state.reason})
+            else:
+                spent["agent_built"] = round(time.perf_counter() - started, 3)
+                built = True
+                embedded, elapsed, failed = run_warmer(current)
+                if elapsed is not None:
+                    spent["embedder_loaded"] = elapsed
+                if failed is not None:
+                    state = AgentReadiness(False, failed)
+        return WarmResponse(
+            status="ok",
+            keys_loaded=not absent,
+            missing_keys=absent,
+            agent_ready=state.ready,
+            agent_reason=state.reason,
+            agent_built=built,
+            embedder_loaded=embedded,
+            seconds=spent,
         )
 
     @app.get("/model", response_model=ModelResponse, summary="Which model is loaded")
