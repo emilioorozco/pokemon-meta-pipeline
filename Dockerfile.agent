@@ -15,10 +15,16 @@
 # server and it carries the `ml` extra only, so `/ask` answers 503 in it. This
 # one is the deployed one and carries the agent as well.
 #
+# Three stages, one dependency layer. `deps` installs what the function runs,
+# `embedder` adds the Hugging Face client on top of it and fetches the query
+# embedder's files, and the final stage goes back to `deps` and copies those
+# files across. The client, and the egress it needs, exist for one `RUN` and
+# are in nothing that is deployed.
+#
 # x86_64 explicitly, for the reason `Dockerfile.lambda` gives: the function is
 # defined that way in the application's stack, and a manifest built on an arm64
 # laptop would be refused at update time rather than at build time.
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12
+FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.12 AS deps
 
 # LightGBM links against the OpenMP runtime, and the Lambda base image does not
 # ship it. One package, and without it `/predict` fails at model load with a
@@ -28,25 +34,20 @@ RUN dnf install -y libgomp && dnf clean all && rm -rf /var/cache/dnf
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # The dependency layer. `ml` brings LightGBM, MLflow, scikit-learn, pandas,
-# matplotlib, FastAPI and the OpenTelemetry stack; `agent` brings LangChain and
-# `sentence-transformers`, and `sentence-transformers` brings torch.
+# matplotlib, FastAPI and the OpenTelemetry stack, which is `/predict` and the
+# application itself; `serve` brings LangChain, the Anthropic client, ONNX
+# Runtime, the tokenizer and the Lambda adapter, which is `/ask`.
 #
-# The torch here is `2.14.1+cpu` from the PyTorch CPU index, which
-# `pyproject.toml` pins for Linux and nowhere else. The PyPI Linux wheel
-# depends on the CUDA runtime (`cuda-toolkit`, `nvidia-cudnn-cu13`,
-# `nvidia-nccl-cu13`, `triton` and the rest), its `libtorch_global_deps.so`
-# links against those libraries and `import torch` preloads them, so some
-# 2.5 GB of wheels no kernel here will ever run were being paged in off lazily
-# fetched image layers before the first question could be answered. The CPU
-# wheel links against none of it. `docs/agent-service.md` has the numbers on
-# either side.
-#
-# `--emit-index-url` and `--index-strategy unsafe-best-match` are what that
-# pin costs the install: the export has to name the second index, and uv's
-# default is to take a package only from the first index that carries its
-# name, which would look for `2.14.1+cpu` on PyPI and fail. Every version in
-# the file is an exact pin out of `uv.lock`, so the wider strategy chooses
-# between indexes and never between versions.
+# **`agent` is deliberately not installed here, and that is the change.** It is
+# the extra that carries `sentence-transformers` and torch, and on this
+# function the Python import of torch and transformers was 105 s of every cold
+# `GET /warm`: not the weights, which loaded in under three seconds after, but
+# thousands of small files paged in over image layers that Lambda fetches the
+# first time something touches them. The serving path embeds the member's
+# question with `pipeline.query_embedder.OnnxEmbedder`, which is the same
+# network through ONNX Runtime; `sentence-transformers` is now only the offline
+# index build, which runs on a nightly runner with no cold start to pay.
+# `tests/test_serve_imports.py` fails if any of the three comes back.
 #
 # `uv export` rather than a hand-written list, for the reason
 # `Dockerfile.lambda` gives: the versions are the ones `uv.lock` pins and the
@@ -54,17 +55,21 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # remembering to add it. No dev group, so no pytest, no moto and no pyspark;
 # no `spark`, `dbt` or `orchestration` extras either.
 #
+# The PyTorch CPU index that `pyproject.toml` declares is still there and still
+# applies to `agent`; nothing installed here resolves from it, so this export
+# no longer needs `--emit-index-url` or `--index-strategy unsafe-best-match`.
+#
 # `--compile-bytecode` trades image size for cold start. Writing `.pyc` for
-# torch, MLflow and LangChain at build time is a few hundred megabytes of
-# layer and it is several seconds off the first import in a fresh execution
-# environment, which is the number this function is judged on.
+# MLflow and LangChain at build time is a layer's worth of size and it is
+# several seconds off the first import in a fresh execution environment, which
+# is the number this function is judged on.
 COPY pyproject.toml uv.lock ./
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes --emit-index-url \
-      --extra ml --extra agent --extra serve-lambda \
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes \
+      --extra ml --extra serve \
       --format requirements-txt > /tmp/requirements.txt \
     && uv pip install --python /var/lang/bin/python3.12 --no-cache --compile-bytecode \
-      --index-strategy unsafe-best-match -r /tmp/requirements.txt \
-    && rm -f /tmp/requirements.txt pyproject.toml uv.lock /usr/local/bin/uv
+      -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
 
 # DuckDB reads the warehouse, and over an `s3://` lake the gold views inside it
 # are `read_parquet('s3://...')`, so the connection needs `httpfs` and `aws`.
@@ -79,37 +84,44 @@ RUN mkdir -p /opt/duckdb \
       "import duckdb; c = duckdb.connect(); c.execute('INSTALL httpfs'); c.execute('INSTALL aws')" \
     && test -d /opt/duckdb/.duckdb/extensions
 
-# The package. Copied before the model is baked, so that the download below is
-# the one the card index code performs rather than a model name written twice.
-COPY pipeline ${LAMBDA_TASK_ROOT}/pipeline
-
-# The embedding model, baked in. The retriever embeds the question locally, so
-# a cold container that had to fetch a few hundred megabytes from Hugging Face
-# before it could answer would be a function that needs egress, a mirror that
-# can be down, and seconds nobody is paying for. `make_embedder(DEFAULT_MODEL)`
-# is the same call `pipeline.card_index` makes, and reading `.dimensions` is
-# what forces `SentenceTransformer(...)` to actually load, so the build fails
-# here if the model cannot be fetched instead of the first question failing in
-# production.
+# ---------------------------------------------------------------------------
+# The embedding model, fetched where it cannot follow anything into the image.
 #
-# `HF_HOME` and `SENTENCE_TRANSFORMERS_HOME` both point at the baked cache
-# because the two libraries have each owned that decision at different
-# versions, and the offline flags go on afterwards: set before the download
-# they would forbid it. Offline rather than merely cached, so that a cache miss
-# is a clear error at load time and never a silent network call from inside a
-# VPC that has no route out.
-ENV HF_HOME=/opt/models \
-    SENTENCE_TRANSFORMERS_HOME=/opt/models
-RUN /var/lang/bin/python3.12 -c \
-      "from pipeline.card_index import DEFAULT_MODEL, make_embedder; \
-       print(DEFAULT_MODEL, make_embedder(DEFAULT_MODEL).dimensions)" \
-    && /var/lang/bin/python3.12 -c \
-      "import pathlib; root = pathlib.Path('/opt/models'); \
-       [p.unlink() for pattern in ('**/*.onnx', '**/*.h5', '**/tf_model*', '**/*.msgpack') \
-        for p in root.glob(pattern) if p.is_file()]" \
-    && /var/lang/bin/python3.12 -m compileall -q "${LAMBDA_TASK_ROOT}/pipeline"
-ENV HF_HUB_OFFLINE=1 \
-    TRANSFORMERS_OFFLINE=1
+# The retriever embeds the question locally, so a cold container that had to
+# pull the model from Hugging Face before it could answer would be a function
+# that needs egress, a mirror that can be down, and seconds nobody is paying
+# for. `scripts/export_query_embedder.py` writes the three files the serving
+# embedder reads: `BAAI/bge-small-en-v1.5` publishes `onnx/model.onnx` in its
+# own repository, 133,093,490 bytes in one file with no external data, so the
+# script downloads that and `tokenizer.json` and records the model and its
+# pooling in an `embedder.json` beside them. The build fails here if any of it
+# cannot be fetched, rather than the first question failing in production.
+#
+# `huggingface_hub` is installed in this stage and this stage only. The final
+# image copies the directory and not the client, so nothing deployed can reach
+# Hugging Face at all, which is the stronger version of the offline flags the
+# previous build set after the download.
+FROM deps AS embedder
+COPY pipeline ./pipeline
+COPY scripts ./scripts
+RUN uv pip install --python /var/lang/bin/python3.12 --no-cache "huggingface-hub>=0.24" \
+    && PYTHONPATH=. /var/lang/bin/python3.12 scripts/export_query_embedder.py --out /opt/embedder \
+    && test -s /opt/embedder/model.onnx \
+    && test -s /opt/embedder/tokenizer.json \
+    && test -s /opt/embedder/embedder.json
+
+# ---------------------------------------------------------------------------
+FROM deps
+
+# The package, and the model beside it. `PRA_QUERY_EMBEDDER_DIR` is the one
+# variable `pipeline.config` reads to find the files; everything downstream of
+# it, including the refusal when the index was built with another model, comes
+# off the `embedder.json` in that directory.
+COPY pipeline ${LAMBDA_TASK_ROOT}/pipeline
+COPY --from=embedder /opt/embedder /opt/embedder
+ENV PRA_QUERY_EMBEDDER_DIR=/opt/embedder
+RUN /var/lang/bin/python3.12 -m compileall -q "${LAMBDA_TASK_ROOT}/pipeline" \
+    && rm -f pyproject.toml uv.lock /usr/local/bin/uv
 
 # `/tmp` is the only writable path in a Lambda execution environment, and three
 # things want a home directory: DuckDB's extension cache, matplotlib's font
