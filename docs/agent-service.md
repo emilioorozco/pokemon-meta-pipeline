@@ -40,7 +40,7 @@ if anything ever is.
 |---|---|---|
 | `PIPELINE_DATA_DIR` | the `s3://` lake root for the stage | one root, and every path under it is derived; see `pipeline/storage.py` |
 | `AGENT_KEYS_SECRET_ARN` | a Secrets Manager secret | its string is one JSON object, `{"ANTHROPIC_API_KEY": "...", "JEV_API_KEY": "..."}` |
-| `PRA_SQL_GATE` | `1` | the judge is on: every generated query is read before it runs |
+| `PRA_SQL_GATE` | `jev` | the judge is on: every generated query is read before it runs. The accepted values are `off` and `jev`, and nothing else; the first deployed function was set to `1` and every `/ask` refused |
 | `PRA_SQL_GATE_LOW_CONFIDENCE` | `flag` | a low-confidence allow is recorded rather than turned into a refusal |
 | `PRA_SQL_GATE_ON_ERROR` | `refuse` on prod, `allow` on dev | a judge that is down closes the gate in production and opens it in development |
 | `PRA_LOG_FORMAT` | `json` | one object per line, which is what a CloudWatch Logs Insights filter reads |
@@ -70,27 +70,65 @@ variables were filled and nothing else.
    is `/tmp`. Without this the first `s3://` view in the warehouse would make
    DuckDB fetch `httpfs` over the network at the worst possible moment.
 3. The provider keys are read from the secret.
-4. `pipeline.serve.create_app` runs, which pulls the MLflow store out of the
-   lake into a temporary directory, loads whichever version holds the
-   `production` alias and its archetype code map, and then throws the
-   temporary copy away. An empty registry is a state, not a crash: `/health`
-   answers with `model_loaded: false`.
+4. `pipeline.serve.create_app` runs with `eager_model=False`, so it builds the
+   routes and nothing else.
 5. Mangum wraps the application, and the request that started all of this is
    answered.
 
-The agent is **not** built here. It is built on the first question, because
-building it constructs a provider client and opens the warehouse, and a
-`/predict` that failed to answer because the agent could not be built would be
-the wrong failure. So a container that only ever answers `/health` and
-`/predict` never imports torch.
+Neither heavy thing is built here, and for the same reason twice: the cold
+path belongs to whichever route the caller actually asked for.
+
+**The model is not loaded.** `create_app`'s `eager_model` says where it is,
+and only `pipeline.lambda_serve` passes False. Loading it means
+`pipeline.storage.tracking_store` pulling the MLflow file store out of the
+lake, and on the first deployed container that was 28.7 of the 29 seconds the
+first `/health` took, for a model `/health` does not read. It is loaded by the
+first `/model`, `/predict` or `/reload` instead, and `/health` answers
+`model_loaded: false` until then without setting it off. `python -m
+pipeline.serve` and `compose.yaml` still load it at startup, which is what
+makes an unreadable registry a startup failure there rather than a surprise on
+the first prediction.
+
+**The agent is not built.** It is built on the first question, because
+building it constructs a provider client, imports LangChain and torch and
+loads the card index, and a `/predict` that failed because the agent could not
+be built would be the wrong failure. So a container that only ever answers
+`/health` and `/predict` never imports torch. That first build is also the
+only warming this function can have: Lambda freezes a container between
+invocations, so a background thread does no work and the way to pay once is to
+pay inside an invocation and keep the result, which is what both holders on
+`app.state` are for.
 
 All of that happens in the handler rather than at import. Lambda gives an
 image's init phase about ten seconds and then re-runs the work inside the
 invocation; this way the whole 60 s timeout is available for it, and a failure
-is reported against a request instead of against an init. An error reading the
-secret or the lake raises out of the handler after one `exception` log line, so
-it appears in the function's error metric and in the caller's response rather
-than as a timeout a minute later.
+is reported against a request instead of against an init.
+
+## What is a failure and what is a state
+
+A lake that cannot be reached while the app is being built raises out of the
+handler after one `exception` log line, so it appears in the function's error
+metric and in the caller's response rather than as a timeout a minute later.
+
+Three things are **not** in that class, because each is one route's dependency
+rather than the function. `/health` stays 200 and the fields carry the news:
+
+| state | `/health` | `/ask` |
+|---|---|---|
+| the key secret is missing, unreadable, not JSON, or holds no value | 200, `keys_loaded: false`, `missing_keys` naming both | 503, `the agent has no provider key configured; $ANTHROPIC_API_KEY is not set` |
+| `PRA_SQL_GATE` is a value the gate does not accept | 200, `agent_ready: false`, `agent_reason` naming the variable and the two accepted values | 503, the same sentence |
+| the agent was built and the build failed | 200, `agent_ready: false`, `agent_reason` naming the failure | 503 naming it, and the **next** question builds again |
+
+200 rather than 503 because the function is up, and a health check that went
+red for a key nobody had pasted in yet would have whatever watches it
+replacing a container that works. `/predict` keeps answering in all three.
+
+A failed agent build is never cached. The first deployed container answered
+every `/ask` for the rest of its life in 17 ms with the same
+`GateConfigError`, and the fix was one environment variable; now a corrected
+variable or a key that has arrived is live on the next question with no
+redeployment. A secret read that produced nothing is not latched either, for
+the same reason.
 
 ## The refresh rule
 
@@ -149,6 +187,45 @@ lock file takes with it, which is a change of its own and was left out of this
 one deliberately. It is the single biggest thing that could be done to the
 numbers below.
 
+## What AWS showed
+
+The emulator numbers below were the only ones there were until the function
+was deployed and called for real. The first cold request on the dev function,
+3008 MB, timestamps from CloudWatch:
+
+- **Init took 2.2 s, the provider keys were read at +0.5 s, "mlflow store
+  downloaded" landed at +28.7 s, and `/health` answered at +29 s.** The MLflow
+  file store sync was the entire cold start: `tracking_store` downloading
+  `mlruns/` one object at a time. The dev store is small and production's is
+  several hundred objects, so production would have been worse.
+- **The first `POST /ask` took 15.7 s to fail.** That is what building the
+  agent costs on a cold container: the torch and LangChain imports and the
+  card-index load, over a lazily loaded 3.7 GB image. Warm questions are
+  milliseconds.
+- **It failed with `GateConfigError: $PRA_SQL_GATE is '1'; it has to be off or
+  jev`**, and then kept failing with it in 17 ms for the life of the
+  container, because the holder kept the failure. The function's environment
+  is now `jev`, and the holder no longer keeps a failure.
+- **Before the secret was filled, its placeholder (a random string, not JSON)
+  made every route 502 with `SecretError`**, `/health` included. The stack has
+  to create the secret before anyone can put a key in it, so that is a state
+  every new deployment passes through.
+
+`/model` and `/predict` answer 503 on dev, because the dev registry has no
+`production` alias: the corpus is 13 games and the promotion gate has never
+passed a candidate on it. That is correct and is left alone.
+
+**Read the emulator numbers as a floor, not as what a member sees.** The two
+differences are both large and both in the same direction. The emulator's lake
+is a bind mount, so the warehouse open is a local file and the MLflow store is
+read in place rather than pulled out of S3, which is the whole of the gap
+between 2.3 s and 29 s on that first request. And Lambda lazy-loads image
+layers: a page of torch that the emulator reads from the laptop's page cache
+is fetched over the network the first time a real container touches it, which
+is why the first `/ask` took 15.7 s there against roughly 7 s predicted here.
+Nothing below is wrong; it is the shape of the cost and an upper bound on
+everything that is not I/O.
+
 ## Measurements
 
 Taken on a laptop with the AWS Lambda Runtime Interface Emulator, which the
@@ -184,8 +261,8 @@ no real key and no intention of spending one.
 docker run -d --rm --name agent-measure --platform linux/amd64 \
   --memory 3008m -p 9000:8080 \
   -e PIPELINE_DATA_DIR="$SCRATCH" -v "$SCRATCH:$SCRATCH" \
-  -e ANTHROPIC_API_KEY=not-a-real-key \
-  -e PRA_SQL_GATE=1 -e PRA_SQL_GATE_LOW_CONFIDENCE=flag \
+  -e ANTHROPIC_API_KEY=not-a-real-key -e JEV_API_KEY=not-a-real-key-either \
+  -e PRA_SQL_GATE=jev -e PRA_SQL_GATE_LOW_CONFIDENCE=flag \
   -e PRA_SQL_GATE_ON_ERROR=allow -e PRA_LOG_FORMAT=json \
   pipeline-agent:measure
 
@@ -198,27 +275,41 @@ curl -s -X POST -d @health.json \
 the path it was built at, so the absolute paths MLflow's file store recorded
 still resolve and the model really loads.
 
-| measurement | value | how |
-|---|---|---|
-| image size | 3,717,640,668 bytes, 3.72 GB | `docker image inspect --format '{{.Size}}'` |
-| cold start to the first `/health` 200 | 2.3 s | wall clock from `docker run` returning to the first invocation that answers, retrying while the emulator's port refuses |
-| warm `/health` | 8.1 ms median, 7.6 to 11.4 ms over 20 | 20 sequential invocations after that, timed by the client |
-| peak container memory | 292 MiB serving, 1021 MiB with the embedder loaded | `docker stats` sampled through both runs |
+The `before` column is the eager-model version, the one the first deployed
+function ran; `after` is with the model moved off the cold path and the store
+sync made concurrent. Same laptop, same fixtures, same image recipe.
+
+| measurement | before | after | how |
+|---|---|---|---|
+| image size | 3,717,640,668 bytes | 3,717,654,311 bytes, 3.72 GB | `docker image inspect --format '{{.Size}}'` |
+| cold start to the first `/health` 200 | 2.3 s | **1.12 s** | wall clock from `docker run` returning to the first invocation that answers, retrying while the emulator's port refuses |
+| warm `/health` | 8.1 ms median, 7.6 to 11.4 | 8.0 ms median, 7.4 to 12.1 over 20 | 20 sequential invocations after that, timed by the client |
+| the first `/model`, which now does the loading | part of the cold start | 1.43 s | one invocation after the warm run, timed by the client |
+| resident memory answering `/health` | 292 MiB | 178 MiB | `docker stats` after 20 `/health` invocations |
+| resident memory with the model loaded | 292 MiB | 289 MiB | the same, after the first `/model` |
+| peak with the embedder loaded | 1021 MiB | 937 MiB | the same, after a `lookup_cards` in the container |
 
 The runtime's own accounting agrees and splits the cold start in two: `INIT
-REPORT durationMs: 905` for importing the handler module, and `Duration:
-1429.87 ms` for the first invocation, which is where the application is
-actually built and the model loaded. A warm invocation reports 2.3 to 3.9 ms,
-so most of the 8 ms above is the client and the emulator's HTTP hop. The
-peak memory is reached only once the embedder is resident, and 1021 MiB
-against the function's 3008 MB leaves the headroom the agent's own working set
-needs.
+REPORT durationMs: 951` for importing the handler module, and `Duration:
+1012.76 ms` for the first invocation, which is where the application is built.
+Before this change that second number was 1429.87 ms and the model load was
+inside it; it is now a separate `Duration: 1427.32 ms` against whichever
+invocation first asks for the model, and on this function that is a route the
+application repository does not call. A warm invocation reports 2.2 to 4.6 ms,
+so most of the 8 ms above is the client and the emulator's HTTP hop.
 
-**The cold start is well under the 15 s the ticket set: 2.3 s to a `/health`
-200, and about 7 s before a first `/ask` on a cold container reaches the
-provider** (2.3 s of start, plus the fixed costs below). The 3.7 GB image is
-not the problem it looks like, because Lambda lazy-loads image layers and this
-function touches torch only on the `/ask` path.
+A `/health` that answers before anything is loaded is also why the resident
+figure drops: 178 MiB is the application and its imports, and the 111 MiB on
+top of it is LightGBM and the booster, paid by whoever asks for a prediction.
+
+**The cold start here is 1.12 s to a `/health` 200.** It is not 1.12 s on
+Lambda, and the section above says by how much and why. What the change
+removes from a deployed cold `/health` is the store sync entirely, which was
+28.7 of 29 s; what remains on it is the init, the key read and the app build,
+which were 2.2 s, 0.5 s and the rest of the 0.3 s. The concurrency in
+`pipeline.storage` then applies to whoever does pay for the sync: the pool is
+16 wide over the whole tree, and the store is small objects, so the
+round-trip-bound part of it comes down by about that factor.
 
 The fixed costs of the `/ask` path, timed inside the warm container rather than
 by calling `/ask`, because there is no provider key here and a real question
@@ -253,20 +344,23 @@ print(json.dumps(marks, sort_keys=True))
 '
 ```
 
-| step | seconds | what it is |
-|---|---|---|
-| card index load | 0.31 | reading the index off the lake into memory |
-| first `lookup_cards` | 4.14 | importing torch, loading the baked bge model, embedding one query |
-| second `lookup_cards` | 0.03 | the same query path with the model already resident |
-| opening the warehouse | 0.15 | `duckdb_connect`, which downloads the file when the lake is `s3://` |
-| one mart query | 0.02 | a `count(*)` through that connection |
+| step | seconds | re-measured | what it is |
+|---|---|---|---|
+| card index load | 0.31 | 0.32 | reading the index off the lake into memory |
+| first `lookup_cards` | 4.14 | 5.78 | importing torch, loading the baked bge model, embedding one query |
+| second `lookup_cards` | 0.03 | 0.04 | the same query path with the model already resident |
+| opening the warehouse | 0.15 | 0.26 | `duckdb_connect`, which downloads the file when the lake is `s3://` |
+| one mart query | 0.02 | 0.02 | a `count(*)` through that connection |
 
-Four of those five are noise. The one that matters is the first
-`lookup_cards`, and nearly all of it is `import torch` plus building the
-model: the second call over the same index is 30 ms. That is the price of a
-local embedder, paid once per container, and it is the number a CPU-only torch
-would move. Nothing here is on the `/predict` path and nothing here is on the
-second question.
+Nothing in this change touches any of them, and the `re-measured` column is
+the same block run again on top of it; the spread on the first
+`lookup_cards` is what a laptop does, not a regression. Four of the five are
+noise anyway. The one that matters is the first `lookup_cards`, and nearly
+all of it is `import torch` plus building the model: the second call over the
+same index is tens of milliseconds. That is the price of a local embedder,
+paid once per container, and it is the number a CPU-only torch would move.
+Nothing here is on the `/predict` path and nothing here is on the second
+question.
 
 Two things make these an optimistic floor for the deployed function. The lake
 is a bind mount, so the warehouse open is a local file rather than a download
@@ -274,7 +368,16 @@ of the real thing out of S3, and the MLflow store is read in place rather than
 pulled down; and a laptop core is faster than the share that comes with 3008
 MB. The index and the corpus are the fixtures, 12 cards and 40 passages, where
 production has a few thousand: the load scales with that and the embedding call
-does not.
+does not. The deployed first `/ask` was 15.7 s against the roughly 7 s this
+block predicts, and the difference is image layers being fetched on first
+touch.
+
+The three degraded states in the table above were checked against the same
+image, one container each, by starting it with no `ANTHROPIC_API_KEY`, then
+with `PRA_SQL_GATE=1`, then with `PRA_SQL_GATE=jev` and no `JEV_API_KEY`. All
+three answer `/health` 200 with the right fields and `/ask` 503 with the
+reason, and none of them reaches a provider, which is why they can be run
+with no key.
 
 One thing about the fixture lake is worth saying plainly. `promote` refuses a
 candidate that does not beat the archetype win-rate baseline, and on the
