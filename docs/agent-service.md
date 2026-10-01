@@ -90,10 +90,10 @@ makes an unreadable registry a startup failure there rather than a surprise on
 the first prediction.
 
 **The agent is not built.** It is built on the first question, because
-building it constructs a provider client, imports LangChain and torch and
-loads the card index, and a `/predict` that failed because the agent could not
-be built would be the wrong failure. So a container that only ever answers
-`/health` and `/predict` never imports torch. That first build is also the
+building it constructs a provider client, imports LangChain and loads the card
+index, and a `/predict` that failed because the agent could not be built would
+be the wrong failure. So a container that only ever answers `/health` and
+`/predict` never imports LangChain or ONNX Runtime. That first build is also the
 only warming this function can have: Lambda freezes a container between
 invocations, so a background thread does no work and the way to pay once is to
 pay inside an invocation and keep the result, which is what both holders on
@@ -138,8 +138,10 @@ go to `/health`, which does not work, because `/health` deliberately touches
 nothing: it kept a container alive with none of the expensive things in it and
 the next real question still paid for all of them. The first deployed `/ask`
 about a card proved it, hitting the 60 s function timeout, because a first
-`lookup_cards` has to import torch, load the baked bge model and embed one
-query, over image layers Lambda fetches the first time they are touched.
+`lookup_cards` has to load the embedder and embed one query, over image layers
+Lambda fetches the first time they are touched. That load used to be the torch
+and transformers imports as well, and the two sections below are what it took
+to make it a 133 MB graph instead.
 `GET /warm` is what the ping calls instead: it builds the agent, which is the
 LangChain import and the tool construction, and runs one short fixed string
 through the card tool's own embedder, so that the model is resident. It never
@@ -183,18 +185,21 @@ last descriptor closes.
 
 ## The image
 
-`public.ecr.aws/lambda/python:3.12`, `linux/amd64`, the `ml`, `agent` and
-`serve-lambda` extras exported from `uv.lock`, `pipeline/` copied in, and the
-embedding model baked in. `CMD` is `pipeline.lambda_serve.handler`.
+`public.ecr.aws/lambda/python:3.12`, `linux/amd64`, the `ml` and `serve`
+extras exported from `uv.lock`, `pipeline/` copied in, and the embedding model
+baked in. `CMD` is `pipeline.lambda_serve.handler`.
 
 The embedder is baked because the retriever embeds the question locally: a cold
 container that had to fetch the model from Hugging Face first would need
 egress, would depend on a mirror that can be down, and would spend seconds
-nobody is paying for. The build runs the same call the card index code makes,
-`make_embedder(DEFAULT_MODEL)`, into `/opt/models`, and then sets
-`HF_HOME`, `SENTENCE_TRANSFORMERS_HOME`, `HF_HUB_OFFLINE=1` and
-`TRANSFORMERS_OFFLINE=1`, so a cache miss at run time is a clear error rather
-than a silent network call.
+nobody is paying for. A build stage runs
+`scripts/export_query_embedder.py --out /opt/embedder`, which writes
+`model.onnx`, `tokenizer.json` and an `embedder.json` naming the model and its
+pooling, and the final stage copies that directory and sets
+`PRA_QUERY_EMBEDDER_DIR` to it. The Hugging Face client lives in the build
+stage only, so the deployed image cannot reach Hugging Face at all, which is
+the stronger version of the offline flags the previous build set after its
+download.
 
 ### The CUDA runtime is gone, and the image is a quarter of what it was
 
@@ -244,6 +249,65 @@ Read the three timings as the small half of it. A laptop reads those 2.5 GB
 out of its own page cache; Lambda reads them over the network, once, on the
 first touch, and the section below is what that looked like. The number that
 carries is the image size, because the image is what gets paged in.
+
+### And then torch and transformers went too
+
+The CPU wheel was deployed and it was not enough. On the dev function a cold
+`/health` answered in 26.8 s, `GET /warm` hit its 120 s ceiling and came back
+as a timeout, and the breakdown said where it went: **105 s of it was the
+Python import of torch and transformers**, with the bge weights loading in
+under three seconds once that was done. The import is thousands of small files
+and Lambda fetches an image's layers the first time something touches them, so
+the cost is not the size of the wheels but the number of pages that have to
+arrive before the first `import` statement returns. A CPU wheel is a smaller
+pile of the same problem.
+
+So the serving image no longer has either of them. `pipeline.query_embedder`
+has the design: the same bge network exported to a single ONNX graph, run by
+ONNX Runtime, tokenized by the `tokenizers` library out of the model's own
+`tokenizer.json`, with the CLS pooling and the L2 normalization applied in this
+repository because they are not in the graph. `sentence-transformers` stays on
+the build side, where the nightly `build_card_index` embeds the whole corpus on
+a runner with no cold start to pay, and the new `serve` extra is the list that
+has neither framework in it. The two embedders agree to a minimum cosine of
+0.9999999 over five fixture passages and five questions, with identical top-5
+retrieval order, which `tests/test_query_embedder.py -m ml` asserts;
+`tests/test_serve_imports.py` asserts the absence, by importing every serving
+module and running the whole card lookup path in a subprocess and checking
+`sys.modules`.
+
+Same laptop, same fixtures, same emulator recipe as **Measurements** below, the
+`before` column being the CPU-torch image this replaces:
+
+| measurement | CPU torch | ONNX Runtime | change |
+|---|---|---|---|
+| image size | 897,556,630 bytes, 0.90 GB | **643,578,235 bytes, 0.64 GB** | 254 MB smaller |
+| cold start to the first `/health` 200 | 0.885 s | 0.977 s | noise |
+| cold `/warm`, wall clock | 5.51 s | **2.30 s** | 3.2 s |
+| cold `/warm`, `seconds.embedder_loaded` | 3.672 s | **0.472 s** | 3.2 s |
+| cold `/warm`, `seconds.agent_built` | 0.944 s | 0.932 s | noise |
+| warm `/warm` | 39 ms, `embedder_loaded` 0.013 s | 39 ms, `embedder_loaded` 0.013 s | unchanged |
+| first `lookup_cards` in the container | 3.419 s | **0.402 s** | 3.0 s |
+| second `lookup_cards` | 0.015 s | 0.014 s | unchanged |
+| `import pipeline.lambda_serve` | 0.68 to 0.75 s | 0.66 to 0.67 s | unchanged |
+| `import torch, transformers` in the image | 1.73 to 1.79 s | not installed | |
+| resident after one `/warm` | 684 MiB | **533 MiB** | 151 MiB |
+
+Two of those rows are the point and one of them is a warning.
+
+**`import pipeline.lambda_serve` did not move, and it was never going to.**
+torch was not in the handler's import graph before this change either: it was
+imported lazily, four frames inside the first `/warm`, which is why
+`seconds.embedder_loaded` is the row that fell by 3.2 s and the init stayed
+where it was. A dependency list cannot assert that, because a lazy import
+resolves at run time out of whatever is installed; the subprocess test is what
+asserts it.
+
+**The 3.2 s on a laptop is the floor, and the deployed number is the one that
+mattered.** On this machine the frameworks come out of the page cache. On
+Lambda they came page by page over the network, which is how 3.2 s here was
+105 s there. The image being 254 MB smaller is the same story told as a size:
+it is 254 MB that no longer has to arrive.
 
 ## What AWS showed
 
@@ -305,9 +369,26 @@ image:
 
 That is what the CPU-only torch above was done for: the number that was making
 the function unusable on a cold container was 2.5 GB of libraries being pulled
-over the network so they could be preloaded and then never used. A rebuild on
-the new image has not been deployed yet, so there is no `after` column here;
-what there is is 2.82 GB that no longer has to arrive.
+over the network so they could be preloaded and then never used.
+
+Then the CPU-torch image was deployed, and it halved the problem rather than
+removing it. On the dev function, 3008 MB, on the 0.90 GB image:
+
+- **A cold `/health` answered in 26.8 s**, against 11.5 s on the 3.72 GB image.
+  Not an improvement, and the direction is the warning: the init phase is
+  whatever has to be paged in before the handler module finishes importing,
+  and the variance between cold containers is wider than the change was.
+- **`/warm` hit the 120 s ceiling and came back as a timeout again**, and the
+  log said where: **105 s of it was the Python import of torch and
+  transformers**, with the weights loading in under 3 s after that. The CUDA
+  libraries were gone and the frameworks themselves were still thousands of
+  small files arriving one page at a time.
+
+Which is the measurement that decided it. The cost was never the model and was
+never really the size: it was the number of files an `import` had to touch
+before it returned. Dropping both frameworks from the serving image is the
+section above, and what the deployed function pays for an embedding now is one
+133 MB graph read once.
 
 **Read the emulator numbers as a floor, not as what a member sees.** The two
 differences are both large and both in the same direction. The emulator's lake
@@ -385,11 +466,19 @@ sync made concurrent. Same laptop, same fixtures, same image recipe.
 | resident memory with the model loaded | 292 MiB | 289 MiB | the same, after the first `/model` |
 | peak with the embedder loaded | 1021 MiB | 937 MiB | the same, after a `lookup_cards` in the container |
 
-Both columns are the PyPI-torch image. The four rows the CPU-only torch moved
-were re-measured on both images and are in **The CUDA runtime is gone** above:
-the image is 0.90 GB rather than 3.72 GB, the cold `/health` and the warm
-`/warm` are unchanged, and the cold `/warm` is 3.86 s of `embedder_loaded`
-rather than 4.50 to 5.87 s. The rows not repeated there were not re-measured.
+Both columns are the PyPI-torch image. The rows the two later changes moved
+were re-measured on each image and are in **The CUDA runtime is gone** and
+**And then torch and transformers went too** above. The short version is that
+the image is 0.64 GB rather than 3.72 GB, the cold `/health` has not moved at
+any point, and the cold `/warm` is 0.47 s of `embedder_loaded` rather than the
+4.50 s here. The rows not repeated there were not re-measured.
+
+A second index has to exist to measure the `before` column now: the format
+version went to 3 when `meta.json` gained the pooling, so the CPU-torch image
+refuses an index this branch built. The baseline index was built inside the
+baseline container, with that image's own `python -m pipeline.card_index
+build`, into a copy of the scratch lake. Nothing in `data/` was read or written
+for any of it.
 
 The runtime's own accounting agrees and splits the cold start in two: `INIT
 REPORT durationMs: 951` for importing the handler module, and `Duration:
@@ -446,24 +535,26 @@ print(json.dumps(marks, sort_keys=True))
 '
 ```
 
-| step | seconds | re-measured | what it is |
-|---|---|---|---|
-| card index load | 0.31 | 0.32 | reading the index off the lake into memory |
-| first `lookup_cards` | 4.14 | 5.78 | importing torch, loading the baked bge model, embedding one query |
-| second `lookup_cards` | 0.03 | 0.04 | the same query path with the model already resident |
-| opening the warehouse | 0.15 | 0.26 | `duckdb_connect`, which downloads the file when the lake is `s3://` |
-| one mart query | 0.02 | 0.02 | a `count(*)` through that connection |
+| step | seconds | re-measured | CPU torch | ONNX | what it is |
+|---|---|---|---|---|---|
+| card index load | 0.31 | 0.32 | 0.302 | 0.288 | reading the index off the lake into memory |
+| first `lookup_cards` | 4.14 | 5.78 | 3.419 | **0.402** | loading the embedder and embedding one query |
+| second `lookup_cards` | 0.03 | 0.04 | 0.015 | 0.014 | the same query path with the embedder already resident |
+| opening the warehouse | 0.15 | 0.26 | 0.162 | 0.144 | `duckdb_connect`, which downloads the file when the lake is `s3://` |
+| one mart query | 0.02 | 0.02 | 0.019 | 0.019 | a `count(*)` through that connection |
 
-Nothing in this change touches any of them, and the `re-measured` column is
-the same block run again on top of it; the spread on the first
-`lookup_cards` is what a laptop does, not a regression. Four of the five are
-noise anyway. The one that matters is the first `lookup_cards`, and nearly
-all of it is `import torch` plus building the model: the second call over the
-same index is tens of milliseconds. That is the price of a local embedder,
-paid once per container, and it is the number the CPU-only torch moved: on
-this laptop by about two seconds, and on Lambda by whatever 2.5 GB of libraries
-costs to fetch before they can be preloaded. Nothing here is on the `/predict`
-path and nothing here is on the second question.
+The first two columns are the PyPI-torch image, run twice; the last two are
+the same block on the CPU-torch image and on this one.
+
+The `re-measured` column is the same block run again on the same image; the
+spread on the first `lookup_cards` is what a laptop does, not a regression.
+Four of the five rows are noise in every column. The one that matters is the
+first `lookup_cards`, which is the price of a local embedder paid once per
+container, and it is the number both of the last two changes were about: the
+CPU wheel took about two seconds off it, and dropping torch and transformers
+took the remaining three. What is left, 0.402 s, is reading a 133 MB graph and
+running one sequence through it. Nothing here is on the `/predict` path and
+nothing here is on the second question.
 
 Two things make these an optimistic floor for the deployed function. The lake
 is a bind mount, so the warehouse open is a local file rather than a download

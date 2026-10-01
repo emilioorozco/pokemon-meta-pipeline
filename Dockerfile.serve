@@ -10,12 +10,13 @@
 # process is this one. A multi-stage build would be a base image with a single
 # consumer.
 #
-# The image carries the `ml` extra and not the `agent` one, so `POST /ask`
-# answers 503 in this container and says why. That is deliberate: the agent
-# extra pulls torch for the local embedder, which is most of a gigabyte of
-# image for one route, and the agent is a command on a laptop today rather than
-# something the application calls. Adding `--extra agent` to both `uv sync`
-# lines below is the whole change when that stops being true.
+# The image carries the `ml` extra and nothing else, so `POST /ask` answers 503
+# in this container and says why. That is deliberate: this is the compose-era
+# predictor and the agent is a command on a laptop or the deployed function
+# today, rather than something anything here calls. Adding `--extra serve` to
+# both `uv sync` lines below, and baking the query embedder the way
+# `Dockerfile.agent` does, is the whole change when that stops being true;
+# `serve` is the extra with no torch in it.
 #
 # The image carries no model. It loads whichever version holds the `production`
 # alias when it starts, from the tracking server `MLFLOW_TRACKING_URI` points

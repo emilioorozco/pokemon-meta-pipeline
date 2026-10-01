@@ -34,6 +34,11 @@ ml = [
     "prometheus-client>=0.20",
 ]
 orchestration = ["apache-airflow>=2.9"]
+# The build side of the retriever, and the agent on a laptop. This is the only
+# extra that carries torch, and nothing deployed installs it: the nightly
+# `build_card_index` and `python -m pipeline.card_index build` embed the card
+# corpus with `sentence-transformers`, which is the one job that wants the
+# reference implementation of the model.
 agent = [
     # The agent stage: a tool-calling loop over the gold marts and the card
     # text. `langchain` carries the agent constructor, `langchain-core` the
@@ -58,12 +63,40 @@ agent = [
     # named here so the extra is installable on its own.
     "duckdb>=1.0",
 ]
-# The serving application as a Lambda function: the ASGI-to-Lambda adapter and
-# nothing else. Its own extra rather than a line in `ml`, because `ml` is what
-# `Dockerfile.serve` and the compose stack install and neither of them runs
-# under Lambda, and rather than a line in `agent`, because a Lambda adapter is
-# not an agent dependency. `Dockerfile.agent` installs all three.
-serve-lambda = ["mangum>=0.17"]
+# The serving image's dependency set: everything `/ask` needs and nothing that
+# imports torch. It replaces the pair `agent` + `serve-lambda` in
+# `Dockerfile.agent`, and the whole point of it is the absence: on the deployed
+# function the Python import of torch and transformers was 105 s of every cold
+# `/warm`, paid over image layers that Lambda fetches on first touch, and the
+# bge weights loaded in under three seconds once it was done. The serving path
+# never trains and never builds an index, so it needs the graph and the
+# tokenizer rather than the framework that produced them.
+#
+# Keep this list free of `sentence-transformers`, `transformers` and `torch`.
+# `tests/test_serve_imports.py` asserts the same thing about the import graph,
+# which is the half a dependency list cannot check.
+serve = [
+    # The agent loop and its provider, as in `agent` above and for the reasons
+    # given there.
+    "langchain>=1.0",
+    "langchain-core>=1.0",
+    "langchain-anthropic>=1.0",
+    "duckdb>=1.0",
+    # The query embedder: the exported graph run by ONNX Runtime on the CPU,
+    # and the Rust tokenizer loaded from the model's own `tokenizer.json`.
+    # Together they are about 60 MB of wheel against torch's several hundred,
+    # and neither of them imports anything at load time that is not already in
+    # the process.
+    "onnxruntime>=1.18",
+    "tokenizers>=0.20",
+    # Named rather than left to arrive with pyarrow, because the embedder
+    # returns numpy arrays and the index is a numpy dot product.
+    "numpy>=1.26",
+    # The ASGI-to-Lambda adapter. It was its own `serve-lambda` extra while the
+    # serving install was `ml` plus `agent` plus an adapter; now that there is
+    # one extra that means "what the deployed function runs", it belongs in it.
+    "mangum>=0.17",
+]
 
 [dependency-groups]
 dev = [
@@ -113,8 +146,14 @@ dev = [
     "langchain-core>=1.0",
     "langchain-anthropic>=1.0",
     # The retriever's embedder. The fast suite swaps in a hashing embedder and
-    # never loads it; `pytest -m ml` builds the index with the real one.
+    # never loads it; `pytest -m ml` builds the index with the real one and
+    # compares it against the ONNX one the deployed function uses.
     "sentence-transformers>=3",
+    # And the serving half of that pair, because the fast suite constructs an
+    # `OnnxEmbedder` over a tiny exported graph and `pytest -m ml` is what
+    # checks the two agree. No torch arrives with either of them.
+    "onnxruntime>=1.18",
+    "tokenizers>=0.20",
     # And the Lambda adapter, because `tests/test_lambda_serve.py` drives the
     # handler through it in the fast suite with a stub loader and no AWS.
     "mangum>=0.17",
@@ -207,6 +246,15 @@ addopts = "-m 'not spark and not dbt and not ml'"
 # `pipeline.drift` uses its chi-square test rather than hand-rolling one.
 [[tool.mypy.overrides]]
 module = ["lightgbm.*", "mlflow.*", "sklearn.*", "matplotlib.*", "scipy.*"]
+ignore_missing_imports = true
+
+# ONNX Runtime ships no `py.typed`, and `optimum` is not installed at all: it
+# is the `--export` branch of `scripts/export_query_embedder.py`, for a model
+# that publishes no graph of its own, and nothing this project deploys or tests
+# has it. Both imports are inside functions and both results are `Any` either
+# way, so the alternative is a stub package for a flag nobody has needed.
+[[tool.mypy.overrides]]
+module = ["onnxruntime.*", "optimum.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]

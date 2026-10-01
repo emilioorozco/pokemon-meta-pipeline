@@ -207,9 +207,11 @@ through OpenRouter) gives a second opinion with a confidence on whether the
 statement answers the question at all, and refuses on any error
 (`docs/sql-gate.md`). `lookup_cards` searches the printed text of the Standard
 format, about 1,500 distinct cards, embedded locally per attack, ability and
-rule with `sentence-transformers`, fused with BM25 by reciprocal rank, and
-aggregated to the card, which at this size is exact, instant and needs no index
-to tune. The
+rule with bge-small, fused with BM25 by reciprocal rank, and aggregated to the
+card, which at this size is exact, instant and needs no index to tune. The
+index is built with `sentence-transformers` and searched with the same model
+exported to ONNX, because importing torch and transformers was 105 s of every
+cold start on the deployed function (`docs/agent-service.md`). The
 system prompt is generated from `dbt/models/marts/schema.yml` at import, so it
 cannot drift from the models, and the rules in it are the ones this corpus
 needs: cite the `games` count, say when `min_games_met` is false, and never
@@ -218,6 +220,7 @@ serving application, returning the answer next to every tool call it made.
 
 ```bash
 uv run python scripts/fetch_card_text.py                    # card text from TCGdex
+uv run python scripts/export_query_embedder.py              # the ONNX query embedder
 uv run python -m pipeline.card_index build                  # embed it locally
 uv run python -m pipeline.card_index query "bench damage"   # the retriever alone
 op run --env-file=.env.op -- uv run python -m pipeline.agent \
