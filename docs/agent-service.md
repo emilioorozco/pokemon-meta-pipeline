@@ -196,18 +196,54 @@ nobody is paying for. The build runs the same call the card index code makes,
 `TRANSFORMERS_OFFLINE=1`, so a cache miss at run time is a clear error rather
 than a silent network call.
 
-**The image is big, and most of it is CUDA that this function will never use.**
-`sentence-transformers` pulls torch, and the torch that `uv.lock` pins is the
-PyPI `torch==2.14.0`, whose Linux dependency set is the CUDA runtime:
-`cuda-toolkit`, `nvidia-cudnn`, `nccl`, `triton` and the rest. They are not
-dropped from the image, and dropping them would not work: the PyPI Linux
-wheel's `libtorch_global_deps.so` links against those libraries and `import
-torch` preloads them, so an image without them fails on the first embedding
-rather than saving anything. A CPU-only torch is a `[tool.uv.sources]` entry
-against the PyTorch CPU index plus a re-lock that every other consumer of this
-lock file takes with it, which is a change of its own and was left out of this
-one deliberately. It is the single biggest thing that could be done to the
-numbers below.
+### The CUDA runtime is gone, and the image is a quarter of what it was
+
+The image used to be 3.72 GB and most of it was CUDA this function will never
+use. `sentence-transformers` pulls torch, and the torch `uv.lock` pinned was
+the PyPI `torch==2.14.0`, whose Linux dependency set is the CUDA runtime:
+`cuda-toolkit`, `nvidia-cudnn-cu13`, `nvidia-nccl-cu13`, `triton` and the rest,
+some 2.5 GB of wheels no kernel here ever runs. Dropping them from the image
+was never an option: the PyPI Linux wheel's `libtorch_global_deps.so` links
+against those libraries and `import torch` preloads them, so an image without
+them fails on the first embedding rather than saving anything. Preloading is
+also what made them expensive rather than merely large. Lambda fetches an
+image's layers the first time something touches them, so every page of those
+libraries was pulled over the network during the first `import torch`, which
+on a deployed container is inside the first question.
+
+What was done instead is the index change: `pyproject.toml` declares the
+PyTorch CPU index as `explicit`, `[tool.uv.sources]` sends `torch` there for
+`sys_platform == 'linux'` only, and `torch` is named in the `agent` extra so
+that the source applies to a direct dependency. Linux resolves
+`torch==2.14.1+cpu`, which depends on no CUDA package at all; macOS and Windows
+keep the PyPI wheel, which was already CPU-only there, so a development machine
+installs what it always did. `uv.lock` holds both, one per resolution fork, and
+has no `nvidia-*`, `triton`, `cuda-toolkit`, `cuda-bindings` or
+`cuda-pathfinder` entry left anywhere in it.
+
+The cost is in `Dockerfile.agent`: the export has to carry `--emit-index-url`
+so the second index is named, and the install has to carry
+`--index-strategy unsafe-best-match`, because uv otherwise takes a package only
+from the first index that carries its name and would look for `2.14.1+cpu` on
+PyPI. Every version in the exported file is an exact pin out of `uv.lock`, so
+that strategy picks between indexes and never between versions.
+
+Measured on the same laptop, both images built and run the same way, with the
+emulator recipe in **Measurements** below:
+
+| measurement | PyPI torch | CPU torch | change |
+|---|---|---|---|
+| image size | 3,717,661,405 bytes, 3.72 GB | **897,559,363 bytes, 0.90 GB** | 2.82 GB smaller |
+| cold start to the first `/health` 200 | 1.12 s | **1.03 s** | noise |
+| cold `/warm`, `seconds.embedder_loaded` | 5.87 s | **3.86 s** | 2.0 s |
+| cold `/warm`, `seconds.agent_built` | 1.29 s | **0.97 s** | 0.3 s |
+| cold `import torch` in the image | 2.32 s on the first ever run, 1.65 to 1.66 s after | **1.08 s, 1.07 to 1.10 s** | about 0.6 s |
+| torch version installed | `2.14.0+cu130` | `2.14.1+cpu` | |
+
+Read the three timings as the small half of it. A laptop reads those 2.5 GB
+out of its own page cache; Lambda reads them over the network, once, on the
+first touch, and the section below is what that looked like. The number that
+carries is the image size, because the image is what gets paged in.
 
 ## What AWS showed
 
@@ -249,6 +285,29 @@ questions that reached the model showed the rest of it:
 `/model` and `/predict` answer 503 on dev, because the dev registry has no
 `production` alias: the corpus is 13 games and the promotion gate has never
 passed a candidate on it. That is correct and is left alone.
+
+Then `/warm` was deployed and called, and it put a number on the thing the
+emulator cannot show. On the dev function, 3008 MB, still on the 3.72 GB
+image:
+
+- **A cold `/health` answered in 11.5 s, of which 9.1 s was the init phase**,
+  which is right under the ten seconds Lambda allows before it re-runs the
+  work inside the invocation. Nothing in the init reads the lake or the
+  provider; that is the handler module's import graph alone, paged in off the
+  image.
+- **`/warm` reported `embedder_loaded: 114.5 s`**, and the first `/warm` on a
+  fresh container before it hit the 120 s ceiling and came back as a timeout.
+  Against 4.5 s on a laptop, that is the whole of the gap: Lambda was fetching
+  the CUDA libraries page by page over the network because `import torch`
+  preloads them.
+- **Once warm, a card question answered in 3.9 s and a SQL question in
+  10.3 s**, which is the provider and the tool calls and nothing else.
+
+That is what the CPU-only torch above was done for: the number that was making
+the function unusable on a cold container was 2.5 GB of libraries being pulled
+over the network so they could be preloaded and then never used. A rebuild on
+the new image has not been deployed yet, so there is no `after` column here;
+what there is is 2.82 GB that no longer has to arrive.
 
 **Read the emulator numbers as a floor, not as what a member sees.** The two
 differences are both large and both in the same direction. The emulator's lake
@@ -326,6 +385,12 @@ sync made concurrent. Same laptop, same fixtures, same image recipe.
 | resident memory with the model loaded | 292 MiB | 289 MiB | the same, after the first `/model` |
 | peak with the embedder loaded | 1021 MiB | 937 MiB | the same, after a `lookup_cards` in the container |
 
+Both columns are the PyPI-torch image. The four rows the CPU-only torch moved
+were re-measured on both images and are in **The CUDA runtime is gone** above:
+the image is 0.90 GB rather than 3.72 GB, the cold `/health` and the warm
+`/warm` are unchanged, and the cold `/warm` is 3.86 s of `embedder_loaded`
+rather than 4.50 to 5.87 s. The rows not repeated there were not re-measured.
+
 The runtime's own accounting agrees and splits the cold start in two: `INIT
 REPORT durationMs: 951` for importing the handler module, and `Duration:
 1012.76 ms` for the first invocation, which is where the application is built.
@@ -395,9 +460,10 @@ the same block run again on top of it; the spread on the first
 noise anyway. The one that matters is the first `lookup_cards`, and nearly
 all of it is `import torch` plus building the model: the second call over the
 same index is tens of milliseconds. That is the price of a local embedder,
-paid once per container, and it is the number a CPU-only torch would move.
-Nothing here is on the `/predict` path and nothing here is on the second
-question.
+paid once per container, and it is the number the CPU-only torch moved: on
+this laptop by about two seconds, and on Lambda by whatever 2.5 GB of libraries
+costs to fetch before they can be preloaded. Nothing here is on the `/predict`
+path and nothing here is on the second question.
 
 Two things make these an optimistic floor for the deployed function. The lake
 is a bind mount, so the warehouse open is a local file rather than a download
