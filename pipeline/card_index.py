@@ -141,6 +141,9 @@ STEM_CHARS: Final = 5
 
 DEFAULT_K: Final = 5
 MAX_K: Final = 20
+# What `warm_index` embeds. Short, fixed and about nothing, because the only
+# thing that matters is that one query goes through the model.
+WARM_QUERY: Final = "warm"
 # Effect text is the long field, and a tool result holding five whole cards is
 # already a page. Cut each effect rather than the number of cards: the model
 # asked for k cards and silently getting three would be the worse surprise.
@@ -1058,6 +1061,31 @@ def render_hits(hits: Sequence[Hit]) -> str:
 # ------------------------------------------------------------------ tool --
 
 
+def warm_index(index: "CardIndex") -> bool:
+    """One short search, so the embedding model is resident before a question needs it.
+
+    `SentenceTransformerEmbedder` loads its model on first use, which on a
+    Lambda cold container means `import torch`, a few hundred megabytes of
+    weights and the first embedding, all of it over image layers that are
+    fetched the first time they are touched. Locally that is four to six
+    seconds; deployed it was enough to take a question about a card past the
+    function's 60 s timeout.
+
+    A search rather than a bare `embed_query`, because the first call to the
+    tool pays for the lazy BM25 build too, and this is meant to be the whole
+    of that first call with the provider left out of it. `k=1`, because
+    nothing reads the result.
+
+    Returns whether an embedding actually ran. An index with no cards in it
+    has nothing to search and nothing to warm, and that is a False rather than
+    a failure.
+    """
+    if not index.cards or not index.passages:
+        return False
+    index.search(WARM_QUERY, k=1)
+    return True
+
+
 def make_lookup_cards_tool(
     index_dir: AnyLocation,
     *,
@@ -1065,18 +1093,25 @@ def make_lookup_cards_tool(
     metrics: ServiceMetrics,
     embedder: Embedder | None = None,
     lexical: bool = True,
+    index: "CardIndex | None" = None,
 ) -> Any:
     """The card-text tool, bound to one built index.
 
     The index is loaded here, when the tool is made, rather than on the first
     call: an agent that is going to fail because its index is missing should
     fail while it is being built, not in the middle of answering.
+
+    `index` is for the one caller that needs to hold the same object the tool
+    holds. `pipeline.agent.marts_tools` loads it, passes it in and keeps it, so
+    that `GET /warm` warms the embedder this tool will actually use rather than
+    a second copy of the model beside it.
     """
     from langchain_core.tools import StructuredTool
 
     from pipeline.agent import ToolCall, record_call, summarize
 
-    index = CardIndex.load(index_dir, embedder, lexical=lexical)
+    if index is None:
+        index = CardIndex.load(index_dir, embedder, lexical=lexical)
 
     def lookup_cards(query: str, k: int = DEFAULT_K) -> str:
         """Find printed cards whose text matches a description."""

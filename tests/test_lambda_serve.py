@@ -6,8 +6,11 @@ this module's own and each of them fails quietly if it is wrong:
 
 The keys. A value already in the environment has to win over the secret, or a
 laptop under `.env.op` and this suite would both start talking to Secrets
-Manager; the secret has to be read once per container rather than once per
-question; and no value from it may ever reach a log. The read itself runs
+Manager; a secret that produced a key has to be read once per container rather
+than once per question, and a secret that produced nothing has to be read
+again, because the stack creates the secret before anyone can fill it; no
+value from it may ever reach a log; and a secret this cannot use is a warning
+and a field on `/health`, never a 502 from every route. The read itself runs
 against moto rather than a stub, so the JSON shape the application's stack
 writes is the JSON shape this parses.
 
@@ -18,9 +21,11 @@ first call, an unchanged object, a replaced one and a head that fails are five
 assertions rather than a ten-minute wait.
 
 The request. `handler` really goes through Mangum and really answers
-`GET /health` from a function URL event. The model is
+`GET /health` from a function URL event, and the model it eventually loads is
 `pipeline.serve.StubPredictor`, reached the same way a demonstration reaches
 it, so there is no registry, no MLflow and no network anywhere in it.
+`/health` does not load it, which is `build_app`'s `eager_model=False` and
+most of what a cold start used to cost.
 """
 
 import json
@@ -45,6 +50,7 @@ from pipeline.lambda_serve import (
     refresh_warehouse,
 )
 from pipeline.serve import STUB_MODEL_VAR, STUB_VERSION
+from pipeline.sql_gate import GATE_VAR
 from pipeline.storage import Location
 
 REGION: Final = "us-west-2"
@@ -107,7 +113,7 @@ def fresh_container(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     first one's.
     """
     lambda_serve.reset_container_state()
-    for name in (*SECRET_KEYS, KEYS_SECRET_VAR, STUB_MODEL_VAR):
+    for name in (*SECRET_KEYS, KEYS_SECRET_VAR, STUB_MODEL_VAR, GATE_VAR):
         monkeypatch.delenv(name, raising=False)
     yield
     lambda_serve.reset_container_state()
@@ -340,35 +346,182 @@ def test_the_handler_answers_health_for_a_function_url_event(
 ) -> None:
     """One request all the way through Mangum, the real application and back.
 
-    `PRA_SERVE_STUB_MODEL` is the same switch a demonstration uses, so the
-    model is `pipeline.serve.StubPredictor` and nothing here needs a registry,
-    MLflow, LightGBM or a network. The agent is never built: it is built on the
-    first question, and this asks none.
+    `PRA_SERVE_STUB_MODEL` is the same switch a demonstration uses, so when
+    the model is finally loaded it is `pipeline.serve.StubPredictor` and
+    nothing here needs a registry, MLflow, LightGBM or a network. The agent is
+    never built either: it is built on the first question, and this asks none.
     """
     monkeypatch.setenv(STUB_MODEL_VAR, "1")
     response = handler(function_url_event("GET", "/health"), None)
     assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == {"status": "ok", "model_loaded": True}
+    # `model_loaded` is false because nothing has asked for the model, which
+    # is the whole of `build_app`'s `eager_model=False`: on this function the
+    # load pulls the MLflow store out of the lake, and `/health` must not.
+    assert json.loads(response["body"])["model_loaded"] is False
 
-    # And the model the stub loaded is named as a stub on `/model`, which is
-    # the same application object answering a second invocation.
+    # And `/model` is one of the three routes that does ask for it, through
+    # the same application object on a second invocation.
     described = handler(function_url_event("GET", "/model"), None)
     assert json.loads(described["body"])["version"] == STUB_VERSION
+    later = handler(function_url_event("GET", "/health"), None)
+    assert json.loads(later["body"])["model_loaded"] is True
 
 
-def test_a_secret_that_cannot_be_read_fails_the_invocation(
+def test_a_secret_that_cannot_be_read_still_answers_health(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """One log line naming the failure, then out; never a 503 with no reason."""
+    """A placeholder secret used to 502 every route, `/health` included.
+
+    The application's stack has to create the secret before anyone can put a
+    key in it, so an unusable secret is a state every new deployment passes
+    through. One warning naming the problem, and a function that says which
+    half of itself works.
+    """
 
     def broken(arn: str) -> dict[str, str]:
         raise SecretError("the secret is not readable")
 
     monkeypatch.setenv(KEYS_SECRET_VAR, "a-secret-under-test")
     monkeypatch.setattr(lambda_serve, "read_secret", broken)
-    with caplog.at_level(logging.ERROR), pytest.raises(SecretError):
-        handler(function_url_event("GET", "/health"), None)
-    assert "could not start" in caplog.text
+    with caplog.at_level(logging.WARNING):
+        response = handler(function_url_event("GET", "/health"), None)
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["status"] == "ok"
+    assert body["keys_loaded"] is False
+    assert sorted(body["missing_keys"]) == sorted(SECRET_KEYS)
+    assert body["agent_ready"] is False
+    warned = [record for record in caplog.records if "could not be read" in record.getMessage()]
+    assert len(warned) == 1
+    assert "the secret is not readable" in warned[0].error  # type: ignore[attr-defined]
+
+
+def test_a_secret_that_holds_no_usable_key_is_read_again_next_time(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A read that produced nothing is not an answer, so it is not latched.
+
+    This is the placeholder being filled in while the container is warm: the
+    next invocation reads the secret again and the key is live with no
+    redeployment. A read that produced something is latched, which
+    `test_the_secret_is_read_once_per_container` is about.
+    """
+    import os
+
+    values: dict[str, str] = {}
+    reads: list[str] = []
+
+    def changing(arn: str) -> dict[str, str]:
+        reads.append(arn)
+        return dict(values)
+
+    monkeypatch.setenv(KEYS_SECRET_VAR, "a-secret-under-test")
+    monkeypatch.setattr(lambda_serve, "read_secret", changing)
+    with caplog.at_level(logging.WARNING):
+        assert load_keys() == []
+    assert "no usable key" in caplog.text
+
+    values["ANTHROPIC_API_KEY"] = PROVIDER_KEY
+    assert load_keys() == ["ANTHROPIC_API_KEY"]
+    assert os.environ["ANTHROPIC_API_KEY"] == PROVIDER_KEY
+    assert load_keys() == []
+    assert len(reads) == 2
+
+
+class StubWarmAgent:
+    """An agent with an embedder to warm and a provider it must never reach.
+
+    `ask` raises rather than returning something, because the one thing
+    `/warm` must not do is cost a question: a warming path that quietly asked
+    the model would show up as a bill rather than as a failure.
+    """
+
+    def __init__(self) -> None:
+        self.warmed = 0
+
+    def warm(self) -> bool:
+        self.warmed += 1
+        return True
+
+    def ask(self, question: str) -> Any:
+        raise AssertionError("/warm must not ask the provider anything")
+
+
+def test_warm_makes_the_agent_and_its_embedder_resident_through_mangum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The keepalive ping, end to end as the infrastructure will call it.
+
+    The first deployed `/ask` about a card hit the 60 s function timeout
+    because a cold container pays for the torch import, the bge load and the
+    first embedding over lazily loaded image layers. Pinging `/health` did not
+    help, because `/health` touches none of it. This is the route that does,
+    with a stub agent so no provider is reachable from the test at all.
+    """
+    from pipeline.serve import create_app, stub_loader
+
+    agent = StubWarmAgent()
+    builds = 0
+
+    def factory() -> Any:
+        nonlocal builds
+        builds += 1
+        return agent
+
+    monkeypatch.setenv(STUB_MODEL_VAR, "1")
+    monkeypatch.setattr(
+        lambda_serve,
+        "build_app",
+        lambda: create_app(stub_loader(), agent_factory=factory, eager_model=False),
+    )
+
+    response = handler(function_url_event("GET", "/warm"), None)
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["status"] == "ok"
+    assert body["agent_ready"] is True
+    assert body["agent_reason"] is None
+    assert body["agent_built"] is True
+    assert body["embedder_loaded"] is True
+    assert sorted(body["seconds"]) == ["agent_built", "embedder_loaded"]
+    assert all(isinstance(value, float) for value in body["seconds"].values())
+    assert (builds, agent.warmed) == (1, 1)
+
+    # The second ping is the one that matters for a warm container: the agent
+    # is the one already on `app.state` and the model is already resident, so
+    # it costs a ping and builds nothing.
+    again = json.loads(handler(function_url_event("GET", "/warm"), None)["body"])
+    assert (again["agent_built"], again["embedder_loaded"]) == (True, True)
+    assert (builds, agent.warmed) == (1, 2)
+    # And nothing in any of it reached the provider.
+    assert "langchain_anthropic" not in sys.modules
+
+
+def test_a_gate_value_the_gate_refuses_is_a_200_health_and_a_503_ask(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`PRA_SQL_GATE=1` on the function, end to end through Mangum.
+
+    The accepted values are `off` and `jev`, and the first deployed function
+    was set to `1`. It used to build the agent, pay for the LangChain and
+    torch imports, raise out of the factory and then answer every later
+    question with the same message for the life of the container.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-key")
+    monkeypatch.setenv(GATE_VAR, "1")
+    health = handler(function_url_event("GET", "/health"), None)
+    assert health["statusCode"] == 200
+    body = json.loads(health["body"])
+    assert body["agent_ready"] is False
+    assert GATE_VAR in body["agent_reason"]
+
+    asked = function_url_event("POST", "/ask")
+    asked["headers"]["content-type"] = "application/json"
+    asked["body"] = json.dumps({"question": "which archetype has the best win rate"})
+    refused = handler(asked, None)
+    assert refused["statusCode"] == 503
+    assert json.loads(refused["body"])["detail"] == body["agent_reason"]
 
 
 def test_importing_the_handler_loads_no_model_and_no_agent() -> None:

@@ -20,6 +20,7 @@ request leaves it out, and that an archetype the model never saw arrives as the
 missing-category code rather than as a string.
 """
 
+import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -30,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from pipeline import serve
 from pipeline.ml_features import MODEL_FEATURES, UNSEEN_CATEGORY
+from pipeline.sql_gate import GATE_JEV, GATE_OFF, GATE_VAR
 
 CODES: Final[dict[str, dict[str, int]]] = {
     "archetype_key": {"name:alpha": 0, "name:beta": 1},
@@ -103,6 +105,20 @@ class Registry:
         return self.model
 
 
+@pytest.fixture(autouse=True)
+def no_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neither provider key, and no gate setting, unless a test asks for one.
+
+    `/health` and `/ask` now read the environment to decide whether the agent
+    could work at all, so a developer running the suite under `op run` would
+    otherwise get different answers from the same tests than continuous
+    integration does. Everything about the agent's environment is set inside
+    the tests that are about it.
+    """
+    for name in (*serve.AGENT_KEY_VARS, GATE_VAR, "PRA_SQL_GATE_ON_ERROR"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def predictor() -> StubPredictor:
     return StubPredictor(0.73)
@@ -134,7 +150,8 @@ def test_the_request_model_mirrors_the_feature_list() -> None:
 def test_health_reports_a_loaded_model(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "model_loaded": True}
+    assert response.json()["status"] == "ok"
+    assert response.json()["model_loaded"] is True
 
 
 def test_health_is_still_ok_with_nothing_promoted() -> None:
@@ -149,11 +166,68 @@ def test_health_is_still_ok_with_nothing_promoted() -> None:
         raise RuntimeError("Registered model alias production not found.")
 
     with TestClient(serve.create_app(empty)) as started:
-        assert started.get("/health").json() == {"status": "ok", "model_loaded": False}
+        assert started.get("/health").json()["model_loaded"] is False
         refused = started.post("/predict", json=BODY)
         assert refused.status_code == 503
         assert "production" in refused.json()["detail"]
         assert started.get("/model").status_code == 503
+
+
+# ----------------------------------------------------- where the model loads --
+#
+# `eager_model` is the difference between the command line, which wants a bad
+# registry to be a startup failure, and Lambda, where the build is the cold
+# path of every route and loading the model means pulling the MLflow store out
+# of the lake. `Registry.loads` counts, so these are assertions about when the
+# work happens rather than about how long it takes.
+
+
+def test_the_model_is_loaded_while_the_app_is_built_by_default(registry: Registry) -> None:
+    """What `python -m pipeline.serve` and `compose.yaml` have always done."""
+    serve.create_app(registry)
+    assert registry.loads == 1
+
+
+def test_health_does_not_load_the_model_on_a_lazy_host(registry: Registry) -> None:
+    """The whole of the cold start fix: `/health` costs nothing a model costs.
+
+    On the deployed function the load was 28.7 of the 29 seconds the first
+    `/health` took, and `/health` does not read the model.
+    """
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        assert registry.loads == 0
+        body = started.get("/health").json()
+        assert body["status"] == "ok"
+        assert body["model_loaded"] is False
+        assert registry.loads == 0
+
+
+def test_a_lazy_model_is_loaded_by_the_first_route_that_reads_it(registry: Registry) -> None:
+    """`/model`, `/predict` and `/reload` pay for it; once, between them."""
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        assert started.get("/model").status_code == 200
+        assert registry.loads == 1
+        assert started.post("/predict", json=BODY).status_code == 200
+        assert started.get("/health").json()["model_loaded"] is True
+        assert registry.loads == 1
+
+
+def test_a_lazy_load_that_fails_is_a_503_and_not_a_retry_on_every_request() -> None:
+    """An empty registry answers no, quickly, and `/reload` is the way to ask again."""
+    attempts = 0
+
+    def empty() -> serve.LoadedModel:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("Registered model alias production not found.")
+
+    with TestClient(serve.create_app(empty, eager_model=False)) as started:
+        assert started.get("/health").json()["model_loaded"] is False
+        assert started.get("/model").status_code == 503
+        assert started.post("/predict", json=BODY).status_code == 503
+        assert attempts == 1
+        assert started.post("/reload").status_code == 503
+        assert attempts == 2
 
 
 def test_model_reports_the_version_and_its_holdout_numbers(client: TestClient) -> None:
@@ -250,16 +324,16 @@ def test_reload_that_fails_is_a_503_and_leaves_nothing_loaded() -> None:
         assert started.get("/health").json()["model_loaded"] is False
 
 
-def test_the_documented_contract_is_still_the_five_endpoints(client: TestClient) -> None:
+def test_the_documented_contract_is_still_the_six_endpoints(client: TestClient) -> None:
     """`/metrics` is mounted but stays out of the schema, and nothing else moved.
 
     The telemetry endpoint is about the process, not about win probabilities, so
     a caller reading `/openapi.json` to generate a client should not find it.
-    The five that are the contract have to still be there, which is the half of
+    The six that are the contract have to still be there, which is the half of
     this that would catch instrumentation replacing a route by accident.
     """
     paths = client.get("/openapi.json").json()["paths"]
-    assert set(paths) == {"/health", "/model", "/reload", "/predict", "/ask"}
+    assert set(paths) == {"/health", "/warm", "/model", "/reload", "/predict", "/ask"}
     assert client.get("/metrics").status_code == 200
 
 
@@ -391,3 +465,222 @@ def test_the_agent_is_built_once_and_reused(registry: Registry) -> None:
         started.post("/ask", json={"question": "one"})
         started.post("/ask", json={"question": "two"})
     assert builds == 1
+
+
+def test_a_failed_agent_build_is_tried_again_on_the_next_question(
+    registry: Registry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failure must not be cached, because on Lambda the cache is the container.
+
+    The first deployed container answered every `/ask` for hours with the same
+    `GateConfigError` in 17 ms, and the fix was one environment variable. A
+    build is attempted again on the next question, so a corrected variable or
+    a key that has arrived is live without a redeployment.
+    """
+    attempts = 0
+
+    def flaky() -> serve.AskAgent:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("the warehouse was not there yet")
+        return StubAgent(ANSWER)
+
+    with TestClient(serve.create_app(registry, agent_factory=flaky)) as started:
+        with caplog.at_level(logging.INFO):
+            refused = started.post("/ask", json={"question": "one"})
+            assert refused.status_code == 503
+            assert started.get("/health").json()["agent_ready"] is False
+            answered = started.post("/ask", json={"question": "two"})
+        assert answered.status_code == 200
+        assert answered.json() == ANSWER
+        assert started.get("/health").json()["agent_ready"] is True
+    assert attempts == 2
+    assert "building the agent again" in caplog.text
+
+
+# -------------------------------------------------- the degraded states --
+#
+# What the first deployed container actually did, as assertions. Both of these
+# are a dependency that is not ready rather than a process that is unhealthy,
+# so `/health` is 200 with the reason in a field and `/ask` is the route that
+# refuses. The agent factory is the real one here, which is the point: these
+# are about the environment the real one would read, and neither test gets far
+# enough to import LangChain.
+
+
+def test_no_provider_key_is_a_200_health_and_a_503_ask(registry: Registry) -> None:
+    """Before the secret was filled, every route 502ed. This is what it does now."""
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        body = started.get("/health").json()
+        assert started.get("/health").status_code == 200
+        assert body["status"] == "ok"
+        assert body["keys_loaded"] is False
+        assert body["missing_keys"] == list(serve.AGENT_KEY_VARS)
+        assert body["agent_ready"] is False
+        assert body["agent_reason"] == serve.NO_PROVIDER_KEY
+
+        refused = started.post("/ask", json={"question": "anything"})
+        assert refused.status_code == 503
+        assert refused.json()["detail"] == serve.NO_PROVIDER_KEY
+        # And the half of the service that needs no key still works.
+        assert started.post("/predict", json=BODY).status_code == 200
+
+
+def test_one_key_of_the_two_is_named_on_health(
+    registry: Registry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the gate off the judge key is not needed, and `/health` still says it is unset."""
+    monkeypatch.setenv(serve.PROVIDER_KEY_VAR, "not-a-real-key")
+    monkeypatch.setenv(GATE_VAR, GATE_OFF)
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        body = started.get("/health").json()
+    assert body["keys_loaded"] is False
+    assert body["missing_keys"] == [serve.JUDGE_KEY_VAR]
+    assert body["agent_ready"] is True
+    assert body["agent_reason"] is None
+
+
+def test_a_gate_value_the_gate_refuses_does_not_take_the_service_down(
+    registry: Registry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`PRA_SQL_GATE=1` was set on the function, and the accepted values are `off` and `jev`."""
+    monkeypatch.setenv(serve.PROVIDER_KEY_VAR, "not-a-real-key")
+    monkeypatch.setenv(serve.JUDGE_KEY_VAR, "not-a-real-key-either")
+    monkeypatch.setenv(GATE_VAR, "1")
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        health = started.get("/health")
+        assert health.status_code == 200
+        body = health.json()
+        assert body["status"] == "ok"
+        assert body["keys_loaded"] is True
+        assert body["missing_keys"] == []
+        assert body["agent_ready"] is False
+        for expected in (GATE_VAR, GATE_OFF, GATE_JEV):
+            assert expected in body["agent_reason"]
+
+        refused = started.post("/ask", json={"question": "anything"})
+        assert refused.status_code == 503
+        assert refused.json()["detail"] == body["agent_reason"]
+        assert started.post("/predict", json=BODY).status_code == 200
+
+
+def test_a_good_gate_and_both_keys_report_ready(
+    registry: Registry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deployed configuration, once it is right: nothing to report."""
+    monkeypatch.setenv(serve.PROVIDER_KEY_VAR, "not-a-real-key")
+    monkeypatch.setenv(serve.JUDGE_KEY_VAR, "not-a-real-key-either")
+    monkeypatch.setenv(GATE_VAR, GATE_JEV)
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        body = started.get("/health").json()
+    assert (body["keys_loaded"], body["agent_ready"], body["agent_reason"]) == (True, True, None)
+
+
+# ------------------------------------------------------------------ /warm --
+#
+# The keepalive ping. What it must do is pay a first question's costs with
+# nobody waiting; what it must never do is ask the provider anything or fail.
+
+
+class WarmAgent(StubAgent):
+    """A stub agent that can be warmed, and that refuses to be asked while warming."""
+
+    def __init__(self, payload: dict[str, Any], *, breaks: bool = False) -> None:
+        super().__init__(payload)
+        self.breaks = breaks
+        self.warmed = 0
+
+    def warm(self) -> bool:
+        self.warmed += 1
+        if self.breaks:
+            raise RuntimeError("the embedding model is not in the image")
+        return True
+
+
+def test_warm_builds_the_agent_and_the_embedder(registry: Registry) -> None:
+    agent = WarmAgent(ANSWER)
+    builds = 0
+
+    def factory() -> serve.AskAgent:
+        nonlocal builds
+        builds += 1
+        return agent
+
+    with TestClient(serve.create_app(registry, agent_factory=factory)) as started:
+        body = started.get("/warm").json()
+        assert started.get("/warm").status_code == 200
+        assert body["status"] == "ok"
+        assert body["agent_ready"] is True
+        assert body["agent_reason"] is None
+        assert body["agent_built"] is True
+        assert body["embedder_loaded"] is True
+        assert sorted(body["seconds"]) == ["agent_built", "embedder_loaded"]
+        # And the agent is built once and warmed on every ping, which is what
+        # keeps a frozen container's model resident for the cost of a ping.
+        assert (builds, agent.warmed) == (1, 2)
+        assert agent.asked == []
+
+
+def test_warm_reports_an_agent_with_nothing_to_warm(registry: Registry) -> None:
+    """No card index means an agent with only its SQL half, and nothing to make resident."""
+    with TestClient(serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))) as started:
+        body = started.get("/warm").json()
+    assert body["agent_built"] is True
+    assert body["embedder_loaded"] is False
+    assert list(body["seconds"]) == ["agent_built"]
+    assert body["agent_ready"] is True
+
+
+def test_warm_is_200_with_the_reason_when_readiness_says_no(registry: Registry) -> None:
+    """The same fields `/health` carries, because the ping replaced the health check."""
+    with TestClient(serve.create_app(registry, eager_model=False)) as started:
+        warmed = started.get("/warm")
+        health = started.get("/health").json()
+    assert warmed.status_code == 200
+    body = warmed.json()
+    assert body["agent_ready"] is False
+    assert body["agent_reason"] == serve.NO_PROVIDER_KEY
+    assert (body["keys_loaded"], body["missing_keys"]) == (
+        health["keys_loaded"],
+        health["missing_keys"],
+    )
+    assert (body["agent_built"], body["embedder_loaded"]) == (False, False)
+    assert body["seconds"] == {}
+
+
+def test_warm_never_raises(registry: Registry, caplog: pytest.LogCaptureFixture) -> None:
+    """A build that fails and a warmer that throws are both still a 200 with a reason."""
+
+    def broken() -> serve.AskAgent:
+        raise RuntimeError("the warehouse is not there")
+
+    with TestClient(serve.create_app(registry, agent_factory=broken)) as started:
+        failed = started.get("/warm")
+    assert failed.status_code == 200
+    assert failed.json()["agent_ready"] is False
+    assert "the warehouse is not there" in failed.json()["agent_reason"]
+    assert failed.json()["agent_built"] is False
+
+    agent = WarmAgent(ANSWER, breaks=True)
+    with (
+        TestClient(serve.create_app(registry, agent_factory=lambda: agent)) as started,
+        caplog.at_level(logging.WARNING),
+    ):
+        threw = started.get("/warm")
+    assert threw.status_code == 200
+    body = threw.json()
+    assert body["agent_built"] is True
+    assert body["embedder_loaded"] is False
+    assert "not in the image" in body["agent_reason"]
+    assert "embedder_loaded" in body["seconds"]
+    assert "warming the embedder failed" in caplog.text
+
+
+def test_the_judge_key_names_the_same_variable_the_gate_reads() -> None:
+    """Two modules spell these out as strings; a rename has to reach both."""
+    from pipeline import lambda_serve
+    from pipeline.sql_gate import API_KEY_VAR as GATE_API_KEY_VAR
+
+    assert serve.JUDGE_KEY_VAR == GATE_API_KEY_VAR
+    assert sorted(serve.AGENT_KEY_VARS) == sorted(lambda_serve.SECRET_KEYS)

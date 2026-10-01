@@ -389,3 +389,16 @@ def test_a_refused_query_comes_back_to_the_model_rather_than_raising(
     assert counter_value(metrics, agent.SQL_TOOL) == 2.0
     refusal_turn = model.seen[1]
     assert any("refused" in str(message.content) for message in refusal_turn)
+
+
+def test_the_provider_key_names_the_same_variable_the_serving_app_checks() -> None:
+    """`pipeline.serve` spells this one out rather than importing LangChain for it.
+
+    `/health` reports it missing and `/ask` refuses on it, both from a module
+    that has to stay importable in an image with no LangChain in it. The cost
+    of that is the name written twice, and this is the assertion that keeps
+    the two copies the same name.
+    """
+    from pipeline.serve import PROVIDER_KEY_VAR
+
+    assert PROVIDER_KEY_VAR == agent.API_KEY_VAR

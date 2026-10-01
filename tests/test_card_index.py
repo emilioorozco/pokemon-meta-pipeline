@@ -19,8 +19,9 @@ once, answering from the marts and the card text in a single scripted run.
 
 import json
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
+import numpy as np
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -118,6 +119,53 @@ def test_the_search_is_bounded_and_deterministic(hashed_index: Path) -> None:
     first = [hit.card.card_id for hit in index.search("draw cards", k=5)]
     second = [hit.card.card_id for hit in index.search("draw cards", k=5)]
     assert first == second
+
+
+def test_warming_runs_one_search_through_the_index(hashed_index: Path) -> None:
+    """What `GET /warm` pays so a first question does not. One embedding, no result."""
+    index = card_index.CardIndex.load(hashed_index)
+    embedded: list[str] = []
+    inner = index.embedder.embed_query
+
+    def recording(text: str) -> Any:
+        embedded.append(text)
+        return inner(text)
+
+    index.embedder.embed_query = recording  # type: ignore[method-assign]
+    assert card_index.warm_index(index) is True
+    assert embedded == [card_index.WARM_QUERY]
+
+
+def test_warming_an_index_with_nothing_in_it_is_false_not_a_failure(tmp_path: Path) -> None:
+    """A built index with no cards has nothing to search, which is not an error."""
+    embedder = card_index.HashingEmbedder(4)
+    empty = card_index.CardIndex([], [], np.zeros(0, dtype=np.int64), np.zeros((0, 4)), embedder)
+    assert card_index.warm_index(empty) is False
+
+
+def test_the_tool_uses_the_index_it_is_given(
+    hashed_index: Path, metrics: ServiceMetrics, exporter: InMemorySpanExporter
+) -> None:
+    """`marts_tools` loads the index and passes it in, so `/warm` warms that one.
+
+    Two loads would be two resident embedding models, which on a function
+    sized for one is the opposite of warming it.
+    """
+    tracer = build_tracer_provider(exporter=exporter).get_tracer("tests")
+    index = card_index.CardIndex.load(hashed_index)
+    searched: list[str] = []
+    inner = index.search
+
+    def recording(query: str, k: int = card_index.DEFAULT_K, **options: Any) -> Any:
+        searched.append(query)
+        return inner(query, k, **options)
+
+    index.search = recording  # type: ignore[method-assign]
+    tool = card_index.make_lookup_cards_tool(
+        hashed_index, tracer=tracer, metrics=metrics, index=index
+    )
+    tool.invoke({"query": "bench damage", "k": 2})
+    assert searched == ["bench damage"]
 
 
 def test_the_tool_returns_readable_card_text_and_counts_its_call(
