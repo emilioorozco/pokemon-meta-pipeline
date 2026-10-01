@@ -1113,9 +1113,10 @@ naming the project.
 
 `python -m pipeline.card_index build` writes `data/catalog/card_index/`: a
 `cards.parquet` of distinct cards with their printings, a `vectors.parquet` of
-passages with their vectors, and a `meta.json` naming the embedder and the
-index format version that built it, so an index from an older layout is
-rebuilt rather than misread.
+passages with their vectors, and a `meta.json` naming the model, its pooling
+and the index format version that built it, so an index from an older layout is
+rebuilt rather than misread and an index paired with the wrong query embedder
+is refused rather than searched.
 
 A card is indexed as several passages rather than one document: an identity
 line (name, stage, types, hit points) and one passage per ability, attack and
@@ -1141,15 +1142,52 @@ about bench damage, which is what a two-word query deserves and why the agent
 is told to name the card or archetype it is asking about. Model load is about
 seven seconds once per process, and a search is under twenty milliseconds.
 
-The vectors come from `sentence-transformers` with `BAAI/bge-small-en-v1.5`,
-384 dimensions, running locally on a CPU. Local rather than an embedding API
-because card text is short, domain-specific and never changes, so the index is
-built once and read many times and an API would add a key, a bill and a network
-hop to something that is already fast. `all-MiniLM-L6-v2` is the alternative
-and is selected with `--embedder`. A query is embedded with bge's instruction
-prefix and a card is not, which is how the model was trained and is worth real
-accuracy: without it, "put damage counters on the bench" does not rank the card
-that does exactly that first, and with it, it does.
+The vectors come from `BAAI/bge-small-en-v1.5`, 384 dimensions, running locally
+on a CPU. Local rather than an embedding API because card text is short,
+domain-specific and never changes, so the index is built once and read many
+times and an API would add a key, a bill and a network hop to something that is
+already fast. `all-MiniLM-L6-v2` is the alternative and is selected with
+`--embedder`. A query is embedded with bge's instruction prefix and a card is
+not, which is how the model was trained and is worth real accuracy: without it,
+"put damage counters on the bench" does not rank the card that does exactly
+that first, and with it, it does.
+
+**Two embedders, one model.** `pipeline.query_embedder` holds both and
+`docs/agent-service.md` has the numbers. Building an index uses
+`SentenceTransformerEmbedder`: torch, transformers, the reference
+implementation, and the definition of what the vectors mean. Answering a
+question uses `OnnxEmbedder`: the same network exported to one ONNX graph, run
+by ONNX Runtime, tokenized by the `tokenizers` library out of the model's own
+`tokenizer.json`, with CLS pooling and L2 normalization applied in this
+repository because they are not in the graph.
+
+The reason is a cold start. On the deployed function the Python import of torch
+and transformers was 105 s of every cold `GET /warm`, which is thousands of
+small files paged in over image layers Lambda fetches on first touch; the
+weights themselves loaded in under three seconds afterwards. So the serving
+image has neither framework in it, the `serve` extra is the list that says so,
+and `tests/test_serve_imports.py` fails if one comes back. The build side keeps
+them, because the nightly runs on a runner with no cold start to pay and
+nothing is served from it.
+
+The two agree: `tests/test_query_embedder.py -m ml` embeds five fixture
+passages and five questions with both and the smallest cosine between a pair is
+0.9999999, with identical top-5 retrieval order over the fixture index. The
+things that could make them disagree are all outside the graph, which is why
+`meta.json` records the model *and* the pooling and `CardIndex.load` refuses a
+pair that does not match rather than searching one space with the other's
+vectors.
+
+The ONNX files are three: `model.onnx`, `tokenizer.json` and an
+`embedder.json` naming the model, its pooling and its width.
+`scripts/export_query_embedder.py` writes them, by downloading the
+`onnx/model.onnx` that `BAAI/bge-small-en-v1.5` publishes in its own repository
+(133,093,490 bytes, one file, no external data) rather than converting
+anything; `--export` converts with `optimum`, for a model that ships no graph.
+`Dockerfile.agent` runs the script in a build stage and copies the directory
+into an image that has no Hugging Face client in it at all. Locally,
+`PRA_QUERY_EMBEDDER_DIR` or the default `.models/query-embedder` is where
+`pipeline.config` looks.
 
 Storage is a Parquet of vectors and a numpy dot product, not DuckDB's `vss`
 extension. A few thousand passages at 384 float32 is a few megabytes and one
@@ -1173,22 +1211,28 @@ function, none of which has a GPU. `docs/agent-service.md` has what it was
 costing the deployed function. macOS and Windows keep the PyPI wheel, which is
 already CPU-only there, so `uv sync` on a development machine installs exactly
 what it did before; `uv.lock` carries both and the only visible difference is
-that a Linux install reports its version as `2.14.1+cpu`. The one place this
-has to be spelled out again is `Dockerfile.agent`, which installs from an
-exported requirements file rather than from the lock and so needs
-`--emit-index-url` and `--index-strategy unsafe-best-match` to find that
-version; the comment there says why.
+that a Linux install reports its version as `2.14.1+cpu`. This now applies to
+the `agent` extra alone, which is the build side and the laptop, and no longer
+to anything deployed: the serving image installs `serve`, which resolves no
+torch at all, so its export needs neither `--emit-index-url` nor
+`--index-strategy unsafe-best-match`.
 
-`HashingEmbedder` is the third implementation and needs no download at all: it
-hashes word tokens, with a five-character stem, into 256 buckets. It is not a
-semantic model and does not pretend to be one. It exists so that the build, the
-Parquet round trip, the search, the tool and its instrumentation all run in the
-fast test suite with nothing fetched from anywhere.
+`HashingEmbedder` is the third implementation, and it is the one that stays in
+`pipeline.card_index` because it is made of that module's tokenizer. It needs
+no download at all: it hashes word tokens, with a five-character stem, into 256
+buckets. It is not a semantic model and does not pretend to be one. It exists
+so that the build, the Parquet round trip, the search, the tool and its
+instrumentation all run in the fast test suite with nothing fetched from
+anywhere.
 
 ### How to run it
 
+The export is once per machine, and it is what `query`, `pipeline.agent` and
+`POST /ask` read: searching needs the ONNX files, building does not.
+
 ```bash
 uv run python scripts/fetch_card_text.py            # corpus from TCGdex
+uv run python scripts/export_query_embedder.py      # the ONNX graph and tokenizer
 uv run python -m pipeline.card_index build          # embed it, the Standard format
 uv run python -m pipeline.card_index query "put damage counters on the bench" -k 5
 op run --env-file=.env.op -- uv run python -m pipeline.agent \
