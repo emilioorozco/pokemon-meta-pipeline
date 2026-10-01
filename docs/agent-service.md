@@ -104,6 +104,71 @@ image's init phase about ten seconds and then re-runs the work inside the
 invocation; this way the whole 60 s timeout is available for it, and a failure
 is reported against a request instead of against an init.
 
+## What `POST /ask` answers with
+
+The body is the answer and the evidence for it, because the application shows
+a member what was looked up rather than asking them to take a paragraph on
+trust. Four fields were added for that panel and none of the old ones changed.
+
+| field | what it carries |
+|---|---|
+| `answer` | the prose, as before |
+| `tool_calls` | the tally, as before: tool, a one-line `input_summary`, a row count. The evaluation scripts read this and it is not going to change shape |
+| `model`, `usage` | the provider's model and token counts, as before |
+| `evidence` | `queries` and `cards`, below |
+| `gate_summary` | the worst thing that happened to a query in this run |
+| `latency_ms` | wall time of the whole call measured inside the service, so a question that had to build the agent reports what the caller waited for |
+| `run_id` | which run's data answered |
+
+`evidence.queries` is one object per statement, in the order the model wrote
+them:
+
+| field | what it carries |
+|---|---|
+| `sql` | the statement in full, not the shortened `input_summary` |
+| `row_count` | how many rows it returned; 0 for a refusal |
+| `rows` | the **first 10** rows as JSON values, every string cut to **500** characters |
+| `gate` | `off`, `jev:allowed`, `jev:allowed_low`, `jev:refused` or `jev:error` |
+| `refused_reason` | why there are no rows, or null |
+
+A refused query is still in the list, with no rows and its reason, because
+"the agent tried to read the member roster and was not allowed to" is
+something a reader should see rather than an absence. The three ways a query
+produces nothing all fill `refused_reason`: the validator refused it, the gate
+refused it, or DuckDB would not run it. Only the first two are refusals as far
+as `gate_summary` is concerned.
+
+`evidence.cards` is one object per card the card tool matched, deduplicated by
+name, set and number in first-seen order and capped at **10**: `name`,
+`set_code`, `number` and `text`, where the text is the card's printed text
+without the name and set over it, cut to 500 characters.
+
+`gate_summary` is one word over the whole run: `refused` if any query was
+refused, `allowed_low` if the gate let one through under its threshold or
+errored and let it through, `allowed` if they ran under the gate, and `off` if
+there were no queries or the gate is not on.
+
+`run_id` is read from the warehouse: `mart_pipeline_health` carries the gold
+stage's last run, which is the run that built these marts, and every stage of
+a nightly shares one id, so it is the same id the publish stage wrote on the
+rows the application already shows. That mart is a view over the run-metrics
+Parquet in the lake, so a container that has the warehouse file and not the
+lake cannot read it; the fallback is that warehouse's last-modified time as an
+ISO string under the same key, which still answers "which night is this". Null
+means there is no warehouse to ask.
+
+**No handle reaches any of this.** The rows are whatever the seven allowlisted
+marts hold, and none of their columns is a handle or a user id: the one
+person-shaped column the agent can reach at all is the `player_key` of
+`mart_player_summary`, which is the same irreversible token the pipeline
+uses (docs/data-handling.md), and `dim_player`, silver and staging are off the
+allowlist entirely. The bounds are the other half of this: 10 rows, 10 cards
+and 500 characters a string keep an answer a response rather than an export.
+
+`python -m pipeline.agent --evidence` prints the same object, so a question
+asked on a terminal and the same question asked over HTTP can be compared
+without allowing for two renderings; `--json` always carries it.
+
 ## What is a failure and what is a state
 
 A lake that cannot be reached while the app is being built raises out of the

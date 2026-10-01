@@ -1242,12 +1242,16 @@ curl -s -X POST localhost:8000/ask -H 'content-type: application/json' \
   -d '{"question": "which archetype has the best record this month"}'
 ```
 
-`POST /ask` returns `{answer, tool_calls, model, usage}`, where `tool_calls` is
-every tool the run made with the query it was given and the number of rows that
-came back, so an answer can be checked against what it actually read. The agent
-is built on the first question rather than at startup: a service with no
-provider key serves `/predict` and answers `/ask` with a 503 that says what is
-missing.
+`POST /ask` returns `{answer, tool_calls, model, usage, evidence, gate_summary,
+latency_ms, run_id}`. `tool_calls` is every tool the run made with the query it
+was given and the number of rows that came back; `evidence` is the same run
+written out to be read, every statement in full with its first ten rows, the
+cards it matched, and the gate's verdict on each query, which is what the
+application's "what I looked up" panel is built from. `python -m pipeline.agent
+--evidence` prints the same object. The whole contract is in
+docs/agent-service.md. The agent is built on the first question rather than at
+startup: a service with no provider key serves `/predict` and answers `/ask`
+with a 503 that says what is missing.
 
 `build_card_index` is a task in the DAG and a stage in `python -m
 pipeline.run_all`. It is skipped, with the reason logged and in the summary
