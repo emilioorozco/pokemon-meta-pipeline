@@ -156,16 +156,27 @@ both.
 
 ## The refresh rule
 
+The nightly replaces two things a running container is holding.
 `pipeline.storage.local_file` downloads the warehouse once per process and
-keeps the copy, on the assumption that nothing rewrites the object underneath a
-running process. That holds for a command that ends. It does not hold for a
-Lambda execution environment, which can live for hours and can therefore still
-be answering from yesterday's warehouse after the nightly has replaced it.
+keeps the copy; the agent reads the card index out of the lake into memory
+once, when it is built. Both are kept on the assumption that nothing rewrites
+them underneath a running process. That holds for a command that ends. It does
+not hold for a Lambda execution environment, which can live for hours and can
+therefore still be answering from yesterday's warehouse, and out of yesterday's
+card index, after the nightly has replaced both.
 
-So: the copy is kept for the life of the container, and at most once every ten
-minutes the object's ETag is checked with one `HeadObject`. When it has
-changed, the local file is dropped and unlinked and the agent over it is
-discarded, and the next question rebuilds both from the new object.
+So: one `ObjectWatch` per object, and at most once every ten minutes each one's
+ETag is checked with one `HeadObject`. For the warehouse that is the file
+itself; for the index it is the `meta.json` the nightly rewrites with the rest
+of the directory. When either has changed the agent is discarded, and for the
+warehouse the local file is dropped and unlinked as well, so the next question
+rebuilds over what is in the lake now.
+
+The index got its watch after the warehouse did, and the reason was a
+deployment that spent an afternoon answering card questions with an apology:
+the container came up while the lake still held an index of the previous
+format, the agent was built without `lookup_cards`, and nothing made it look
+again after the nightly rebuilt the index twenty minutes later.
 
 The trade-off is staleness against cost, and ten minutes is where it was put:
 
@@ -178,10 +189,40 @@ The trade-off is staleness against cost, and ten minutes is where it was put:
   summary that is rebuilt once a day, that is invisible.
 
 A `HeadObject` that fails is logged as a warning and treated as no change: a
-transient S3 error should not throw away a working warehouse, and the next
-check is ten minutes away. A question that is already in flight keeps reading
-the file it opened, because an unlinked file on Linux stays readable until the
-last descriptor closes.
+transient S3 error should not throw away a working warehouse or a working
+agent, and the next check is ten minutes away. A question that is already in
+flight keeps reading the file it opened, because an unlinked file on Linux
+stays readable until the last descriptor closes.
+
+## A missing card tool is a state, not a finished build
+
+An index that is absent, unreadable or of a format this code does not read is
+a logged skip in `pipeline.agent.marts_tools`: the SQL half of the agent works
+without it. What was missing was anything saying so afterwards. The holder
+cached the half-agent as a success, `/warm` reported `agent_built: true` with
+`embedder_loaded: false` and no reason, and "what does this attack do" came
+back as "I do not have access to card text" for the life of the container.
+
+Now the reason travels with the built agent and two fields carry it:
+
+| field | on | meaning |
+|---|---|---|
+| `card_tool` | `/health`, `/warm` | whether the agent in hand answers card questions. False before anything has built one, and false when the one that was built came up without `lookup_cards` |
+| `card_tool_reason` | `/health`, `/warm` | why there is none, naming what to rebuild; null when there is one |
+
+`agent_ready` still means exactly what it meant, a provider key and a gate
+setting the gate accepts, and it stays true while `card_tool` is false. The
+two are separate on purpose: "`/ask` would refuse" and "`/ask` would answer,
+without card text" are different afternoons, and the second one looked like
+neither until it had its own field.
+
+`/warm` is also the retry. A ping that finds the agent incomplete throws it
+away and builds again, so an index rebuilt at any point in the night is picked
+up within one ping of landing, and `/ask` is left alone, because a question
+that rebuilt the graph each time the index was unreadable would pay the
+LangChain construction per question to keep failing the same way.
+`embedder_loaded` stays false the whole time, and `card_tool_reason` is what
+says why.
 
 ## The image
 

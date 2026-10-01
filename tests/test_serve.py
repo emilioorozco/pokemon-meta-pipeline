@@ -677,6 +677,105 @@ def test_warm_never_raises(registry: Registry, caplog: pytest.LogCaptureFixture)
     assert "warming the embedder failed" in caplog.text
 
 
+# ------------------------------------------------------------- the card tool --
+#
+# A build that came up without `lookup_cards` answers SQL questions and is not
+# a finished build. A deployed container kept one for an afternoon, answering
+# card questions with an apology long after the nightly had rebuilt the index
+# it wanted, because nothing reported the state and nothing retried the build.
+
+
+class CardAgent(StubAgent):
+    """A stub shaped like `pipeline.agent.Agent`: it reports on its card tool.
+
+    `warm` answers the way the real one does, False when there is no card
+    tool, because without one there is no embedding model to make resident.
+    """
+
+    def __init__(self, payload: dict[str, Any], *, card_tool_reason: str | None = None) -> None:
+        super().__init__(payload)
+        self.card_tool_reason = card_tool_reason
+        self.warmed = 0
+
+    def warm(self) -> bool:
+        self.warmed += 1
+        return self.card_tool_reason is None
+
+
+# The shape of what `pipeline.agent.marts_tools` hands over when the lake holds
+# an index this code does not read.
+MISMATCHED_INDEX: Final = (
+    "the card index could not be read: ValueError: the card index is format 2, this reads 3"
+)
+
+
+def test_the_card_tool_is_unknown_until_something_builds_the_agent(registry: Registry) -> None:
+    """`/health` builds nothing, so cold it says so rather than guessing."""
+    with TestClient(serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))) as started:
+        cold = started.get("/health").json()
+        assert (cold["card_tool"], cold["card_tool_reason"]) == (False, serve.NO_AGENT_YET)
+        # An injected agent says nothing about a card tool and is taken to be
+        # whole: it has no card half, and reporting a missing tool on behalf
+        # of something that never had one would be reporting a problem that
+        # does not exist.
+        started.get("/warm")
+        warmed = started.get("/health").json()
+    assert (warmed["card_tool"], warmed["card_tool_reason"]) == (True, None)
+
+
+def test_an_agent_built_without_the_card_tool_is_reported_and_built_again(
+    registry: Registry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The incident: half an agent is a state to report and a build to retry."""
+    built: list[CardAgent] = []
+    reason: str | None = MISMATCHED_INDEX
+
+    def factory() -> serve.AskAgent:
+        agent = CardAgent(ANSWER, card_tool_reason=reason)
+        built.append(agent)
+        return agent
+
+    with (
+        TestClient(serve.create_app(registry, agent_factory=factory)) as started,
+        caplog.at_level(logging.WARNING),
+    ):
+        half = started.get("/warm").json()
+        assert (half["card_tool"], half["card_tool_reason"]) == (False, MISMATCHED_INDEX)
+        assert (half["agent_built"], half["embedder_loaded"]) == (True, False)
+        # `agent_ready` is the provider key and the gate, and both are fine.
+        # The two fields are separate so an operator can tell them apart.
+        assert (half["agent_ready"], half["agent_reason"]) == (True, None)
+        assert started.get("/health").json()["card_tool_reason"] == MISMATCHED_INDEX
+        # And the SQL half answers the whole time it is in this state.
+        assert started.post("/ask", json={"question": "how does Alpha do"}).status_code == 200
+
+        # The nightly rebuilds the index; the next ping throws the half-agent
+        # away and reads it.
+        reason = None
+        whole = started.get("/warm").json()
+        assert (whole["card_tool"], whole["card_tool_reason"]) == (True, None)
+        assert whole["embedder_loaded"] is True
+        assert started.get("/health").json()["card_tool"] is True
+
+    assert len(built) == 2, "the agent with no card tool was kept instead of built again"
+    assert "without its card lookup tool" in caplog.text
+
+
+def test_a_whole_agent_is_not_built_twice_by_a_ping(registry: Registry) -> None:
+    """Only an incomplete build is retried; a ping on a good one stays a ping."""
+    builds = 0
+
+    def factory() -> serve.AskAgent:
+        nonlocal builds
+        builds += 1
+        return CardAgent(ANSWER)
+
+    with TestClient(serve.create_app(registry, agent_factory=factory)) as started:
+        for _ in range(3):
+            assert started.get("/warm").json()["card_tool"] is True
+    assert builds == 1
+
+
 def test_the_judge_key_names_the_same_variable_the_gate_reads() -> None:
     """Two modules spell these out as strings; a rename has to reach both."""
     from pipeline import lambda_serve

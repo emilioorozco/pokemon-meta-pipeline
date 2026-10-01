@@ -121,6 +121,10 @@ PROVIDER_KEY_VAR: Final = "ANTHROPIC_API_KEY"
 JUDGE_KEY_VAR: Final = "JEV_API_KEY"
 AGENT_KEY_VARS: Final[tuple[str, ...]] = (PROVIDER_KEY_VAR, JUDGE_KEY_VAR)
 NO_PROVIDER_KEY: Final = f"the agent has no provider key configured; ${PROVIDER_KEY_VAR} is not set"
+# What `card_tool_reason` says before anything has built an agent to ask. Not
+# a fault: `/health` builds nothing on purpose, so until a question or a ping
+# has been through, whether there is a card tool is unknown rather than false.
+NO_AGENT_YET: Final = "the agent has not been built yet; a question or `GET /warm` builds it"
 
 
 class Predictor(Protocol):
@@ -241,6 +245,18 @@ class AskAgent(Protocol):
         """Answer one question."""
 
 
+class CardAwareAgent(Protocol):
+    """An agent that says whether it was built with its card lookup tool.
+
+    Optional in the same way `WarmableAgent` is, and read off a built agent
+    with `getattr`: the agents the tests and the demonstrations inject have no
+    card half at all, and reporting a missing tool on behalf of something that
+    never had one would be reporting a problem that does not exist.
+    """
+
+    card_tool_reason: str | None
+
+
 class WarmableAgent(Protocol):
     """An agent that can make its expensive parts resident without being asked anything.
 
@@ -294,11 +310,17 @@ class HealthResponse(BaseModel):
     """Liveness, and one field per dependency that is allowed to be missing.
 
     `status` says the process is answering, which is the only thing a 200 from
-    this route has ever meant. The other four say which halves of it work:
+    this route has ever meant. The rest say which halves of it work:
     `/predict` needs a model, `/ask` needs a provider key and a gate setting
-    the gate accepts, and each can be absent on a service that is otherwise
-    fine. They are fields rather than status codes so that a function that is
-    up with a dependency that is not reads as exactly that.
+    the gate accepts, and the card half of `/ask` needs a readable index of
+    the right format. Each can be absent on a service that is otherwise fine.
+    They are fields rather than status codes so that a function that is up
+    with a dependency that is not reads as exactly that.
+
+    `agent_ready` and `card_tool` are deliberately two fields. The first is
+    "`/ask` would refuse", the second is "`/ask` would answer, without card
+    text", and a deployment has sat in the second state for hours looking
+    like the first was fine, which it was.
     """
 
     model_config = ConfigDict(protected_namespaces=())
@@ -323,6 +345,15 @@ class HealthResponse(BaseModel):
         default=None,
         description="Why the agent is not ready, naming the variable to fix; null when it is",
     )
+    card_tool: bool = Field(
+        default=True,
+        description="Whether the agent in hand answers card questions. False when no agent "
+        "has been built yet, and when the one that was came up without `lookup_cards`",
+    )
+    card_tool_reason: str | None = Field(
+        default=None,
+        description="Why there is no card tool, naming what to rebuild; null when there is",
+    )
 
 
 class WarmResponse(BaseModel):
@@ -346,9 +377,19 @@ class WarmResponse(BaseModel):
     agent_built: bool = Field(
         description="Whether the agent is built and resident in this process now"
     )
+    card_tool: bool = Field(
+        default=True,
+        description="Whether the agent that is built answers card questions. A ping that "
+        "finds this false builds the agent again, in case the index has been rebuilt since",
+    )
+    card_tool_reason: str | None = Field(
+        default=None,
+        description="Why there is no card tool, naming what to rebuild; null when there is",
+    )
     embedder_loaded: bool = Field(
-        description="Whether one embedding ran through the card tool's model. False when "
-        "there is no card index, which is an agent with only its SQL half"
+        description="Whether one embedding ran through the card tool's model. False whenever "
+        "`card_tool` is false, which is an agent with only its SQL half, and "
+        "`card_tool_reason` says which index is missing or of the wrong format"
     )
     seconds: dict[str, float] = Field(
         default_factory=dict,
@@ -507,6 +548,20 @@ def agent_readiness() -> AgentReadiness:
     return AgentReadiness(True)
 
 
+def card_tool_state(built: AskAgent) -> tuple[bool, str | None]:
+    """Whether a built agent got its card lookup tool, and the reason it did not.
+
+    Read with `getattr` for the reason `run_warmer` reads `warm` with one: an
+    injected agent is a script with no card half, and it owes this nothing. An
+    agent that does not report is therefore taken to be whole, so a test's
+    stub is not permanently half-built in `/health`.
+    """
+    if not hasattr(built, "card_tool_reason"):
+        return True, None
+    reason: str | None = getattr(built, "card_tool_reason", None)
+    return reason is None, reason
+
+
 def run_warmer(built: AskAgent) -> tuple[bool, float | None, str | None]:
     """Ask a built agent to warm itself: did it, how long, and what went wrong.
 
@@ -551,6 +606,16 @@ class AgentHolder:
     deployed container answered every `/ask` for the rest of its life in 17 ms
     with the same `GateConfigError`, which reads like a broken image and was a
     one-character environment variable.
+
+    A build that came up without the card tool is not a failure and is not a
+    finished build either, and this used to have no third answer for it. A
+    container built while the lake still held an index of the previous format
+    kept that half-agent and said "I do not have access to card text" long
+    after the nightly had rebuilt the index. So the reason is recorded, it is
+    reported on `/health` and `/warm`, and the build is thrown away and tried
+    again when a ping asks or when the host notices the index has changed.
+    The agent answers SQL questions the whole time, which is why it is kept
+    rather than refused.
     """
 
     def __init__(self, factory: AgentFactory, *, readiness: Readiness | None = None) -> None:
@@ -558,6 +623,10 @@ class AgentHolder:
         self.readiness = readiness
         self.current: AskAgent | None = None
         self.error: str | None = None
+        # Why the agent in hand has no card tool; None when it has one. Read
+        # off the built agent rather than guessed at, and meaningless while
+        # `current` is None, which `card_state` is what accounts for.
+        self.card_reason: str | None = None
 
     def state(self) -> AgentReadiness:
         """Whether `/ask` is expected to work, for `/health` to report without building.
@@ -582,6 +651,41 @@ class AgentHolder:
                 False, f"the last attempt to build the agent failed: {self.error}"
             )
         return AgentReadiness(True)
+
+    def card_state(self) -> tuple[bool, str | None]:
+        """Whether the agent in hand answers card questions, and why it does not.
+
+        Builds nothing. Before the first build there is no agent to ask, and
+        the answer is False with `NO_AGENT_YET`: `/health` is the one route a
+        cold container has to answer in milliseconds, and guessing at the
+        state of an index nobody has read would be worse than saying so.
+        """
+        if self.current is None:
+            return False, NO_AGENT_YET
+        return self.card_reason is None, self.card_reason
+
+    def incomplete(self) -> bool:
+        """An agent that answers SQL questions but was built without the card tool."""
+        return self.current is not None and self.card_reason is not None
+
+    def retry_incomplete(self) -> bool:
+        """Throw away a half-built agent so the next build reads the index again.
+
+        `GET /warm` is the caller, not `/ask`: a question that rebuilt the
+        graph every time the index was unreadable would pay the LangChain
+        construction per question to keep failing the same way. A ping has
+        nobody waiting on it, and it is the one that runs every few minutes,
+        so an index rebuilt at any point in the night is picked up within one
+        ping of landing.
+        """
+        if not self.incomplete():
+            return False
+        logger.info(
+            "dropping the agent that was built without its card tool, to read the index again",
+            extra={"reason": self.card_reason},
+        )
+        self.current = None
+        return True
 
     def required(self) -> AskAgent:
         """The agent, or a 503 naming what has to change for there to be one."""
@@ -615,6 +719,13 @@ class AgentHolder:
                 ),
             ) from failure
         self.error = None
+        _, self.card_reason = card_tool_state(self.current)
+        if self.card_reason is not None:
+            logger.warning(
+                "the agent was built without its card lookup tool; it answers SQL questions "
+                "and the next ping tries the index again",
+                extra={"reason": self.card_reason},
+            )
         return self.current
 
 
@@ -816,8 +927,9 @@ def create_app(
     )
     # Both holders on the application object, for a host that owns the process
     # and has to reach inside it. The only one is `pipeline.lambda_serve`, which
-    # drops the agent when the warehouse under it has been replaced by a
-    # nightly, because the agent holds an open connection to the old file.
+    # drops the agent when either of the two things it was built over has been
+    # replaced by a nightly: the warehouse, to which it holds an open
+    # connection, and the card index, which it loaded into memory.
     # Nothing on the command-line path reads either attribute, and nothing
     # below this line does.
     app.state.model = holder
@@ -914,6 +1026,7 @@ def create_app(
         """
         absent = missing_keys()
         state = agent.state()
+        card_ok, card_reason = agent.card_state()
         return HealthResponse(
             status="ok",
             model_loaded=holder.current is not None,
@@ -921,6 +1034,8 @@ def create_app(
             missing_keys=absent,
             agent_ready=state.ready,
             agent_reason=state.reason,
+            card_tool=card_ok,
+            card_tool_reason=card_reason,
         )
 
     @app.get("/warm", response_model=WarmResponse, summary="Pay a first question's costs early")
@@ -941,6 +1056,12 @@ def create_app(
         goes through the card tool's embedder; the language model is a network
         call per question and warming it would be spending money on a ping.
 
+        It is also the retry for a half-built agent. One that came up without
+        `lookup_cards` is reported as `card_tool: false` with the reason, and
+        thrown away here so that this build reads the index again: the nightly
+        rebuilds that index while nobody is asking anything, and a container
+        built before it landed used to keep the half-agent until it died.
+
         Nothing in here raises. Every step is reported, a step that failed is
         logged and leaves its reason in `agent_reason`, and the answer is 200
         either way: whatever is pinging this wants a container kept warm, and
@@ -949,6 +1070,14 @@ def create_app(
         """
         absent = missing_keys()
         state = agent.state()
+        # An agent that came up without its card tool is not a finished build,
+        # and a ping is the right moment to try again: the nightly replaces the
+        # index while nobody is asking anything, and a container built before
+        # it landed would otherwise answer card questions with an apology for
+        # the rest of its life. The SQL half is briefly given up to get the
+        # whole thing back; a build that fails leaves the reason in
+        # `agent_reason` and the next question builds again.
+        agent.retry_incomplete()
         built = agent.current is not None
         embedded = False
         spent: dict[str, float] = {}
@@ -971,6 +1100,7 @@ def create_app(
                     spent["embedder_loaded"] = elapsed
                 if failed is not None:
                     state = AgentReadiness(False, failed)
+        card_ok, card_reason = agent.card_state()
         return WarmResponse(
             status="ok",
             keys_loaded=not absent,
@@ -978,6 +1108,8 @@ def create_app(
             agent_ready=state.ready,
             agent_reason=state.reason,
             agent_built=built,
+            card_tool=card_ok,
+            card_tool_reason=card_reason,
             embedder_loaded=embedded,
             seconds=spent,
         )
