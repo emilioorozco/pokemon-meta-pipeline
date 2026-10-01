@@ -115,6 +115,10 @@ API_KEY_VAR: Final = "ANTHROPIC_API_KEY"
 
 SQL_TOOL: Final = "query_marts"
 CARD_TOOL: Final = "lookup_cards"
+# Why there is no card tool, when nothing asked for one. The other reason is
+# built from whatever reading the index raised, and both travel on the built
+# agent so that a host can tell a finished build from half of one.
+NO_CARD_INDEX: Final = "no card index is configured; this agent has only its SQL half"
 ANSWER_SPAN: Final = "agent.answer"
 TOOL_SPAN_PREFIX: Final = "agent.tool."
 
@@ -581,16 +585,25 @@ def summarize(text: str, width: int = 100) -> str:
 
 @dataclass(frozen=True)
 class ToolSet:
-    """The agent's tools, and the one thing about them that is worth warming.
+    """The agent's tools, the one worth warming, and why the card one is absent.
 
     `warm` is `None` whenever there is no card tool, which is the case with no
     index built and the case where the index could not be read. When there is
     one it embeds a short fixed string through that tool's own index, so a
     caller can pay for the embedding model before a question does.
+
+    `card_reason` is the same fact in words, and `None` when there is a card
+    tool. A skip is logged here, which is enough for a command that ends and
+    was not enough for a container that does not: a serving process that
+    cached an agent built without the card tool answered "I have no card text"
+    for hours after the index it wanted had been rebuilt. The reason travels
+    with the agent so that the host holding it can tell a finished build from
+    half of one and say so.
     """
 
     tools: list[BaseTool]
     warm: Callable[[], bool] | None = None
+    card_reason: str | None = None
 
 
 def marts_tools(
@@ -610,6 +623,9 @@ def marts_tools(
     agent works perfectly well without the card text, and that now covers a
     serving image whose query embedder was never baked in, which raises
     `QueryEmbedderError` out of the load and lands here as a `RuntimeError`.
+    The skip comes back as `ToolSet.card_reason` as well as a log line, so a
+    long-lived host can report it and build again rather than keep half an
+    agent for the rest of its life.
 
     The index is loaded here and handed to the tool rather than loaded inside
     it, so that this function can keep it and hand back a warmer over the same
@@ -620,7 +636,7 @@ def marts_tools(
         make_query_marts_tool(warehouse=warehouse, tracer=tracer, metrics=metrics, gate=gate),
     ]
     if card_index is None:
-        return ToolSet(tools)
+        return ToolSet(tools, card_reason=NO_CARD_INDEX)
     from pipeline import card_index as index_module
     from pipeline.query_embedder import QueryEmbedderError
 
@@ -632,11 +648,12 @@ def marts_tools(
             )
         )
     except (OSError, ValueError, QueryEmbedderError) as failure:
+        reason = f"the card index could not be read: {type(failure).__name__}: {failure}"
         logger.warning(
             "the card lookup tool is off",
-            extra={"index": str(card_index), "error": f"{type(failure).__name__}: {failure}"},
+            extra={"index": str(card_index), "error": reason},
         )
-        return ToolSet(tools)
+        return ToolSet(tools, card_reason=reason)
     return ToolSet(tools, warm=lambda: index_module.warm_index(index))
 
 
@@ -692,6 +709,7 @@ class Agent:
         tool_names: Sequence[str],
         tracer: trace.Tracer,
         warmer: Callable[[], bool] | None = None,
+        card_tool_reason: str | None = None,
     ) -> None:
         self.graph = graph
         self.model_name = model_name
@@ -701,6 +719,11 @@ class Agent:
         # a second provider would put them in two unrelated traces.
         self.tracer = tracer
         self.warmer = warmer
+        # None when this agent has the card tool, and otherwise the sentence
+        # saying what stopped it. `pipeline.serve` reads it off the built agent
+        # to decide whether the build is finished, so an attribute rather than
+        # only a log line: a host cannot act on something it has to grep for.
+        self.card_tool_reason = card_tool_reason
 
     def warm(self) -> bool:
         """Make the card tool's embedding model resident, asking the provider nothing.
@@ -842,6 +865,7 @@ def build_agent(
         model_name=getattr(chat, "model_name", None) or getattr(chat, "model", "") or "fake",
         tool_names=[tool.name for tool in tools],
         warmer=toolset.warm,
+        card_tool_reason=toolset.card_reason,
     )
 
 

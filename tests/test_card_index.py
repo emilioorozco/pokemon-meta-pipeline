@@ -18,6 +18,7 @@ once, answering from the marts and the card text in a single scripted run.
 """
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Final
 
@@ -166,6 +167,37 @@ def test_the_tool_uses_the_index_it_is_given(
     )
     tool.invoke({"query": "bench damage", "k": 2})
     assert searched == ["bench damage"]
+
+
+def test_the_tool_set_says_why_there_is_no_card_tool(
+    hashed_index: Path, metrics: ServiceMetrics, exporter: InMemorySpanExporter, tmp_path: Path
+) -> None:
+    """A skip is a sentence as well as a log line, because a host has to report it.
+
+    `pipeline.serve` reads the reason off the built agent to tell a finished
+    build from half of one. Without it, a container built while the lake held
+    an index of the previous format cached the half-agent and answered card
+    questions with an apology until it died.
+    """
+    tracer = build_tracer_provider(exporter=exporter).get_tracer("tests")
+
+    asked_for_none = agent.marts_tools(tracer=tracer, metrics=metrics, card_index=None)
+    assert [tool.name for tool in asked_for_none.tools] == [agent.SQL_TOOL]
+    assert asked_for_none.card_reason == agent.NO_CARD_INDEX
+    assert asked_for_none.warm is None
+
+    # An index of the previous format, which is what the lake held.
+    stale = tmp_path / "stale-index"
+    shutil.copytree(hashed_index, stale)
+    meta = json.loads((stale / card_index.META_FILE).read_text(encoding="utf-8"))
+    meta["format_version"] = card_index.INDEX_FORMAT_VERSION - 1
+    (stale / card_index.META_FILE).write_text(json.dumps(meta), encoding="utf-8")
+
+    refused = agent.marts_tools(tracer=tracer, metrics=metrics, card_index=stale)
+    assert [tool.name for tool in refused.tools] == [agent.SQL_TOOL]
+    assert refused.warm is None
+    assert refused.card_reason is not None
+    assert "rebuild it" in refused.card_reason
 
 
 def test_the_tool_returns_readable_card_text_and_counts_its_call(
