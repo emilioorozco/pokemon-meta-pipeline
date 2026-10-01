@@ -55,19 +55,33 @@ A head that fails is logged and treated as no change: a transient S3 error
 should not throw away a working warehouse, and the next check is ten minutes
 away.
 
-*Failing loudly.* A secret that cannot be read, or a lake that cannot be
-reached while the app is being built, raises out of the handler with one
-`exception` log line naming the stage. It is not caught and it is not retried
-in place: an invocation that fails is visible in the function's error metric
-and in the caller's response, and an invocation that hung would be visible only
-as a timeout a minute later.
+*Failing loudly, and the two things that are not failures.* A lake that cannot
+be reached while the app is being built raises out of the handler with one
+`exception` log line naming the stage: an invocation that fails is visible in
+the function's error metric and in the caller's response, and an invocation
+that hung would be visible only as a timeout a minute later. A secret that
+cannot be read is not in that class, and neither is a `PRA_SQL_GATE` value the
+gate does not accept. Both are one route's dependency rather than the
+function, so both are a warning and a field on `/health`, and `/ask` is what
+refuses. The first deployed container got both wrong in the other direction:
+an unfilled secret 502ed `/health`, and a bad gate value poisoned `/ask` for
+the life of the container.
 
-The app is built on the first invocation rather than at import. Lambda gives an
-image's init phase about ten seconds and then re-runs the work inside the
-invocation, and building this app can take longer than that on a cold container
-because it pulls the MLflow store out of the lake. Doing it in the handler
-means the whole 60 s function timeout is available for it and the failure, if
-there is one, is reported against a request rather than against an init.
+*The cold path.* The app is built on the first invocation rather than at
+import, because Lambda gives an image's init phase about ten seconds and then
+re-runs the work inside the invocation; in the handler the whole 60 s timeout
+is available and a failure is reported against a request. What the build does
+**not** do any more is load the model: `create_app(..., eager_model=False)`,
+because the load pulls the MLflow file store out of the lake object by object
+and on the deployed function that was 28.7 of the 29 seconds the first
+`/health` took. `/model`, `/predict` and `/reload` load it between them on
+first use; `/health` and `/ask` never do.
+
+*The warming there is.* A frozen execution environment runs no background
+thread between invocations, so the only way to pay for something once is to
+pay for it inside an invocation and keep it. That is what both holders on
+`app.state` are: the first `/ask` imports LangChain and torch and loads the
+card index, and every later one in that container reuses them.
 """
 
 import json
@@ -127,6 +141,21 @@ def load_keys() -> list[str]:
     No secret named is not an error: it is how the image runs locally and under
     the runtime interface emulator. The function's own environment always names
     one.
+
+    Nor is a secret this cannot use. A secret that is unreadable, that is not
+    JSON, or whose JSON holds nothing usable is "no keys yet": the warning
+    names the problem, the application starts, `/health` answers 200 with
+    `keys_loaded: false` and the variables that are missing, and `/ask`
+    answers 503. The application's stack has to create the secret before
+    anyone can put a key in it, so a placeholder is a state every new
+    deployment passes through, and the first deployed function 502ed every
+    route including `/health` until one was pasted in. That reads as a broken
+    image and it was an empty secret.
+
+    A read that produced nothing is not latched either, so the next invocation
+    tries again and a key filled in at lunchtime is live without a
+    redeployment. A read that produced something is latched, which is what
+    keeps a thousand questions one `GetSecretValue`.
     """
     global _keys_loaded
     if _keys_loaded:
@@ -139,10 +168,29 @@ def load_keys() -> list[str]:
             extra={"variable": KEYS_SECRET_VAR},
         )
         return []
-    values = read_secret(arn)
+    try:
+        values = read_secret(arn)
+    except Exception as failure:
+        # Broadly, because every way this can fail has the same answer: a
+        # function that cannot read its keys can still answer `/health` and
+        # `/predict`, and saying so is more use than a 502 from all of them.
+        logger.warning(
+            "the provider-key secret could not be read; starting without provider keys",
+            extra={
+                "variable": KEYS_SECRET_VAR,
+                "error": f"{type(failure).__name__}: {failure}",
+            },
+        )
+        return []
     filled = [name for name in SECRET_KEYS if values.get(name) and not os.environ.get(name)]
     for name in filled:
         os.environ[name] = values[name]
+    if not any(os.environ.get(name, "").strip() for name in SECRET_KEYS):
+        logger.warning(
+            "the provider-key secret holds no usable key; starting without provider keys",
+            extra={"variable": KEYS_SECRET_VAR, "offered": sorted(values)},
+        )
+        return []
     _keys_loaded = True
     # Names only, on both fields. A value from this secret is never written to
     # a log, a span, an error message or a response body.
@@ -304,9 +352,19 @@ def build_app() -> Any:
     `PRA_SERVE_STUB_MODEL` means the same thing in a function as it does on a
     laptop and a demonstration container needs no registry. Everything else the
     app needs it reads for itself out of `PIPELINE_DATA_DIR`.
+
+    `eager_model=False` is the one difference from the command line, and it is
+    the whole of this module's cold start. The command line loads the model
+    while the app is built so that an unreadable registry fails the process;
+    here the app is built inside the first invocation, and loading the model
+    means `pipeline.storage.tracking_store` pulling the MLflow file store down
+    out of the lake. On the deployed function that was 28.7 of the 29 seconds
+    the first `/health` took, and `/health` does not read the model. It is
+    loaded on the first `/model`, `/predict` or `/reload` instead, which on
+    this function is a route the application repository does not call at all.
     """
     loader = stub_loader() if stub_requested() else mlflow_loader()
-    return create_app(loader)
+    return create_app(loader, eager_model=False)
 
 
 def container() -> tuple[Any, WarehouseWatch]:
