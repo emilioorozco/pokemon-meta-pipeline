@@ -466,11 +466,28 @@ class IndexedCard:
         tail = f" and {hidden} more" if hidden else ""
         return f"{first.where}, also {shown}{tail}"
 
+    @property
+    def first_printing(self) -> Printing:
+        """The printing the card renders under, and the one the evidence cites."""
+        return self.printings[0] if self.printings else self.card.printing()
+
     def render(self) -> str:
         """The card as the tool prints it: a heading and its text, a few lines."""
-        card = self.card
         where = self.printings_line()
-        lines = [f"**{card.name}**" + (f" ({where})" if where.strip() else "")]
+        heading = f"**{self.card.name}**" + (f" ({where})" if where.strip() else "")
+        body = self.body()
+        return f"{heading}\n{body}" if body else heading
+
+    def body(self) -> str:
+        """The card's printed text, without the heading `render` puts over it.
+
+        Split out for the evidence on an answer, which carries the name, the
+        set and the number in fields of their own and would otherwise print
+        all three twice: once as data the application lays out and once inside
+        the text under it.
+        """
+        card = self.card
+        lines: list[str] = []
         traits = ", ".join(
             filter(
                 None,
@@ -1119,10 +1136,20 @@ def make_lookup_cards_tool(
     """
     from langchain_core.tools import StructuredTool
 
-    from pipeline.agent import ToolCall, record_call, summarize
+    from pipeline.agent import CardEvidence, ToolCall, record_call, record_cards, summarize
 
     if index is None:
         index = CardIndex.load(index_dir, embedder, lexical=lexical)
+
+    def cited(hit: Hit) -> CardEvidence:
+        """One hit as the card the answer's evidence names."""
+        printing = hit.card.first_printing
+        return CardEvidence(
+            name=hit.card.name,
+            set_code=printing.set_name,
+            number=printing.number,
+            text=hit.card.body(),
+        )
 
     def lookup_cards(query: str, k: int = DEFAULT_K) -> str:
         """Find printed cards whose text matches a description."""
@@ -1133,6 +1160,7 @@ def make_lookup_cards_tool(
             span.set_attribute("agent.rows", len(hits))
         metrics.count_tool_call(CARD_TOOL)
         record_call(ToolCall(tool=CARD_TOOL, input_summary=summarize(query), rows=len(hits)))
+        record_cards([cited(hit) for hit in hits])
         logger.info("tool call", extra={"tool": CARD_TOOL, "rows": len(hits)})
         return render_hits(hits)
 

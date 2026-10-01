@@ -13,6 +13,9 @@ DuckDB, with a scripted chat model in the one slot that would otherwise need an
 API key. Nothing here is mocked except the decision about which SQL to write.
 """
 
+import json
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -389,6 +392,219 @@ def test_a_refused_query_comes_back_to_the_model_rather_than_raising(
     assert counter_value(metrics, agent.SQL_TOOL) == 2.0
     refusal_turn = model.seen[1]
     assert any("refused" in str(message.content) for message in refusal_turn)
+
+
+@pytest.mark.dbt
+def test_a_run_collects_the_queries_and_the_rows_behind_its_answer(
+    gold_from_fixtures: Path, metrics: ServiceMetrics, exporter: InMemorySpanExporter
+) -> None:
+    """The evidence off a real run: the statement whole, and rows a reader can read.
+
+    One query that ran and one the allowlist refused, so both halves of the
+    panel are asserted against the real validator and a real warehouse rather
+    than against a hand-written dictionary.
+    """
+    model = scripted(
+        tool_call("query_marts", "call-1", sql="select * from dim_player"),
+        tool_call("query_marts", "call-2", sql=MATCHUP_SQL),
+        final("Here is the matchup instead."),
+    )
+    answer = build(model, gold_from_fixtures, metrics, exporter).ask("who is the best player")
+    refused, ran = answer.evidence.queries
+
+    assert refused.sql == "select * from dim_player"
+    assert refused.row_count == 0
+    assert refused.rows == []
+    assert refused.refused_reason is not None
+    assert "dim_player" in refused.refused_reason
+    # The whole statement, not the hundred characters `tool_calls` carries.
+    assert ran.sql == MATCHUP_SQL
+    assert len(MATCHUP_SQL) > len(answer.tool_calls[1].input_summary)
+    assert 0 < len(ran.rows) <= agent.MAX_EVIDENCE_ROWS
+    assert ran.row_count == answer.tool_calls[1].rows
+    assert set(ran.rows[0]) == {
+        "archetype_name",
+        "opponent_archetype_name",
+        "games",
+        "wins",
+        "win_rate",
+        "min_games_met",
+    }
+    # Values JSON can carry, which is what the response body needs of them.
+    json.dumps(answer.as_dict())
+    # The gate is off in this run, and a refusal is still the worst thing that
+    # happened to a query in it.
+    assert answer.gate_summary == "refused"
+
+
+@pytest.mark.dbt
+def test_a_date_column_comes_back_as_an_iso_string(
+    gold_from_fixtures: Path, metrics: ServiceMetrics, exporter: InMemorySpanExporter
+) -> None:
+    """DuckDB hands back a `date`; a response body cannot carry one."""
+    model = scripted(
+        tool_call(
+            "query_marts",
+            "call-1",
+            sql="select archetype_name, first_played, last_played from mart_matchups",
+        ),
+        final("done"),
+    )
+    answer = build(model, gold_from_fixtures, metrics, exporter).ask("when were these played")
+    row = answer.evidence.queries[0].rows[0]
+
+    assert isinstance(row["last_played"], str)
+    assert date.fromisoformat(row["last_played"])
+
+
+# -------------------------------------------------------------- evidence --
+#
+# What a reader is shown beside the answer. The values half is pure and is
+# tested as such; the collecting half is tested through the real loop, over the
+# real warehouse, in the `dbt` tests below.
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (date(2026, 9, 28), "2026-09-28"),
+        (datetime(2026, 9, 28, 14, 30, tzinfo=UTC), "2026-09-28T14:30:00+00:00"),
+        (Decimal("0.58"), 0.58),
+        (float("nan"), None),
+        (float("inf"), None),
+        (True, True),
+        (None, None),
+        (12, 12),
+        (["a", date(2026, 9, 28)], ["a", "2026-09-28"]),
+    ],
+)
+def test_a_warehouse_value_becomes_something_json_carries(value: Any, expected: Any) -> None:
+    """Dates and decimals have an obvious reading; NaN has none, so it is null."""
+    assert agent.json_safe(value) == expected
+
+
+def test_a_long_cell_is_cut_rather_than_carried() -> None:
+    """A response that holds a whole decklist in one cell is a page, not a response."""
+    cut = agent.json_safe("x" * 900)
+    assert isinstance(cut, str)
+    assert len(cut) == agent.MAX_EVIDENCE_CHARS
+    assert cut.endswith("...")
+
+
+def query(gate: str = "off", *, refused: bool = False) -> agent.QueryEvidence:
+    """One query's evidence, with only the fields `gate_summary` reads set."""
+    return agent.QueryEvidence(sql="select 1 from mart_matchups", gate=gate, refused=refused)
+
+
+@pytest.mark.parametrize(
+    ("queries", "expected"),
+    [
+        ([], "off"),
+        ([query()], "off"),
+        ([query("jev:allowed")], "allowed"),
+        ([query("jev:allowed_low")], "allowed_low"),
+        ([query("jev:error")], "allowed_low"),
+        ([query("jev:allowed"), query("jev:allowed_low")], "allowed_low"),
+        ([query("jev:refused", refused=True)], "refused"),
+        ([query("off", refused=True)], "refused"),
+        ([query("jev:allowed"), query("jev:refused", refused=True)], "refused"),
+    ],
+)
+def test_the_gate_summary_is_the_worst_thing_that_happened(
+    queries: list[agent.QueryEvidence], expected: str
+) -> None:
+    """One word over the whole run, because the banner over the panel is one word."""
+    assert agent.summarize_gate(queries) == expected
+    assert agent.Evidence(queries=queries).gate_summary == expected
+
+
+def test_a_card_seen_twice_is_cited_once() -> None:
+    """Two lookups routinely match the same card; two rows would read as two sources."""
+    iono = agent.CardEvidence(name="Iono", set_code="PAL", number="185", text="Shuffle.")
+    reprint = agent.CardEvidence(name="Iono", set_code="PR-SV", number="123", text="Shuffle.")
+    assert agent.dedupe_cards([iono, reprint, iono]) == [iono, reprint]
+
+
+def test_the_cards_are_capped_and_their_text_is_cut() -> None:
+    many = [
+        agent.CardEvidence(name=f"Card {index}", set_code="SV", number=str(index), text="x" * 900)
+        for index in range(20)
+    ]
+    kept = agent.dedupe_cards(many)
+    assert len(kept) == agent.MAX_EVIDENCE_CARDS
+    assert len(kept[0].text) == agent.MAX_EVIDENCE_CHARS
+
+
+def test_an_answer_carries_its_evidence_and_the_tally_it_always_carried() -> None:
+    """Both, because the evaluation reads one of them and a reader reads the other."""
+    answer = agent.Answer(
+        answer="yes",
+        tool_calls=[agent.ToolCall(tool="query_marts", input_summary="select ...", rows=1)],
+        evidence=agent.Evidence(queries=[query("jev:allowed_low")]),
+    )
+    body = answer.as_dict()
+
+    assert body["tool_calls"] == [
+        {
+            "tool": "query_marts",
+            "input_summary": "select ...",
+            "rows": 1,
+            "gate": "off",
+            "gate_cost_usd": 0.0,
+        }
+    ]
+    assert body["gate_summary"] == "allowed_low"
+    assert body["evidence"]["queries"][0]["sql"] == "select 1 from mart_matchups"
+    # `refused` decides the summary and is not part of the body.
+    assert set(body["evidence"]["queries"][0]) == {
+        "sql",
+        "row_count",
+        "rows",
+        "gate",
+        "refused_reason",
+    }
+
+
+def test_the_command_line_prints_the_evidence_the_route_returns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The two surfaces agree, because they print the same object.
+
+    `--evidence` on the readable output and always inside `--json`: a person
+    asking a question on a terminal usually wants the paragraph, and the one
+    who is checking the answer asks for the workings.
+    """
+    answer = agent.Answer(
+        answer="Alpha wins 58% of 12 games.",
+        model="scripted-fake",
+        evidence=agent.Evidence(
+            queries=[
+                agent.QueryEvidence(
+                    sql="select games from mart_matchups",
+                    row_count=1,
+                    rows=[{"games": 12, "last_played": "2026-09-28"}],
+                    gate="jev:allowed",
+                )
+            ],
+            cards=[agent.CardEvidence(name="Iono", set_code="PAL", number="185", text="Shuffle.")],
+        ),
+    )
+
+    class Fake:
+        model_name = "scripted-fake"
+
+        def ask(self, question: str) -> agent.Answer:
+            return answer
+
+    monkeypatch.setattr(agent, "chat_model", lambda *args, **kwargs: None)
+    monkeypatch.setattr(agent, "build_agent", lambda **kwargs: Fake())
+
+    assert agent.main(["a question", "--evidence"]) == 0
+    printed = capsys.readouterr().out
+    assert agent.render_evidence(answer) in printed
+
+    assert agent.main(["a question", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == answer.as_dict()
 
 
 def test_the_provider_key_names_the_same_variable_the_serving_app_checks() -> None:
