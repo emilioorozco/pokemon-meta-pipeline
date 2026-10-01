@@ -7,14 +7,24 @@
 printing, from a public card API. This module turns that into an index and
 answers `lookup_cards(query, k)`, the agent's second tool.
 
-**Local embeddings, no API.** The vectors come from `sentence-transformers`
-with `BAAI/bge-small-en-v1.5`, a 384-dimensional model that runs on a laptop
-CPU in a few seconds for the whole corpus. Card text is short, domain-specific
-and never changes, so the index is built once and read many times, and an
-embedding API would add a key, a bill and a network hop to something that is
-already fast. `all-MiniLM-L6-v2` is the fallback if bge is not available and is
-selected with `--embedder`; both are 384 dimensions and either can be swapped
-without touching the storage format.
+**Local embeddings, no API.** The vectors come from `BAAI/bge-small-en-v1.5`,
+a 384-dimensional model that runs on a laptop CPU in a few seconds for the
+whole corpus. Card text is short, domain-specific and never changes, so the
+index is built once and read many times, and an embedding API would add a key,
+a bill and a network hop to something that is already fast.
+`all-MiniLM-L6-v2` is the fallback if bge is not available and is selected
+with `--embedder`; both are 384 dimensions and either can be swapped without
+touching the storage format.
+
+**One model, two runtimes.** Building embeds with `sentence-transformers`,
+which is torch and transformers and the reference implementation of the
+network. Searching embeds with ONNX Runtime over an export of the same graph,
+because the build runs on a nightly runner and a search runs inside a Lambda
+function where importing those two frameworks was 105 s of every cold start.
+`pipeline.query_embedder` holds both and says why; `make_embedder` is the
+build side here and `make_query_embedder` the search side. `meta.json` records
+the model and the pooling, and loading an index refuses a query embedder that
+does not match either.
 
 **Parquet plus a numpy dot product, not DuckDB's `vss`.** The choice was
 between an approximate-nearest-neighbour index in the warehouse and a brute
@@ -74,21 +84,23 @@ and holds the two control queries ("search your deck for a Supporter card",
 "draw cards until you have 7 in hand") at rank 1. `--no-lexical` turns fusion
 off and searches the embeddings alone, which is how that table was measured.
 
-**The embedder is an interface with two implementations.** `HashingEmbedder` is
-deterministic, dependency-free and needs no download: it hashes word tokens
-into a fixed number of buckets. It is not a semantic model and it is not
-pretending to be one; it exists so the index format, the build, the search and
-the tool all run in the fast test suite, and so `--embedder hashing` gives a
-usable keyword-ish search on a machine that cannot download a model. The
-marker on the real-model tests is `ml` for the same reason the trainer's is.
+**The embedder is an interface, and the third implementation is here.**
+`HashingEmbedder` is deterministic, dependency-free and needs no download: it
+hashes word tokens into a fixed number of buckets. It is not a semantic model
+and it is not pretending to be one; it exists so the index format, the build,
+the search and the tool all run in the fast test suite, and so
+`--embedder hashing` gives a usable keyword-ish search on a machine that cannot
+download a model. The marker on the real-model tests is `ml` for the same
+reason the trainer's is.
 
 The index directory holds three files: `cards.parquet`, one row per distinct
 card with its record and its printings; `vectors.parquet`, one row per passage
 with its card, its text and its vector; and `meta.json`, which records the
-layout, the counts and which embedder built it. A query embedded by a different
-model than the index would return confident nonsense, so the loader checks the
-name and refuses instead, and an index written by an older layout is refused
-with the command to rebuild it rather than read as though it were this one.
+layout, the counts, and which model with which pooling built it. A query
+embedded by a different model than the index would return confident nonsense,
+so the loader checks both and refuses instead, and an index written by an older
+layout is refused with the command to rebuild it rather than read as though it
+were this one.
 """
 
 import argparse
@@ -101,7 +113,7 @@ import sys
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Final, Protocol
+from typing import Any, Final
 
 import numpy as np
 import pyarrow as pa
@@ -109,6 +121,15 @@ from opentelemetry import trace
 
 from pipeline.config import CARD_INDEX_DIR, CARD_TEXT_PATH
 from pipeline.observability import configure_logging, emit_summary, stage_run
+from pipeline.query_embedder import (
+    DEFAULT_MODEL,
+    FALLBACK_MODEL,
+    POOLING_NONE,
+    Embedder,
+    OnnxEmbedder,
+    SentenceTransformerEmbedder,
+    normalize_rows,
+)
 from pipeline.storage import AnyLocation, Location, location, table_bytes
 from pipeline.telemetry import ServiceMetrics
 
@@ -122,16 +143,13 @@ META_FILE: Final = "meta.json"
 # Bumped when the files or their columns change. An index from before the
 # passage layout has the right file names and the wrong contents, and reading
 # it as though it were this one would answer with nonsense instead of failing.
-INDEX_FORMAT_VERSION: Final = 2
+#
+# 3 rather than 2 because `meta.json` now records the pooling as well as the
+# model: the serving side runs a different implementation of the same network
+# and checks both before it will search, and an index from before this has no
+# pooling in it to check.
+INDEX_FORMAT_VERSION: Final = 3
 
-DEFAULT_MODEL: Final = "BAAI/bge-small-en-v1.5"
-FALLBACK_MODEL: Final = "sentence-transformers/all-MiniLM-L6-v2"
-# bge is trained with an instruction on the query side and none on the document
-# side, and skipping it costs real accuracy: without the prefix, "put damage
-# counters on the bench" does not rank the card that does exactly that first,
-# and with it, it does. Only the bge family wants it, which is why it is applied
-# by model name rather than to everything.
-BGE_QUERY_PREFIX: Final = "Represent this sentence for searching relevant passages: "
 HASHING_NAME: Final = "hashing"
 HASHING_DIM: Final = 256
 # How much of a word the tokenizer keeps as a stem. Five is enough to make
@@ -551,36 +569,11 @@ def collapse_printings(cards: Sequence[Card]) -> list[IndexedCard]:
 
 
 # -------------------------------------------------------------- embedders --
-
-
-class Embedder(Protocol):
-    """What the index needs from an embedder: a name, a width and a matrix."""
-
-    @property
-    def name(self) -> str:
-        """The identifier written into `meta.json` and checked on load."""
-
-    @property
-    def dimensions(self) -> int:
-        """How wide a vector is."""
-
-    def embed(self, texts: Sequence[str]) -> np.ndarray:
-        """One L2-normalized row per text, as float32. Documents, not queries."""
-
-    def embed_query(self, text: str) -> np.ndarray:
-        """One vector for a search query, in the same space as the documents."""
-
-
-def _normalize(matrix: np.ndarray) -> np.ndarray:
-    """Rows scaled to unit length, so a dot product is a cosine.
-
-    A zero row stays zero rather than becoming a division by zero: a passage
-    with no text is a passage that matches nothing, which is the honest answer.
-    """
-    lengths = np.linalg.norm(matrix, axis=1, keepdims=True)
-    lengths[lengths == 0] = 1.0
-    normalized: np.ndarray = (matrix / lengths).astype(np.float32)
-    return normalized
+#
+# `Embedder`, `OnnxEmbedder` and `SentenceTransformerEmbedder` live in
+# `pipeline.query_embedder`, which is the module the serving image can import
+# without pulling torch in behind it. The third implementation is here because
+# it is made of this module's tokenizer.
 
 
 class HashingEmbedder:
@@ -610,6 +603,11 @@ class HashingEmbedder:
         return f"{HASHING_NAME}-{self._dimensions}"
 
     @property
+    def pooling(self) -> str:
+        """Nothing is pooled: a row is built from the tokens directly."""
+        return POOLING_NONE
+
+    @property
     def dimensions(self) -> int:
         return self._dimensions
 
@@ -622,7 +620,7 @@ class HashingEmbedder:
                 counts[bucket] = counts.get(bucket, 0) + 1
             for bucket, count in counts.items():
                 matrix[row, bucket] = 1.0 + math.log(count)
-        return _normalize(matrix)
+        return normalize_rows(matrix)
 
     def embed_query(self, text: str) -> np.ndarray:
         """The same bag of hashed tokens: this embedder has no query side."""
@@ -640,60 +638,42 @@ class HashingEmbedder:
         return int.from_bytes(digest, "big") % self._dimensions
 
 
-class SentenceTransformerEmbedder:
-    """`sentence-transformers` over a small local model. The real one.
-
-    The model is loaded on first use rather than in the constructor, so
-    building the object costs nothing and a process that ends up not embedding
-    anything never pays for torch.
-    """
-
-    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
-        self._model_name = model_name
-        self._model: Any | None = None
-        self._dimensions = 0
-
-    @property
-    def name(self) -> str:
-        return self._model_name
-
-    @property
-    def dimensions(self) -> int:
-        if not self._dimensions:
-            self._dimensions = int(self._loaded().get_sentence_embedding_dimension())
-        return self._dimensions
-
-    def _loaded(self) -> Any:
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
-
-            logger.info("loading the embedding model", extra={"model": self._model_name})
-            self._model = SentenceTransformer(self._model_name)
-        return self._model
-
-    def embed_query(self, text: str) -> np.ndarray:
-        """The query with its model's instruction prefix, when its model wants one."""
-        prefix = BGE_QUERY_PREFIX if "bge" in self._model_name.lower() else ""
-        row: np.ndarray = self.embed([prefix + text])[0]
-        return row
-
-    def embed(self, texts: Sequence[str]) -> np.ndarray:
-        vectors = self._loaded().encode(
-            list(texts),
-            batch_size=64,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
-        return np.asarray(vectors, dtype=np.float32)
+def _hashing_width(name: str) -> int:
+    """The width out of a `hashing-256` style name, or the default."""
+    _, _, width = name.partition("-")
+    return int(width) if width.isdigit() else HASHING_DIM
 
 
 def make_embedder(name: str) -> Embedder:
-    """The embedder named on the command line, or in an index's `meta.json`."""
+    """The embedder that *builds* an index, named on the command line.
+
+    `sentence-transformers` for a real model, which is the reference
+    implementation and the definition of what the vectors mean. Nothing that
+    answers a question calls this; see `make_query_embedder` for the other
+    half, and `pipeline.query_embedder` for why there are two.
+    """
     if name.startswith(HASHING_NAME):
-        _, _, width = name.partition("-")
-        return HashingEmbedder(int(width) if width.isdigit() else HASHING_DIM)
+        return HashingEmbedder(_hashing_width(name))
     return SentenceTransformerEmbedder(name)
+
+
+def make_query_embedder(name: str) -> Embedder:
+    """The embedder that *searches* an index, named by its `meta.json`.
+
+    The ONNX one for a real model. This is the path every deployed question
+    takes, and the reason it is not `make_embedder` is that `make_embedder`
+    would import torch and transformers, which on a cold Lambda container was
+    105 s before the first question could be answered.
+
+    The files it reads are baked into the image and are a laptop command away
+    (`scripts/export_query_embedder.py`); when they are not there this raises
+    `QueryEmbedderError` saying so, rather than quietly falling back to the
+    torch implementation, because a silent fallback deployed is the whole
+    regression coming back with nothing to show for it.
+    """
+    if name.startswith(HASHING_NAME):
+        return HashingEmbedder(_hashing_width(name))
+    return OnnxEmbedder()
 
 
 # ------------------------------------------------------------------ bm25 --
@@ -859,6 +839,11 @@ def build_index(cards: Sequence[Card], embedder: Embedder, out_dir: AnyLocation)
             {
                 "format_version": INDEX_FORMAT_VERSION,
                 "embedder": embedder.name,
+                # Recorded beside the name because the name alone does not say
+                # it: the serving side runs a different implementation of the
+                # same network, and CLS pooling against a mean-pooled index
+                # would be two different spaces with one model name on them.
+                "pooling": embedder.pooling,
                 "dimensions": int(vectors.shape[1]),
                 "cards": len(entries),
                 "printings": len(cards),
@@ -906,6 +891,31 @@ class Hit:
         return "fused score" if self.fused else "similarity"
 
 
+def _refuse_a_mismatch(directory: AnyLocation, meta: dict[str, Any], embedder: Embedder) -> None:
+    """Stop before searching an index with an embedder that did not build it.
+
+    Two facts have to line up, the model and the pooling, and neither of them
+    is visible in a result: the wrong pair returns the right number of cards in
+    a plausible order that nothing in the text supports. A refusal naming both
+    sides is the only version of this a reader can act on, and the action is
+    always one of two things, rebuild the index or fix what is serving it.
+    """
+    built_model = str(meta.get("embedder", ""))
+    built_pooling = str(meta.get("pooling", ""))
+    if embedder.name != built_model:
+        raise ValueError(
+            f"the card index at {directory} was built with {built_model!r} and the query "
+            f"embedder is {embedder.name!r}: rebuild the index with "
+            "`python -m pipeline.card_index build`, or serve it with the model that built it"
+        )
+    if embedder.pooling != built_pooling:
+        raise ValueError(
+            f"the card index at {directory} was built with {built_model!r} pooled "
+            f"{built_pooling!r} and the query embedder pools {embedder.pooling!r}: the two "
+            "are not the same vector space, so rebuild the index"
+        )
+
+
 class CardIndex:
     """A built index in memory: the cards, their passages and vectors, the embedder."""
 
@@ -931,14 +941,19 @@ class CardIndex:
     def load(
         cls, directory: AnyLocation, embedder: Embedder | None = None, **options: Any
     ) -> "CardIndex":
-        """Read an index off disk, with the embedder its `meta.json` names.
+        """Read an index off disk, with the query embedder its `meta.json` names.
 
         An embedder passed in wins, which is how a test builds with the hashing
         one and searches with it too; otherwise the name in the metadata
-        decides, because a query vector from a different model is not in the
-        same space as the index and the results would look plausible and be
-        meaningless. An index from an older layout is refused for the same
-        reason, and with the same bluntness.
+        decides, through `make_query_embedder`, so the serving path gets the
+        ONNX implementation and never the torch one.
+
+        Either way the pair is checked and a mismatch is refused. A query
+        vector from a different model, or from the same model pooled
+        differently, is not in the same space as the index: the search still
+        returns five cards in a confident order and the order means nothing,
+        which is the one failure a reader cannot see. An index from an older
+        layout is refused for the same reason and with the same bluntness.
         """
         root = location(directory)
         meta_path = root / META_FILE
@@ -979,12 +994,9 @@ class CardIndex:
         ]
         passage_card = np.asarray(passage_table.column("card_row").to_pylist(), dtype=np.int32)
         vectors = np.asarray(passage_table.column("vector").to_pylist(), dtype=np.float32)
-        resolved = embedder if embedder is not None else make_embedder(str(meta["embedder"]))
-        if embedder is not None and embedder.name != meta["embedder"]:
-            logger.warning(
-                "searching an index with a different embedder than built it",
-                extra={"index_embedder": meta["embedder"], "query_embedder": embedder.name},
-            )
+        built_with = str(meta["embedder"])
+        resolved = embedder if embedder is not None else make_query_embedder(built_with)
+        _refuse_a_mismatch(directory, meta, resolved)
         return cls(entries, passages, passage_card, vectors, resolved, **options)
 
     def bm25(self) -> BM25:
@@ -1064,12 +1076,11 @@ def render_hits(hits: Sequence[Hit]) -> str:
 def warm_index(index: "CardIndex") -> bool:
     """One short search, so the embedding model is resident before a question needs it.
 
-    `SentenceTransformerEmbedder` loads its model on first use, which on a
-    Lambda cold container means `import torch`, a few hundred megabytes of
-    weights and the first embedding, all of it over image layers that are
-    fetched the first time they are touched. Locally that is four to six
-    seconds; deployed it was enough to take a question about a card past the
-    function's 60 s timeout.
+    `OnnxEmbedder` builds its session on first use, which on a Lambda cold
+    container means reading a 133 MB graph and running the first embedding,
+    over image layers that are fetched the first time they are touched. This
+    is the call that used to be `import torch` as well, and that was the 105 s
+    of the deployed `/warm` that this no longer pays.
 
     A search rather than a bare `embed_query`, because the first call to the
     tool pays for the lazy BM25 build too, and this is meant to be the whole

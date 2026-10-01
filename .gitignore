@@ -1,6 +1,9 @@
 # local data lake / warehouse output — never committed
 data/
 
+# the exported query embedder: a download, not a source file
+.models/
+
 # environments & secrets
 .env
 .venv/

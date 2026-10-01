@@ -46,6 +46,17 @@ CATALOG_PATH = PIPELINE_DATA_DIR / "catalog" / "cards.json"
 # about cards rather than anything derived from a game.
 CARD_TEXT_PATH = PIPELINE_DATA_DIR / "catalog" / "card_text.jsonl"
 CARD_INDEX_DIR = PIPELINE_DATA_DIR / "catalog" / "card_index"
+# The serving query embedder's files: an exported ONNX graph, the tokenizer
+# that feeds it, and a note of which model they are. A `Path` and not a
+# `Location`, and not under `PIPELINE_DATA_DIR`, because this is not pipeline
+# output: it is a build artefact of whatever is going to answer questions, and
+# the deployed function reads it out of its own image while the lake it reads
+# is an `s3://` prefix. `Dockerfile.agent` sets the variable to where it baked
+# them; a laptop runs `scripts/export_query_embedder.py` and gets the default.
+QUERY_EMBEDDER_DIR_VAR = "PRA_QUERY_EMBEDDER_DIR"
+QUERY_EMBEDDER_DIR: Path = Path(
+    os.environ.get(QUERY_EMBEDDER_DIR_VAR) or REPO_ROOT / ".models" / "query-embedder"
+)
 # The regulation marks legal in the Standard format, which is the format this
 # corpus is about: the card-text fetch keeps only printings carrying one of
 # these, so the retriever holds a few thousand cards a player can actually meet

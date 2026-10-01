@@ -604,10 +604,12 @@ def marts_tools(
     """Every tool the agent gets: the SQL one always, the card one when there is an index.
 
     `pipeline.card_index` is imported here rather than at module scope because
-    it pulls in the embedder, which pulls in torch, and an agent asked only for
-    matchup numbers should not pay several seconds of import for a tool it will
-    not call. A missing or unreadable index is a logged skip, not a failure: the
-    SQL half of the agent works perfectly well without the card text.
+    it pulls in pyarrow and the embedder, and an agent asked only for matchup
+    numbers should not pay that import for a tool it will not call. A missing
+    or unreadable index is a logged skip, not a failure: the SQL half of the
+    agent works perfectly well without the card text, and that now covers a
+    serving image whose query embedder was never baked in, which raises
+    `QueryEmbedderError` out of the load and lands here as a `RuntimeError`.
 
     The index is loaded here and handed to the tool rather than loaded inside
     it, so that this function can keep it and hand back a warmer over the same
@@ -620,6 +622,7 @@ def marts_tools(
     if card_index is None:
         return ToolSet(tools)
     from pipeline import card_index as index_module
+    from pipeline.query_embedder import QueryEmbedderError
 
     try:
         index = index_module.CardIndex.load(card_index)
@@ -628,7 +631,7 @@ def marts_tools(
                 card_index, tracer=tracer, metrics=metrics, index=index
             )
         )
-    except (OSError, ValueError) as failure:
+    except (OSError, ValueError, QueryEmbedderError) as failure:
         logger.warning(
             "the card lookup tool is off",
             extra={"index": str(card_index), "error": f"{type(failure).__name__}: {failure}"},
