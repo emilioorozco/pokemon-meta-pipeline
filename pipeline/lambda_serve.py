@@ -36,14 +36,23 @@ view; `Dockerfile.agent` bakes both extensions into the image and sets
 `PRA_DUCKDB_EXTENSION_CACHE`, and `prime_duckdb_extensions` copies them into
 `$HOME` on the first invocation so a cold start never fetches an extension.
 
-*The refresh rule.* `local_file` downloads the warehouse once per process and
-keeps it, on the assumption that nothing rewrites the object underneath a
-running process. That assumption holds for a command that ends and does not
-hold for a container that may live for hours across a nightly rebuild. So the
-warehouse is kept for the life of the container, and at most once every
-`REFRESH_SECONDS` the object's ETag is checked with one `HeadObject`; when it
-has changed the local copy is dropped and the agent is discarded, and the next
-question rebuilds both over the new file.
+*The refresh rule.* The nightly replaces two things a running container is
+holding: the warehouse, which `local_file` downloads once per process and
+keeps, and the card index, which the agent loads into memory when it is built.
+Both are kept on the assumption that nothing rewrites them underneath a
+running process, which holds for a command that ends and does not hold for a
+container that may live for hours. So one `ObjectWatch` is kept per object,
+and at most once every `REFRESH_SECONDS` each one's ETag is checked with one
+`HeadObject`: for the warehouse that is the file itself, for the index it is
+its `meta.json`, which the nightly rewrites with the rest of the directory.
+When either has changed the agent is discarded, the warehouse's local copy is
+dropped as well, and the next question rebuilds over what is there now.
+
+The index got its watch after the warehouse did, and the reason is a
+deployment that spent an afternoon telling readers it had no card text: the
+container came up while the lake still held an index of the previous format,
+the agent was built without `lookup_cards`, and nothing made it look again
+after the nightly rebuilt the index twenty minutes later.
 
 The trade-off is deliberate and it is staleness against cost. Ten minutes means
 a container that was warm when the nightly landed can answer from yesterday's
@@ -90,10 +99,11 @@ import os
 import shutil
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from pipeline.config import WAREHOUSE_PATH
+from pipeline.config import CARD_INDEX_DIR, WAREHOUSE_PATH
 from pipeline.observability import configure_logging
 from pipeline.serve import STAGE, create_app, mlflow_loader, stub_loader, stub_requested
 from pipeline.settings import REGION_VAR
@@ -111,8 +121,15 @@ SECRET_KEYS: Final[tuple[str, ...]] = ("ANTHROPIC_API_KEY", "JEV_API_KEY")
 # copied into `$HOME`. Unset outside the image, where DuckDB installs its own.
 EXTENSION_CACHE_VAR: Final = "PRA_DUCKDB_EXTENSION_CACHE"
 DUCKDB_HOME: Final = ".duckdb"
-# How long a downloaded warehouse is trusted before its ETag is checked again.
+# How long a copy taken from the lake is trusted before its ETag is checked
+# again. One interval for both objects: the nightly writes them in the same
+# run, and two cadences would be two numbers to reason about for one event.
 REFRESH_SECONDS: Final = 600.0
+# The one file in a card index directory that is enough to watch. Named as a
+# string rather than imported from `pipeline.card_index`, which would pull
+# pyarrow and the embedder into a module that only wants a key; a test asserts
+# the two spellings agree.
+CARD_INDEX_META: Final = "meta.json"
 
 # Held for the life of the execution environment, which is the whole point of
 # one: a container that answers a thousand questions must not read the secret,
@@ -120,7 +137,7 @@ REFRESH_SECONDS: Final = 600.0
 # `reset_container_state` is for the tests.
 _adapter: Any | None = None
 _keys_loaded: bool = False
-_watch: "WarehouseWatch | None" = None
+_watches: "Watches | None" = None
 
 
 class SecretError(RuntimeError):
@@ -231,11 +248,11 @@ def read_secret(arn: str) -> dict[str, str]:
     return {str(name): value for name, value in parsed.items() if isinstance(value, str) and value}
 
 
-# ------------------------------------------------------- the warehouse copy --
+# ------------------------------------------------------ what the lake holds --
 
 
-class WarehouseWatch:
-    """Whether the warehouse object has been replaced since it was downloaded.
+class ObjectWatch:
+    """Whether one lake object has been replaced since this container read it.
 
     One `HeadObject` at most every `interval` seconds, and the answer is
     remembered in between, so a burst of questions costs one check rather than
@@ -243,7 +260,12 @@ class WarehouseWatch:
     with a fake object and no S3 at all; `clock` is injectable so they do not
     have to wait ten minutes to see the second check happen.
 
-    A local warehouse never changes underneath this process by any path this
+    `label` is what the warning calls the object, and the only difference
+    between the two instances this module keeps: the rule is the same for the
+    warehouse and for the card index, and writing it twice would mean fixing
+    the next thing about it twice.
+
+    A local object never changes underneath this process by any path this
     repository has, so a local location answers False without asking anything.
     """
 
@@ -251,11 +273,13 @@ class WarehouseWatch:
         self,
         target: AnyLocation,
         *,
+        label: str,
         interval: float = REFRESH_SECONDS,
         head: Callable[[Location], str | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.target = location(target)
+        self.label = label
         self.interval = interval
         self._head = head or _head_etag
         self._clock = clock
@@ -263,9 +287,9 @@ class WarehouseWatch:
         self._etag: str | None = None
 
     def changed(self) -> bool:
-        """True when the object is not the one the local copy came from.
+        """True when the object is not the one this container read.
 
-        False on the first call, which records the tag the copy was taken with,
+        False on the first call, which records the tag that was current then,
         and False inside the interval, and False when the head itself failed.
         """
         if not self.target.is_s3:
@@ -277,10 +301,11 @@ class WarehouseWatch:
         try:
             tag = self._head(self.target)
         except Exception as failure:
-            # Kept rather than dropped: a working warehouse is worth more than
-            # a fresh one, and the next check is one interval away.
+            # Kept rather than dropped: a working warehouse and an agent that
+            # answers are worth more than fresh ones, and the next check is
+            # one interval away.
             logger.warning(
-                "the warehouse could not be checked for a new version; keeping the copy in hand",
+                f"the {self.label} could not be checked for a new version; keeping what is held",
                 extra={"error": f"{type(failure).__name__}: {failure}"},
             )
             return False
@@ -293,6 +318,14 @@ class WarehouseWatch:
         return True
 
 
+@dataclass(frozen=True)
+class Watches:
+    """The two objects a long-lived container has to notice being replaced."""
+
+    warehouse: ObjectWatch
+    card_index: ObjectWatch
+
+
 def _head_etag(target: Location) -> str | None:
     """The object's ETag, or None when the head answered without one."""
     response = s3_client().head_object(Bucket=target.bucket, Key=target.key)
@@ -300,7 +333,14 @@ def _head_etag(target: Location) -> str | None:
     return str(tag) if tag else None
 
 
-def refresh_warehouse(app: Any, watch: WarehouseWatch) -> bool:
+def _drop_agent(app: Any) -> None:
+    """Forget the built agent, so the next question builds one over what is there now."""
+    holder = getattr(app.state, "agent", None)
+    if holder is not None:
+        holder.current = None
+
+
+def refresh_warehouse(app: Any, watch: ObjectWatch) -> bool:
     """Drop the downloaded warehouse and the agent over it when it has been replaced.
 
     The agent goes with the file because it holds an open DuckDB connection to
@@ -313,11 +353,43 @@ def refresh_warehouse(app: Any, watch: WarehouseWatch) -> bool:
     if not watch.changed():
         return False
     forget_download(watch.target)
-    holder = getattr(app.state, "agent", None)
-    if holder is not None:
-        holder.current = None
+    _drop_agent(app)
     logger.info("the warehouse was replaced; the next question rebuilds over the new one")
     return True
+
+
+def refresh_card_index(app: Any, watch: ObjectWatch) -> bool:
+    """Drop the agent when the card index it was built over has been rebuilt.
+
+    Nothing is unlinked here, because there is nothing on disk to unlink: the
+    index is read out of the lake straight into the agent's memory, so the
+    agent is the copy and dropping it is the whole of the refresh.
+
+    This is also the only thing that recovers a container that built its agent
+    without the card tool. The format of the index changed once, and for the
+    twenty minutes between a container starting and the nightly rebuilding the
+    index, every agent built came up with its SQL half alone; without this the
+    container kept that agent and kept apologizing for having no card text
+    long after the index it wanted was in the lake.
+    """
+    if not watch.changed():
+        return False
+    _drop_agent(app)
+    logger.info("the card index was replaced; the next question rebuilds the agent over it")
+    return True
+
+
+def refresh(app: Any, watches: Watches) -> bool:
+    """Check both objects and drop whatever a replacement invalidates.
+
+    Both every time rather than the first one that answers yes: they are
+    rewritten by the same nightly and are usually replaced together, and a
+    short circuit would leave one watch's recorded tag a run behind the other's
+    for no saving at all, since a check inside the interval costs nothing.
+    """
+    warehouse = refresh_warehouse(app, watches.warehouse)
+    index = refresh_card_index(app, watches.card_index)
+    return warehouse or index
 
 
 # ------------------------------------------------------------ the container --
@@ -367,22 +439,25 @@ def build_app() -> Any:
     return create_app(loader, eager_model=False)
 
 
-def container() -> tuple[Any, WarehouseWatch]:
-    """This execution environment's adapter and warehouse watch, built once.
+def container() -> tuple[Any, Watches]:
+    """This execution environment's adapter and its two watches, built once.
 
     The order matters: logging first so everything after it is one JSON line
     per record, then the keys, so the agent's provider client finds them
     whenever it is built, then the application.
     """
-    global _adapter, _watch
-    if _adapter is None or _watch is None:
+    global _adapter, _watches
+    if _adapter is None or _watches is None:
         configure_logging(STAGE)
         prime_duckdb_extensions()
         load_keys()
         app = build_app()
-        _watch = WarehouseWatch(WAREHOUSE_PATH)
+        _watches = Watches(
+            warehouse=ObjectWatch(WAREHOUSE_PATH, label="warehouse"),
+            card_index=ObjectWatch(CARD_INDEX_DIR / CARD_INDEX_META, label="card index"),
+        )
         _adapter = _mangum(app)
-    return _adapter, _watch
+    return _adapter, _watches
 
 
 def _mangum(app: Any) -> Any:
@@ -406,8 +481,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     the runtime's; Mangum reads both and neither is inspected here.
     """
     try:
-        adapter, watch = container()
-        refresh_warehouse(adapter.app, watch)
+        adapter, watches = container()
+        refresh(adapter.app, watches)
     except Exception:
         # One line, then out. A caller that gets a 500 and an operator reading
         # the function's errors both need the reason, and an invocation that
@@ -420,13 +495,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def reset_container_state() -> None:
-    """Forget the adapter, the keys and the warehouse watch this container cached.
+    """Forget the adapter, the keys and the watches this container cached.
 
     For the tests: a Lambda keeps all three on purpose, and a suite that builds
     one application after another in one process must not hand the second the
     first one's.
     """
-    global _adapter, _keys_loaded, _watch
+    global _adapter, _keys_loaded, _watches
     _adapter = None
     _keys_loaded = False
-    _watch = None
+    _watches = None

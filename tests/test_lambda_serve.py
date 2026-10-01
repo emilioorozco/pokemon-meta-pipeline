@@ -14,11 +14,15 @@ and a field on `/health`, never a 502 from every route. The read itself runs
 against moto rather than a stub, so the JSON shape the application's stack
 writes is the JSON shape this parses.
 
-The refresh rule. The warehouse is downloaded once and kept, and the only
-thing that makes a long-lived container notice a nightly is the ETag check.
-It is driven here with a fake head and a fake clock, so the interval, the
-first call, an unchanged object, a replaced one and a head that fails are five
-assertions rather than a ten-minute wait.
+The refresh rule, over both objects the nightly replaces. The warehouse is
+downloaded once and kept and the card index is read into the agent once and
+kept, and the only thing that makes a long-lived container notice a nightly is
+the ETag check. It is driven here with a fake head and a fake clock, so the
+interval, the first call, an unchanged object, a replaced one and a head that
+fails are assertions rather than a ten-minute wait. The index half of it is
+there because a deployment spent an afternoon answering card questions with
+an apology: the container built its agent while the lake still held an index
+of the previous format, and nothing made it look again after the rebuild.
 
 The request. `handler` really goes through Mangum and really answers
 `GET /health` from a function URL event, and the model it eventually loads is
@@ -42,11 +46,14 @@ from pipeline import lambda_serve
 from pipeline.lambda_serve import (
     KEYS_SECRET_VAR,
     SECRET_KEYS,
+    ObjectWatch,
     SecretError,
-    WarehouseWatch,
+    Watches,
     handler,
     load_keys,
     read_secret,
+    refresh,
+    refresh_card_index,
     refresh_warehouse,
 )
 from pipeline.serve import STUB_MODEL_VAR, STUB_VERSION
@@ -62,6 +69,11 @@ JUDGE_KEY: Final = "test-jev-value-not-a-real-key"
 ALREADY_SET: Final = "from-the-environment-not-the-secret"
 
 WAREHOUSE: Final = Location("s3://lake-under-test/nightly/warehouse/meta.duckdb")
+# The one file in the index directory the watch heads. The nightly rewrites the
+# whole directory, and this is the member that is always in it.
+CARD_INDEX_META_OBJECT: Final = Location(
+    "s3://lake-under-test/nightly/catalog/card_index/meta.json"
+)
 
 
 def function_url_event(method: str, path: str) -> dict[str, Any]:
@@ -254,8 +266,8 @@ class FakeClock:
         return self.now
 
 
-def watch_over(obj: FakeObject, clock: FakeClock, *, interval: float = 600.0) -> WarehouseWatch:
-    return WarehouseWatch(WAREHOUSE, interval=interval, head=obj.head, clock=clock)
+def watch_over(obj: FakeObject, clock: FakeClock, *, interval: float = 600.0) -> ObjectWatch:
+    return ObjectWatch(WAREHOUSE, label="warehouse", interval=interval, head=obj.head, clock=clock)
 
 
 def test_the_first_check_records_the_tag_and_reports_no_change() -> None:
@@ -301,7 +313,7 @@ def test_a_head_that_fails_keeps_the_copy_in_hand(caplog: pytest.LogCaptureFixtu
     def broken(target: Location) -> str | None:
         raise RuntimeError("head refused")
 
-    watch = WarehouseWatch(WAREHOUSE, head=broken, clock=FakeClock())
+    watch = ObjectWatch(WAREHOUSE, label="warehouse", head=broken, clock=FakeClock())
     with caplog.at_level(logging.WARNING):
         assert watch.changed() is False
     assert "head refused" in caplog.records[-1].error  # type: ignore[attr-defined]
@@ -310,7 +322,7 @@ def test_a_head_that_fails_keeps_the_copy_in_hand(caplog: pytest.LogCaptureFixtu
 def test_a_local_warehouse_is_never_checked(tmp_path: Path) -> None:
     """Nothing in this repository rewrites a local warehouse underneath a reader."""
     obj, clock = FakeObject('"one"'), FakeClock()
-    watch = WarehouseWatch(tmp_path / "meta.duckdb", head=obj.head, clock=clock)
+    watch = ObjectWatch(tmp_path / "meta.duckdb", label="warehouse", head=obj.head, clock=clock)
     assert watch.changed() is False
     assert obj.heads == 0
 
@@ -326,7 +338,7 @@ def test_a_replaced_warehouse_drops_the_agent_over_it(tmp_path: Path) -> None:
             agent = Holder()
 
     obj, clock = FakeObject('"one"'), FakeClock()
-    watch = WarehouseWatch(tmp_path / "meta.duckdb", head=obj.head, clock=clock)
+    watch = ObjectWatch(tmp_path / "meta.duckdb", label="warehouse", head=obj.head, clock=clock)
     assert refresh_warehouse(App, watch) is False
     assert App.state.agent.current is not None
 
@@ -336,6 +348,118 @@ def test_a_replaced_warehouse_drops_the_agent_over_it(tmp_path: Path) -> None:
     clock.now = 601.0
     assert refresh_warehouse(App, watch) is True
     assert App.state.agent.current is None
+
+
+# ------------------------------------------------- the card index's own watch --
+
+
+class FakeAgentHolder:
+    """Just enough of `pipeline.serve.AgentHolder` for a refresh to drop from."""
+
+    def __init__(self, agent: str = "an agent built over the old card index") -> None:
+        self.current: object | None = agent
+
+
+class FakeApp:
+    """Just enough of a Starlette application for a refresh to reach the holder."""
+
+    def __init__(self, holder: FakeAgentHolder) -> None:
+        self.state = type("state", (), {"agent": holder})()
+
+
+def index_watch(obj: FakeObject, clock: FakeClock) -> ObjectWatch:
+    return ObjectWatch(CARD_INDEX_META_OBJECT, label="card index", head=obj.head, clock=clock)
+
+
+def test_the_card_index_is_watched_by_the_file_the_nightly_rewrites() -> None:
+    """`meta.json` stands in for the directory, and the rule is the warehouse's rule."""
+    obj, clock = FakeObject('"format-two"'), FakeClock()
+    watch = index_watch(obj, clock)
+    assert watch.changed() is False, "the index in hand came from this object"
+    assert obj.heads == 1
+    # A burst of questions inside the interval costs no further head, which is
+    # the whole reason the warehouse's rule was worth sharing rather than
+    # writing again.
+    obj.etag = '"format-three"'
+    assert watch.changed() is False
+    assert obj.heads == 1
+    clock.now = 601.0
+    assert watch.changed() is True
+    assert watch.changed() is False, "and only once; the new tag is the one in hand"
+
+
+def test_a_replaced_card_index_rebuilds_the_agent_on_the_next_request() -> None:
+    """The incident, in two ETags: a toolless agent must not outlive the rebuild.
+
+    The container came up while the lake still held an index of the previous
+    format, so the agent was built without `lookup_cards`. Twenty minutes
+    later the nightly wrote a new index; nothing told the container, and it
+    kept the half-agent. Now the next request after the watch sees the new
+    tag builds again.
+    """
+    holder = FakeAgentHolder()
+    app = FakeApp(holder)
+    obj, clock = FakeObject('"format-two"'), FakeClock()
+    watch = index_watch(obj, clock)
+
+    assert refresh_card_index(app, watch) is False
+    assert holder.current is not None, "the first check only records the tag"
+
+    obj.etag = '"format-three"'
+    clock.now = 601.0
+    assert refresh_card_index(app, watch) is True
+    assert holder.current is None
+
+
+def test_a_head_on_the_index_that_fails_keeps_the_agent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The warehouse's rule: a transient S3 error is no change, and says which object."""
+
+    def broken(target: Location) -> str | None:
+        raise RuntimeError("head refused")
+
+    holder = FakeAgentHolder()
+    watch = ObjectWatch(CARD_INDEX_META_OBJECT, label="card index", head=broken, clock=FakeClock())
+    with caplog.at_level(logging.WARNING):
+        assert refresh_card_index(FakeApp(holder), watch) is False
+    assert holder.current is not None
+    assert "the card index could not be checked" in caplog.records[-1].getMessage()
+
+
+def test_a_local_card_index_is_never_checked(tmp_path: Path) -> None:
+    """Nothing in this repository rewrites a local index underneath a reader."""
+    obj, clock = FakeObject('"one"'), FakeClock()
+    watch = ObjectWatch(
+        tmp_path / "card_index" / "meta.json", label="card index", head=obj.head, clock=clock
+    )
+    assert watch.changed() is False
+    assert obj.heads == 0
+
+
+def test_both_objects_are_checked_on_every_request() -> None:
+    """One short-circuit and one watch would silently fall a nightly behind the other."""
+    holder = FakeAgentHolder()
+    app = FakeApp(holder)
+    warehouse, index = FakeObject('"w-one"'), FakeObject('"i-one"')
+    clock = FakeClock()
+    watches = Watches(warehouse=watch_over(warehouse, clock), card_index=index_watch(index, clock))
+
+    assert refresh(app, watches) is False
+    assert (warehouse.heads, index.heads) == (1, 1)
+
+    warehouse.etag, index.etag = '"w-two"', '"i-two"'
+    clock.now = 601.0
+    assert refresh(app, watches) is True
+    assert (warehouse.heads, index.heads) == (2, 2), "the warehouse answering first short-circuited"
+    assert holder.current is None
+
+
+def test_the_watched_index_file_is_the_one_the_builder_writes() -> None:
+    """This module spells `meta.json` out rather than importing the index reader."""
+    from pipeline.card_index import META_FILE
+
+    assert lambda_serve.CARD_INDEX_META == META_FILE
 
 
 # ---------------------------------------------------------- one invocation --
