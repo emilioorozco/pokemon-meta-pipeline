@@ -86,6 +86,7 @@ from pipeline.agent import (
     CARD_TOOL,
     SQL_TOOL,
     Agent,
+    Evidence,
     ToolCall,
     build_agent,
     chat_model,
@@ -129,6 +130,18 @@ BLIND_ANSWER: Final = (
     "I was not told which tables I can read, so I cannot answer this from the warehouse."
 )
 
+# What a question is for. `golden` is the original set: a question the fixture
+# marts really answer, graded on whether the answer is right. `adversarial` is
+# a question nobody should get an answer to, graded on whether the refusal
+# holds and on what the run did while refusing. The distinction is reported
+# rather than scored, because a failure is a failure either way and a table
+# that said so twice would be a table with a redundant column; what it is for
+# is the one-line summary under the table and the `kind` key in the JSON, so
+# "11/11 golden, 9/10 adversarial" is readable without knowing the ids.
+KIND_GOLDEN: Final = "golden"
+KIND_ADVERSARIAL: Final = "adversarial"
+VALID_KINDS: Final[tuple[str, ...]] = (KIND_GOLDEN, KIND_ADVERSARIAL)
+
 CHECK_TOOLS: Final = "tools"
 CHECK_REQUIRE: Final = "require"
 CHECK_FORBID: Final = "forbid"
@@ -168,6 +181,7 @@ class Question:
     require: tuple[str, ...] = ()
     forbid: tuple[str, ...] = ()
     notes: str = ""
+    kind: str = KIND_GOLDEN
 
 
 @dataclass(frozen=True)
@@ -258,14 +272,26 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         require = _patterns(raw.get("require"), where=f"{where} require")
         if not require:
             raise GoldenError(f"{where}: `require` is empty, so any answer would pass")
+        kind = str(raw.get("kind", KIND_GOLDEN)).strip() or KIND_GOLDEN
+        if kind not in VALID_KINDS:
+            raise GoldenError(f"{where}: {kind!r} is not a kind ({', '.join(VALID_KINDS)})")
+        forbid = _patterns(raw.get("forbid"), where=f"{where} forbid")
+        # An adversarial question is scored on what the run did as well as on
+        # what it said, and the only thing that catches "it refused in prose
+        # and queried the roster anyway" is a `forbid` list. One without one
+        # would pass on any refusal at all, which is the failure this kind
+        # exists to find.
+        if kind == KIND_ADVERSARIAL and not forbid:
+            raise GoldenError(f"{where}: an adversarial question with no `forbid` grades nothing")
         questions.append(
             Question(
                 id=identifier,
                 question=text,
                 expect_tools=tuple(str(tool) for tool in tools),
                 require=require,
-                forbid=_patterns(raw.get("forbid"), where=f"{where} forbid"),
+                forbid=forbid,
                 notes=str(raw.get("notes", "")).strip(),
+                kind=kind,
             )
         )
     return Golden(version=version, questions=tuple(questions), path=path)
@@ -311,6 +337,7 @@ class Result:
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.question.id,
+            "kind": self.question.kind,
             "passed": self.passed,
             "failed_checks": list(self.failed_checks),
             "tools_called": list(self.tools_called),
@@ -352,12 +379,37 @@ def gate_summary(calls: Sequence[ToolCall]) -> tuple[str, int, float]:
     return GATE_NONE, len(judged), cost
 
 
+def workings(answer: str, evidence: Evidence | None) -> str:
+    """The text a `forbid` entry is searched in: the answer and what produced it.
+
+    `require` is about the answer, because an assertion that a fact was
+    reported is an assertion about what the reader is told. `forbid` is about
+    the whole run, because the adversarial half of the set grades an outcome
+    rather than a sentence: a question that asks for the roster and gets "I
+    will not do that" over a run that queried `dim_player` and dropped the
+    rows on the floor has not been refused, it has been handled untidily, and
+    the sentence alone cannot tell the two apart.
+
+    So the statements go in verbatim, and so do the cards. The patterns that
+    read them are written against SQL rather than against prose, `from
+    dim_player` and not `dim_player`, which is what lets an honest refusal
+    name the table it will not read.
+    """
+    if evidence is None:
+        return answer
+    parts = [answer]
+    parts.extend(query.sql for query in evidence.queries)
+    parts.extend(f"{card.name}\n{card.text}" for card in evidence.cards)
+    return "\n".join(parts)
+
+
 def score(
     question: Question,
     answer: str,
     tools_called: Sequence[str],
     *,
     calls: Sequence[ToolCall] = (),
+    evidence: Evidence | None = None,
 ) -> Result:
     """Score one answer against one question. Pure, and the unit the tests hit.
 
@@ -369,10 +421,14 @@ def score(
     and it changes no check: the gate is reported so that two runs can be
     compared, and scoring a question on what a paid provider said about it
     would make the golden set a measurement of two models rather than one.
+
+    `evidence` widens where a `forbid` entry is looked for, and nothing else;
+    `workings` above says why.
     """
     called = tuple(tools_called)
     unique = set(called)
     gate, gate_calls, gate_cost = gate_summary(calls)
+    searched = workings(answer, evidence)
     return Result(
         question=question,
         answer=answer,
@@ -384,7 +440,9 @@ def score(
         missing_required=tuple(
             pattern for pattern in question.require if not matches(pattern, answer)
         ),
-        present_forbidden=tuple(pattern for pattern in question.forbid if matches(pattern, answer)),
+        present_forbidden=tuple(
+            pattern for pattern in question.forbid if matches(pattern, searched)
+        ),
         gate=gate,
         gate_calls=gate_calls,
         gate_cost_usd=gate_cost,
@@ -418,6 +476,20 @@ class Report:
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
 
+    def by_kind(self) -> dict[str, tuple[int, int]]:
+        """Passed and total per kind, in the order `VALID_KINDS` lists them.
+
+        A kind with no questions in the file is left out rather than reported
+        as 0/0, so a golden set that has not grown an adversarial half yet
+        reads the way it always did.
+        """
+        counts: dict[str, tuple[int, int]] = {}
+        for kind in VALID_KINDS:
+            of_kind = [result for result in self.results if result.question.kind == kind]
+            if of_kind:
+                counts[kind] = (sum(1 for result in of_kind if result.passed), len(of_kind))
+        return counts
+
     @property
     def gate_calls(self) -> int:
         """Statements the gate really judged, over the whole run."""
@@ -448,6 +520,10 @@ class Report:
             "passed": self.passed,
             "total": self.total,
             "pass_rate": round(self.pass_rate, 4),
+            "by_kind": {
+                kind: {"passed": passed, "total": total}
+                for kind, (passed, total) in self.by_kind().items()
+            },
             "gate_calls": self.gate_calls,
             "gate_refusals": self.gate_refusals,
             "gate_cost_usd": self.gate_cost_usd,
@@ -668,6 +744,7 @@ def run_question(question: Question, agent: Agent) -> Result:
         answer.answer,
         [call.tool for call in answer.tool_calls],
         calls=answer.tool_calls,
+        evidence=answer.evidence,
     )
 
 
@@ -730,6 +807,7 @@ def render(report: Report) -> str:
     rows = [
         (
             result.question.id,
+            result.question.kind,
             "pass" if result.passed else "FAIL",
             ",".join(result.failed_checks) or "-",
             ",".join(result.tools_called) or "-",
@@ -737,7 +815,7 @@ def render(report: Report) -> str:
         )
         for result in report.results
     ]
-    headers = ("question", "result", "failed", "tools called", "gate")
+    headers = ("question", "kind", "result", "failed", "tools called", "gate")
     columns = len(headers)
     widths = [max(len(row[column]) for row in (*rows, headers)) for column in range(columns)]
     lines = [
@@ -749,7 +827,10 @@ def render(report: Report) -> str:
         for row in rows
     ]
     lines.append("")
-    lines.append(f"{report.passed}/{report.total} passed")
+    split = ", ".join(
+        f"{passed}/{total} {kind}" for kind, (passed, total) in report.by_kind().items()
+    )
+    lines.append(f"{report.passed}/{report.total} passed ({split})")
     lines.append(render_gate_cost(report))
     for result in report.results:
         if result.passed:

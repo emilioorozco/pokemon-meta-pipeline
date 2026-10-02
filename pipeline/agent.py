@@ -204,8 +204,22 @@ FORBIDDEN_KEYWORDS: Final[tuple[str, ...]] = (
     "vacuum",
     "checkpoint",
 )
-# Table functions that read something other than the warehouse. DuckDB reaches
-# the filesystem and the network through these, so they are refused by name.
+# Functions that read something other than the seven tables. Three groups, and
+# the second and third were added when the agent was opened to members.
+#
+# The file and network readers come first: DuckDB reaches the filesystem and
+# an http(s) URL through these, so a read-only connection without them is not
+# read-only in any useful sense.
+#
+# Then the ones that read the process rather than the data. `getenv` is the
+# one that matters: it takes no FROM clause, so a statement built out of it
+# names no table at all and would sail past the allowlist check below with a
+# provider key in the result set.
+#
+# Then the catalog. Nothing here leaks a row, but between them they enumerate
+# every table, column and setting of the warehouse, which is the table list
+# rule 8 says not to hand over and the obvious first step of anything that
+# wants a table it was not told about.
 FORBIDDEN_FUNCTIONS: Final[tuple[str, ...]] = (
     "read_parquet",
     "read_csv",
@@ -218,7 +232,19 @@ FORBIDDEN_FUNCTIONS: Final[tuple[str, ...]] = (
     "csv_scan",
     "glob",
     "sniff_csv",
+    "getenv",
+    "current_setting",
+    "which_secret",
     "duckdb_extensions",
+    "duckdb_settings",
+    "duckdb_secrets",
+    "duckdb_databases",
+    "duckdb_tables",
+    "duckdb_views",
+    "duckdb_columns",
+    "duckdb_schemas",
+    "pragma_table_info",
+    "pragma_database_list",
 )
 
 _LINE_COMMENT: Final = re.compile(r"--[^\n]*")
