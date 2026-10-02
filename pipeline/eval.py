@@ -2,12 +2,15 @@
 
     uv run python -m pipeline.eval --fake evals/transcript.yaml
     op run --env-file=.env.op -- uv run python -m pipeline.eval
+    uv run python -m pipeline.eval --remote "$PIPELINE_AGENT_URL"
 
-Twelve questions in `evals/golden.yaml`, each with the tools its answer has to
-call and the facts its answer has to contain. The command runs them through the
-real `Agent`, scores three checks per question, prints a table and exits
-non-zero when anything failed. The score of a run is logged to MLflow, so a
-prompt change is tracked the way a model change is.
+Twenty-two questions in `evals/golden.yaml` in two kinds, each with the tools
+its answer has to call and the facts its answer has to contain. Twelve are
+`golden`, which the fixture marts answer; ten are `adversarial`, which nobody
+should get an answer to. The command runs them through the real `Agent`,
+scores three checks per question, prints a table and exits non-zero when
+anything failed. The score of a run is logged to MLflow, so a prompt change is
+tracked the way a model change is.
 
 **The gate is reported, not scored.** With `PRA_SQL_GATE=jev` the optional
 second gate in `pipeline.sql_gate` judges every statement the denylist let
@@ -46,7 +49,18 @@ tools and the marts and costs nothing. The second is what the tests run and
 what anyone can run on a clean checkout; it is not evidence about the model,
 and the transcript file says so at the top.
 
-**The broken-prompt check.** The claim that the seven rules in
+**A third way, and it measures the deployment.** `--remote <function url>`
+sends each question to `POST <url>/ask` on the hosted service, signed with
+SigV4 from whatever credentials the environment already holds, and scores the
+response with the same `score` against the same file. Nothing is built here:
+the warehouse, the card index, the SQL gate, the provider key and the system
+prompt are all the deployed image's, which is the point. A green local run
+says the code in this checkout is correct and says nothing about the container
+members are talking to, and the two have been different for hours at a time
+(docs/agent-service.md). The `prod` job in `.github/workflows/agent-eval.yml`
+is the scheduled caller.
+
+**The broken-prompt check.** The claim that the rules in
 `pipeline.prompts` do the work is only worth something if removing them is
 visible. `--prompt-override evals/broken_prompt.txt` (which is nothing more
 than setting `PRA_AGENT_SYSTEM_PROMPT_FILE`) swaps in a prompt with the schema
@@ -58,8 +72,9 @@ docs/evals.md has both procedures.
 
 Exit codes are the point of a continuous-integration command: 0 when every
 question passed, 1 when any question failed, 2 when the run could not be set
-up at all, which is a missing warehouse, an unreadable golden file or a
-provider that would not build. A failed question and a broken harness are
+up at all, which is a missing warehouse, an unreadable golden file, a
+provider that would not build, or `--remote` alongside a flag about an agent
+built here. A failed question and a broken harness are
 different news and should not share an exit code.
 """
 
@@ -70,10 +85,12 @@ import logging
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol, runtime_checkable
 
 import yaml
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -86,7 +103,10 @@ from pipeline.agent import (
     CARD_TOOL,
     SQL_TOOL,
     Agent,
+    Answer,
+    CardEvidence,
     Evidence,
+    QueryEvidence,
     ToolCall,
     build_agent,
     chat_model,
@@ -463,6 +483,11 @@ class Report:
     card_index: str | None = None
     commit: str | None = None
     gate_name: str = GATE_OFF
+    # Whether the answers came from the deployed service. A flag and not the
+    # URL: the report is uploaded as a continuous-integration artifact, and a
+    # function URL is a piece of someone's infrastructure that this repository
+    # has never written down (`scripts/check_history.sh`).
+    remote: bool = False
 
     @property
     def total(self) -> int:
@@ -517,6 +542,7 @@ class Report:
             "card_index": self.card_index,
             "git_commit": self.commit,
             "gate": self.gate_name,
+            "remote": self.remote,
             "passed": self.passed,
             "total": self.total,
             "pass_rate": round(self.pass_rate, 4),
@@ -673,10 +699,230 @@ def _one(message: AIMessage) -> ChatResult:
     return ChatResult(generations=[ChatGeneration(message=message)])
 
 
+# ------------------------------------------------------- the hosted service --
+
+
+# The signing service name for a Lambda function URL. Not `execute-api`: the
+# URL is the function's own and the permission on it is `lambda:
+# InvokeFunctionUrl`, so a request signed for the gateway is a 403 with a
+# message that does not say why (docs/agent-service.md).
+REMOTE_SERVICE: Final = "lambda"
+REMOTE_PATH: Final = "/ask"
+# Longer than the function's own 60-second timeout, because a cold container
+# downloads the warehouse before it answers and the thing worth measuring is
+# what a member waits for rather than what the handler takes.
+REMOTE_TIMEOUT_S: Final = 120.0
+# What `model` says before the first response has said otherwise. A run that
+# could not reach the service at all should not report somebody's model name.
+REMOTE_MODEL: Final = "remote"
+# What the report says answered, instead of a path that does not exist here.
+REMOTE_WAREHOUSE: Final = "the deployed service's own"
+
+
+class RemoteError(RuntimeError):
+    """One call to the hosted service did not come back as an answer."""
+
+
+def ask_url(base: str) -> str:
+    """The `/ask` route of a service given by its root, or the route itself."""
+    trimmed = base.strip().rstrip("/")
+    if not trimmed:
+        raise RemoteError("--remote needs the function URL of the deployed service")
+    return trimmed if trimmed.endswith(REMOTE_PATH) else f"{trimmed}{REMOTE_PATH}"
+
+
+Sender = Callable[[str, dict[str, Any]], dict[str, Any]]
+
+
+def sigv4_post(
+    url: str, body: dict[str, Any], *, timeout: float = REMOTE_TIMEOUT_S
+) -> dict[str, Any]:
+    """One signed POST, from whatever credentials the environment already holds.
+
+    botocore signs and `urllib` sends, rather than `requests` plus a signing
+    library, because both halves are already here: boto3 is a dependency of
+    every storage path in this package and `urllib` is what `pipeline.sql_gate`
+    talks to its provider with. The credentials are whatever boto3 resolves,
+    which on the runner is the OpenID Connect role the workflow assumed and on
+    a laptop is the profile in the environment; nothing is read from a flag,
+    so there is no path on which a key reaches a command line or a log.
+
+    A failure is a `RemoteError` carrying the status code and nothing else.
+    The body of an error response is the service's, and a harness that printed
+    it would be a harness that puts somebody's infrastructure into a public
+    continuous-integration log the first time a function is misconfigured.
+    """
+    import boto3
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+
+    session = boto3.Session()
+    credentials = session.get_credentials()
+    if credentials is None:
+        raise RemoteError("no AWS credentials are available to sign the request with")
+    region = session.region_name or os.environ.get("AWS_REGION", "").strip()
+    if not region:
+        raise RemoteError("no AWS region is set, and SigV4 cannot be computed without one")
+    payload = json.dumps(body)
+    signed = AWSRequest(
+        method="POST", url=url, data=payload, headers={"content-type": "application/json"}
+    )
+    SigV4Auth(credentials.get_frozen_credentials(), REMOTE_SERVICE, region).add_auth(signed)
+    request = urllib.request.Request(
+        url, data=payload.encode("utf-8"), headers=dict(signed.headers), method="POST"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as failure:
+        raise RemoteError(f"the service answered {failure.code}") from failure
+    except (urllib.error.URLError, TimeoutError, OSError) as failure:
+        raise RemoteError(
+            f"the service could not be reached: {type(failure).__name__}"
+        ) from failure
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as failure:
+        raise RemoteError("the service answered with something that is not JSON") from failure
+    if not isinstance(parsed, dict):
+        raise RemoteError("the service answered with a JSON value that is not an object")
+    return parsed
+
+
+def query_from_response(entry: dict[str, Any]) -> QueryEvidence:
+    """One `evidence.queries[]` entry as the object the scorer reads.
+
+    `refused` is the one field that is not on the wire, because nothing
+    serialises it: the response carries `refused_reason` and the service's own
+    `gate_summary`, and this reconstructs the flag from the first so the
+    second can be recomputed and checked against what was sent. Every refusal,
+    from the validator and from the gate, opens with the word; a query DuckDB
+    would not run opens with "the query failed" and is an empty result rather
+    than a refusal, which is the distinction `summarize_gate` is making.
+    """
+    reason = entry.get("refused_reason")
+    text = None if reason is None else str(reason)
+    rows = entry.get("rows")
+    return QueryEvidence(
+        sql=str(entry.get("sql", "")),
+        row_count=int(entry.get("row_count") or 0),
+        rows=[dict(row) for row in rows] if isinstance(rows, list) else [],
+        gate=str(entry.get("gate", GATE_OFF)),
+        refused_reason=text,
+        refused=text is not None and text.lower().startswith("refused"),
+    )
+
+
+def answer_from_response(payload: dict[str, Any]) -> Answer:
+    """A `POST /ask` body as the `Answer` the scorer was written against.
+
+    The response is the same object `Answer.as_dict` produces plus two fields
+    the service adds, so this is mostly a cast. The one piece of work is the
+    gate: `tool_calls` on the wire does not carry a verdict and
+    `evidence.queries[]` does, so the two are paired in call order, which they
+    are in because the agent appends to both from the same tool call. A card
+    lookup has no verdict and takes none.
+    """
+    evidence = payload.get("evidence") or {}
+    raw_queries = evidence.get("queries") if isinstance(evidence, dict) else None
+    raw_cards = evidence.get("cards") if isinstance(evidence, dict) else None
+    queries = [query_from_response(entry) for entry in raw_queries or []]
+    cards = [
+        CardEvidence(
+            name=str(entry.get("name", "")),
+            set_code=str(entry.get("set_code", "")),
+            number=str(entry.get("number", "")),
+            text=str(entry.get("text", "")),
+        )
+        for entry in raw_cards or []
+    ]
+
+    verdicts = [query.gate for query in queries]
+    position = 0
+    calls: list[ToolCall] = []
+    for entry in payload.get("tool_calls") or []:
+        tool = str(entry.get("tool", ""))
+        gate = GATE_OFF
+        if tool == SQL_TOOL and position < len(verdicts):
+            gate, position = verdicts[position], position + 1
+        calls.append(
+            ToolCall(
+                tool=tool,
+                input_summary=str(entry.get("input_summary", "")),
+                rows=int(entry.get("rows") or 0),
+                gate=gate,
+            )
+        )
+
+    usage = payload.get("usage")
+    built = Answer(
+        answer=str(payload.get("answer", "")),
+        tool_calls=calls,
+        model=str(payload.get("model", "")),
+        usage=(
+            {str(name): int(value) for name, value in usage.items() if isinstance(value, int)}
+            if isinstance(usage, dict)
+            else {}
+        ),
+        evidence=Evidence(queries=queries, cards=cards),
+    )
+    reported = str(payload.get("gate_summary", "")).strip()
+    if reported and reported != built.gate_summary:
+        # Not an error: the score does not depend on it. It is the one cheap
+        # check that the response shape and this mapping have not drifted
+        # apart, and a drifted mapping is how a refused query starts being
+        # reported as an allowed one.
+        logger.warning(
+            "the service's gate summary and its evidence disagree",
+            extra={"reported": reported, "rebuilt": built.gate_summary},
+        )
+    return built
+
+
+class RemoteAgent:
+    """The deployed service standing where a locally built `Agent` usually does.
+
+    It answers `ask` and it has a `model_name`, which is the whole of what the
+    runner needs, so every question is scored by the same `score` against the
+    same golden file whether the loop ran in this process or in a function.
+    That is the point of the mode: the thing members talk to is a container
+    with its own warehouse copy, its own gate settings and its own provider
+    key, and a green local run says nothing about any of the three.
+
+    `model_name` is filled from the first answer rather than configured, since
+    which model the function runs is the function's business and asking it is
+    cheaper than keeping a second copy of the answer in a variable here.
+    """
+
+    def __init__(self, url: str, *, send: Sender | None = None) -> None:
+        self.url = ask_url(url)
+        self.model_name = REMOTE_MODEL
+        self.send = send if send is not None else sigv4_post
+
+    def ask(self, question: str) -> Answer:
+        answer = answer_from_response(self.send(self.url, {"question": question}))
+        self.model_name = answer.model or REMOTE_MODEL
+        return answer
+
+
 # -------------------------------------------------------------- the runner --
 
 
-AgentFactory = Callable[[Question], Agent]
+@runtime_checkable
+class Askable(Protocol):
+    """What the runner needs of an agent, which is less than an `Agent` is.
+
+    A Protocol rather than a base class, so that `Agent`, `RemoteAgent` and a
+    test's two-line stand-in all satisfy it without any of them importing the
+    others.
+    """
+
+    model_name: str
+
+    def ask(self, question: str) -> Answer: ...
+
+
+AgentFactory = Callable[[Question], Askable]
 
 
 def live_factory(
@@ -726,7 +972,22 @@ def replay_factory(
     return factory
 
 
-def run_question(question: Question, agent: Agent) -> Result:
+def remote_factory(url: str, *, send: Sender | None = None) -> AgentFactory:
+    """One hosted service, asked every question over a signed HTTPS call.
+
+    Built once and shared, because there is nothing per question to carry: the
+    service holds no state between calls either, which is the same property
+    the live agent has and the replay model does not.
+    """
+    remote = RemoteAgent(url, send=send)
+
+    def factory(question: Question) -> Askable:
+        return remote
+
+    return factory
+
+
+def run_question(question: Question, agent: Askable) -> Result:
     """Ask one question and score what came back.
 
     A failure inside the loop is scored as a failed question rather than
@@ -757,14 +1018,18 @@ def run_evals(
     prompt_override: Path | None = None,
     fake: Path | None = None,
     gate_name: str = GATE_OFF,
+    remote: bool = False,
 ) -> Report:
     """Every question, in file order, with one report at the end."""
     results: list[Result] = []
     model = ""
     for question in golden.questions:
         agent = agent_factory(question)
-        model = agent.model_name
         result = run_question(question, agent)
+        # Read after the question rather than before it: a `RemoteAgent` does
+        # not know which model answered until one has, and every local agent's
+        # name is the same before and after.
+        model = agent.model_name
         logger.info(
             "question scored",
             extra={
@@ -777,19 +1042,22 @@ def run_evals(
         results.append(result)
     # The prompt as it was rendered for this run, override included, hashed so
     # two runs can be told apart by what the model was told rather than by a
-    # commit that may have changed nothing the agent reads.
-    rendered = system_prompt(with_card_tool=card_index is not None)
+    # commit that may have changed nothing the agent reads. Empty on a remote
+    # run: the prompt that answered was the deployed image's, and hashing this
+    # checkout's would be a number that looks like evidence and is not.
+    rendered = "" if remote else system_prompt(with_card_tool=card_index is not None)
     return Report(
         golden=golden,
         results=tuple(results),
         model=model,
-        prompt_sha256=hashlib.sha256(rendered.encode("utf-8")).hexdigest(),
+        prompt_sha256="" if remote else hashlib.sha256(rendered.encode("utf-8")).hexdigest(),
         prompt_override=str(prompt_override) if prompt_override else None,
         fake=str(fake) if fake else None,
-        warehouse=str(warehouse),
+        warehouse=REMOTE_WAREHOUSE if remote else str(warehouse),
         card_index=str(card_index) if card_index else None,
         commit=git_commit(),
         gate_name=gate_name,
+        remote=remote,
     )
 
 
@@ -963,6 +1231,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"replay recorded turns instead of calling a provider ({TRANSCRIPT_PATH.name})",
     )
     parser.add_argument(
+        "--remote",
+        default=None,
+        metavar="URL",
+        help="score the deployed service instead of an agent built here: every question "
+        f"goes to POST <url>{REMOTE_PATH}, signed with SigV4 from the credentials already "
+        "in the environment",
+    )
+    parser.add_argument(
         "--prompt-override",
         type=Path,
         default=None,
@@ -989,6 +1265,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     configure_logging(STAGE)
 
+    remote = args.remote is not None
+    # Three flags that are about an agent built here, and `--remote` says the
+    # agent was built somewhere else. Refusing rather than ignoring them: a
+    # run that silently dropped `--prompt-override` would report a score for
+    # an experiment that never happened.
+    for name, value in (
+        ("--fake", args.fake),
+        ("--prompt-override", args.prompt_override),
+        ("--model", args.model),
+    ):
+        if remote and value is not None:
+            sys.stderr.write(f"{parser.prog}: {name} and --remote are two different runs\n")
+            return 2
+
     if args.prompt_override is not None:
         if not args.prompt_override.is_file():
             sys.stderr.write(f"{parser.prog}: no prompt file at {args.prompt_override}\n")
@@ -1002,7 +1292,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.card_index is not None and card_index is None:
         sys.stderr.write(f"{parser.prog}: no card index directory at {args.card_index}\n")
         return 2
-    if not args.warehouse.is_file():
+    # A remote run reads no warehouse and loads no index: the service has its
+    # own copy of both, which is the thing being measured.
+    if not remote and not args.warehouse.is_file():
         sys.stderr.write(
             f"{parser.prog}: no warehouse at {args.warehouse}. "
             "Build the fixture marts first; docs/evals.md has the three commands.\n"
@@ -1013,9 +1305,13 @@ def main(argv: list[str] | None = None) -> int:
         golden = load_golden(args.golden)
         # Built once for the whole run rather than per agent, so a run with the
         # flag set to something unreadable fails before the first question and
-        # so the cost of the run is the cost of one configured gate.
-        gate = gate_from_env()
-        if args.fake is not None:
+        # so the cost of the run is the cost of one configured gate. A remote
+        # run builds none: the gate that matters is the deployed function's,
+        # and its verdicts arrive on the response.
+        gate = None if remote else gate_from_env()
+        if remote:
+            factory = remote_factory(args.remote)
+        elif args.fake is not None:
             factory = replay_factory(
                 load_transcript(args.fake),
                 warehouse=args.warehouse,
@@ -1048,7 +1344,8 @@ def main(argv: list[str] | None = None) -> int:
             card_index=card_index,
             prompt_override=args.prompt_override,
             fake=args.fake,
-            gate_name=gate.name,
+            gate_name=REMOTE_MODEL if gate is None else gate.name,
+            remote=remote,
         )
         metrics.rows_in = report.total
         metrics.rows_out = report.passed

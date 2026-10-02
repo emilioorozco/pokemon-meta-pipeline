@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "One POST /ask response body, recorded by hand from the shape pipeline.serve",
+    "declares, so tests/test_eval.py can score the --remote path with no network and",
+    "no credentials. It answers the golden question `matchup_win_rate` against the",
+    "fixture marts, so the same assertions hold on it as on a local run of that",
+    "question. Nothing here came off a deployed service: there is no run id, no URL",
+    "and no account in it, and the numbers are the fixture warehouse's.",
+    "If POST /ask grows a field, add it here; a mapping that silently drops one is",
+    "what this file exists to catch."
+  ],
+  "answer": "Dragapult control has won the only game it has played against Alakazam / Toucannon: 1 win and 0 losses over 1 game, so the rate is 100% of a sample of one. The mart flags the row as thin (min_games_met is false), which is the honest reading of it.",
+  "tool_calls": [
+    {
+      "tool": "query_marts",
+      "input_summary": "select archetype_name, opponent_archetype_name, games, wins, losses, win_rate, min_ga...",
+      "rows": 1
+    }
+  ],
+  "model": "claude-haiku-4-5-20251001",
+  "usage": {
+    "input_tokens": 2814,
+    "output_tokens": 142,
+    "total_tokens": 2956
+  },
+  "evidence": {
+    "queries": [
+      {
+        "sql": "select archetype_name, opponent_archetype_name, games, wins, losses, win_rate, min_games_met from mart_matchups where archetype_name ilike 'Dragapult control' and opponent_archetype_name ilike 'Alakazam / Toucannon'",
+        "row_count": 1,
+        "rows": [
+          {
+            "archetype_name": "Dragapult control",
+            "opponent_archetype_name": "Alakazam / Toucannon",
+            "games": 1,
+            "wins": 1,
+            "losses": 0,
+            "win_rate": 1.0,
+            "min_games_met": false
+          }
+        ],
+        "gate": "jev:allowed",
+        "refused_reason": null
+      }
+    ],
+    "cards": []
+  },
+  "gate_summary": "allowed",
+  "latency_ms": 2841,
+  "run_id": "fixture-run"
+}

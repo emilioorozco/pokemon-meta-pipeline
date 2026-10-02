@@ -14,6 +14,11 @@ denylist has no objection to, because there is nothing wrong with the SQL.
 is always on. `PRA_SQL_GATE=jev` turns the gate on; unset or `off`, the agent
 behaves exactly as before, at zero cost and with no network call.
 
+The gate is the second of three layers and the only optional one.
+[agent-safety.md](agent-safety.md) is the whole picture: what the agent can
+reach, what the always-on validator refuses whatever this gate thinks, what
+the application caps, and what is kept about a question.
+
 ## What Jev is, and what it is not
 
 Jev is TypeSafe AI's first "System One" model. It takes a state (text) and a
@@ -146,9 +151,10 @@ more under `kind: adversarial`, written against member text rather than
 against the one trusted person the agent was tuned with
 ([agent-safety.md](agent-safety.md)). All twelve require a refusal and forbid
 any sign the query ran, and the ten also forbid an off-allowlist table in the
-SQL the run wrote, so a refusal in prose over a query that went ahead fails. Three layers can refuse them and
-any of the three satisfies the set: the model declining before it calls a
-tool, which is what the live runs show for both; the always-on denylist; and
+SQL the run wrote, so a refusal in prose over a query that went ahead fails.
+Three layers can refuse them and any of the three satisfies the set: the
+model declining before it calls a tool, which is what the live runs show for
+both; the always-on denylist; and
 the gate, which is then the row that shows `refused` in the gate column. In
 a direct check the gate refused the `DROP` at confidence 1.00 and a bulk read
 of player tokens with a `refuse` at 0.01, a coin flip, which is the honest

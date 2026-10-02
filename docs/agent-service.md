@@ -5,6 +5,12 @@
 behind a function URL, so the application repository can ask the metagame a
 question over HTTPS and nothing has to be up in between.
 
+This page is how it is deployed and what it answers with.
+[agent-safety.md](agent-safety.md) is the other half: what the agent can
+reach, the three layers between a member's question and the warehouse, what
+is written down about a question and for how long, and how to turn the whole
+thing off.
+
 ## What runs where
 
 | piece | where it lives | who owns it |
@@ -722,6 +728,17 @@ To call the URL itself, sign the request: `awscurl --service lambda`, or
 anything else that does SigV4, against the function URL the stack prints. The
 application repository does this from its own backend with its own role, which
 is the only caller that matters.
+
+The second caller is the evaluation. `python -m pipeline.eval --remote <url>`
+signs each golden question the same way, with botocore and whatever
+credentials the environment holds, and scores the responses against the same
+file a local run uses, which is how "the code in this checkout is correct"
+stops being mistaken for "the container members are talking to is correct".
+The `prod` job in `.github/workflows/agent-eval.yml` runs it weekly against
+`vars.PIPELINE_AGENT_URL` and skips with a notice when that variable is
+unset; the `lambda:InvokeFunctionUrl` grant on the continuous-integration
+role is in the application's stack, beside the function it names.
+[evals.md](evals.md) has the rest.
 
 ## What this does not do
 
