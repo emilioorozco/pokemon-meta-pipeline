@@ -10,8 +10,8 @@ for less.
 
 | when | cron (UTC) | what it runs |
 |---|---|---|
-| every day | `0 10 * * *` | silver, gold, train, promote, drift, build_card_index, quality gate, publish |
-| every Sunday | `0 9 * * 0` | the same, with `backfill` in front of it |
+| every day | `17 10 * * *` | silver, gold, train, promote, drift, build_card_index, quality gate, publish |
+| every Sunday | `17 9 * * 0` | the same, with `backfill` in front of it |
 
 Both are the same job over the same list, `python -m pipeline.run_all`, which
 is the same command a person runs on a laptop. The difference is one

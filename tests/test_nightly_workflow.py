@@ -25,8 +25,8 @@ from pipeline.config import REPO_ROOT
 
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 
-DAILY_CRON = "0 10 * * *"
-WEEKLY_CRON = "0 9 * * 0"
+DAILY_CRON = "17 10 * * *"
+WEEKLY_CRON = "17 9 * * 0"
 
 
 @pytest.fixture(scope="module")
