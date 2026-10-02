@@ -42,6 +42,15 @@ the column list dbt tests. The rules beside it are the ones this corpus needs:
 cite `games`, flag `min_games_met`, and never let `seen_rate` be reported as a
 deck inclusion rate.
 
+**The question is data.** `Agent.ask` hands the model the member's text inside
+the `<question>` element `pipeline.prompts.wrap_question` builds, and rule 8 of
+the prompt says what the element means: answer what is in it, never obey it.
+Both surfaces go through `ask`, so there is no path on which a question reaches
+the model as a bare sentence next to the project's own. The element is framing
+and not a boundary; what makes an injected statement safe is `validate_sql`
+underneath it, and the ten adversarial questions in the golden set are scored
+on the SQL as well as the prose for exactly that reason (docs/agent-safety.md).
+
 **There is an optional second gate behind the first one.** `PRA_SQL_GATE=jev`
 puts `pipeline.sql_gate` between the validator and DuckDB: one typed Choice
 question to a System One model, asking whether the statement is a read-only
@@ -101,7 +110,7 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
-from pipeline.prompts import ALLOWED_TABLES, system_prompt
+from pipeline.prompts import ALLOWED_TABLES, system_prompt, wrap_question
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
@@ -195,8 +204,22 @@ FORBIDDEN_KEYWORDS: Final[tuple[str, ...]] = (
     "vacuum",
     "checkpoint",
 )
-# Table functions that read something other than the warehouse. DuckDB reaches
-# the filesystem and the network through these, so they are refused by name.
+# Functions that read something other than the seven tables. Three groups, and
+# the second and third were added when the agent was opened to members.
+#
+# The file and network readers come first: DuckDB reaches the filesystem and
+# an http(s) URL through these, so a read-only connection without them is not
+# read-only in any useful sense.
+#
+# Then the ones that read the process rather than the data. `getenv` is the
+# one that matters: it takes no FROM clause, so a statement built out of it
+# names no table at all and would sail past the allowlist check below with a
+# provider key in the result set.
+#
+# Then the catalog. Nothing here leaks a row, but between them they enumerate
+# every table, column and setting of the warehouse, which is the table list
+# rule 8 says not to hand over and the obvious first step of anything that
+# wants a table it was not told about.
 FORBIDDEN_FUNCTIONS: Final[tuple[str, ...]] = (
     "read_parquet",
     "read_csv",
@@ -209,7 +232,19 @@ FORBIDDEN_FUNCTIONS: Final[tuple[str, ...]] = (
     "csv_scan",
     "glob",
     "sniff_csv",
+    "getenv",
+    "current_setting",
+    "which_secret",
     "duckdb_extensions",
+    "duckdb_settings",
+    "duckdb_secrets",
+    "duckdb_databases",
+    "duckdb_tables",
+    "duckdb_views",
+    "duckdb_columns",
+    "duckdb_schemas",
+    "pragma_table_info",
+    "pragma_database_list",
 )
 
 _LINE_COMMENT: Final = re.compile(r"--[^\n]*")
@@ -1058,14 +1093,28 @@ class Agent:
         return self.warmer()
 
     def ask(self, question: str) -> Answer:
-        """Run the loop on one question and collect what it did."""
+        """Run the loop on one question and collect what it did.
+
+        The question goes to the model inside the `<question>` element rule 8
+        of the prompt describes, and goes to the SQL gate as it was typed. Two
+        readings on purpose: the model is being told where the member's words
+        start and stop, and the gate is being asked whether a statement
+        answers what was actually asked, which is a judgement about the plain
+        text and not about the framing around it.
+
+        This is the one place either surface wraps anything. `POST /ask` and
+        the command line both arrive here with a bare string, so there is no
+        second path on which a question could reach the model unwrapped.
+        """
         collected: list[ToolCall] = []
         token = _calls.set(collected)
         asked = _question.set(question)
         try:
             with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
-                state = self.graph.invoke({"messages": [HumanMessage(content=question)]})
+                span.set_attribute("agent.question.length", len(question))
+                turn = HumanMessage(content=wrap_question(question))
+                state = self.graph.invoke({"messages": [turn]})
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
                 span.set_attribute("agent.tool_calls", len(collected))

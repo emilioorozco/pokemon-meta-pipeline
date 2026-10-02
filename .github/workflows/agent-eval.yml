@@ -14,6 +14,25 @@
 # The marts are built here rather than downloaded: bronze, silver and gold over
 # the committed fixtures, which is why the job installs Java. Nothing it reads
 # or writes leaves the runner.
+#
+# Two jobs, and they measure different things. `golden` builds an agent on the
+# runner out of this commit and scores it: that is the code. `prod` sends the
+# same questions to the deployed function over its URL and scores the
+# responses: that is the thing members are talking to, which is a container
+# built from some earlier commit, holding its own warehouse copy, its own gate
+# settings and its own provider key. A green `golden` and a red `prod` is a
+# deploy that has not landed, and until this job existed it looked like
+# nothing at all.
+#
+# What `prod` costs. Each question is one agent loop on Haiku against the real
+# warehouse, which is about a cent, so a full set is roughly twenty-two cents
+# and the weekly schedule is about a dollar a month. The ten adversarial
+# questions are the cheap half, since a refusal is usually one model call with
+# no tool behind it. The SQL gate on the function adds a fraction of a cent
+# over the whole run (docs/sql-gate.md). That is the whole bill: the job
+# installs nothing on AWS, writes nothing, and the only call it makes is the
+# one `lambda:InvokeFunctionUrl` grant the application's stack gives the CI
+# role.
 
 name: Agent eval
 
@@ -130,5 +149,99 @@ jobs:
         with:
           name: agent-eval-mlruns
           path: ${{ runner.temp }}/eval/mlruns
+          if-no-files-found: warn
+          retention-days: 30
+
+  prod:
+    name: the deployed agent
+    runs-on: ubuntu-latest
+    # After the local run rather than instead of it, and `always()` because
+    # the interesting case is exactly the one where the two disagree: a
+    # `golden` that failed on this commit says nothing about what is
+    # deployed, and skipping the deployed check then would hide it.
+    needs: golden
+    if: always()
+    environment: prod
+    # Only `prod` trades an OpenID Connect token for a role; `golden` touches
+    # no account and is left with the workflow's read-only default.
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same gate `nightly.yml` opens with, for the same reason: a fork, a
+      # fresh clone and an environment nobody has configured yet are the
+      # normal state of this repository, and none of the three should see a
+      # red run for not having an AWS account.
+      - name: Check the agent variables are set
+        id: configured
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_CI_ROLE_ARN: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          PIPELINE_AGENT_URL: ${{ vars.PIPELINE_AGENT_URL }}
+        run: |
+          missing=
+          for name in AWS_REGION PIPELINE_CI_ROLE_ARN PIPELINE_AGENT_URL; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice title=Deployed agent eval skipped::unset environment variable(s):$missing. Set them on the prod environment to score the deployed service; the golden job covers this commit either way."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install uv
+        if: steps.configured.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # No Java, no marts, no card index: the warehouse and the index that
+      # answer are the function's own, which is the whole point of the job.
+      - name: Install dependencies
+        if: steps.configured.outputs.ready == 'true'
+        run: uv sync --locked --group dev
+
+      - name: Assume the CI role
+        if: steps.configured.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PIPELINE_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # `--remote` signs each call with these credentials and scores the
+      # responses against the same golden file the job above used, so the two
+      # rows of the same question are comparable. `--no-mlflow` because there
+      # is no tracking store on this runner and a `file:` one would be an
+      # MLflow directory nobody reads; the JSON report is the artifact.
+      - name: Score the deployed agent
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_AGENT_URL: ${{ vars.PIPELINE_AGENT_URL }}
+          PRA_LOG_FORMAT: json
+        run: |
+          set -eu -o pipefail
+          mkdir -p artifacts
+          uv run python -m pipeline.eval \
+            --remote "$PIPELINE_AGENT_URL" \
+            --golden evals/golden.yaml \
+            --no-mlflow --json | tee artifacts/remote_eval_report.json
+
+      # Whether it passed or failed, because the failing one is the one worth
+      # reading: the report names the missing fact and the forbidden pattern
+      # per question, and on this job it also carries the statement the
+      # deployed agent wrote.
+      - name: Keep the report
+        if: always() && steps.configured.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-prod-${{ github.run_id }}
+          path: artifacts/
           if-no-files-found: warn
           retention-days: 30

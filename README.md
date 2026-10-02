@@ -215,8 +215,12 @@ cold start on the deployed function (`docs/agent-service.md`). The
 system prompt is generated from `dbt/models/marts/schema.yml` at import, so it
 cannot drift from the models, and the rules in it are the ones this corpus
 needs: cite the `games` count, say when `min_games_met` is false, and never
-report `seen_rate` as a deck inclusion rate. `POST /ask` is the same loop on the
-serving application, returning the answer next to every tool call it made.
+report `seen_rate` as a deck inclusion rate. A member's question reaches the
+model inside a `<question>` element that the prompt says is a thing to answer
+and never a thing to obey, and ten adversarial questions in the golden set
+measure that it holds (`docs/agent-safety.md`). `POST /ask` is the same loop
+on the serving application, returning the answer next to every tool call it
+made.
 
 ```bash
 uv run python scripts/fetch_card_text.py                    # card text from TCGdex
