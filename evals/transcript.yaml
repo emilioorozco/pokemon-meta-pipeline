@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 3
+version: 4
 
 runs:
   matchup_win_rate:
@@ -176,6 +176,72 @@ runs:
       Dusknoir, so there is no win rate to report. Both archetypes are in the
       corpus and the pairing is not; I will not estimate a number the tables do
       not hold.
+
+  # The four shape-based questions. Their `require` entries are shapes rather
+  # than facts, so that the deployed service can be scored on them against its
+  # own warehouse, but a recorded run is still a run against this one: the
+  # answers below are the true answers for the ten fixture games, written the
+  # way the recorded answers above are, and they satisfy the shapes because a
+  # correct answer about any corpus does.
+
+  best_win_rate_shape:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, sum(wins) as wins, sum(games) as games,
+            sum(wins) * 1.0 / sum(games) as win_rate from
+            mart_archetype_weekly group by archetype_name order by win_rate
+            desc, games desc, archetype_name
+    answer: >-
+      Six archetypes share the top of this corpus at 100% (1.0): Dragapult /
+      Dusknoir and Dragapult control over 2 games each, and Crustle / Mega
+      Kangaskhan ex, Cynthia's Garchomp, Festival Lead and Mega Starmie ex /
+      Mega Froslass ex over 1 game each. Nothing here clears the project's
+      minimum sample, so those are records rather than rates and I would not
+      rank one above another on them.
+
+  busiest_archetype_shape:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, sum(games) as games from
+            mart_archetype_weekly group by archetype_name order by games desc,
+            archetype_name
+    answer: >-
+      Two archetypes tie for the most: Dragapult / Dusknoir and Dragapult
+      control, with 2 games each. Everything else in the warehouse has 1 game,
+      over a corpus of 10 games in all, so this is a count rather than a
+      ranking.
+
+  most_seen_cards_shape:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, card_name, games, games_with_card,
+            seen_rate from mart_cards_seen order by games_with_card desc,
+            seen_rate desc, card_name
+    answer: >-
+      The top of mart_cards_seen is a tie in this corpus: Basic Fire Energy,
+      Crispin, Crushing Hammer, Dreepy, Dusclops and several more were each
+      observed in 2 of the 2 games of the Dragapult archetype they belong to,
+      a seen_rate of 1.0. Every one of those is an observation over 2 games: a
+      stock export shows only what was played, so each is a lower bound rather
+      than a share of decks.
+
+  card_text_shape:
+    turns:
+      - tool: lookup_cards
+        args:
+          query: Night Stretcher
+          k: 2
+    answer: >-
+      Night Stretcher is an Item card. You may play any number of Item cards
+      during your turn, and this one puts a Pokemon or a Basic Energy card
+      from your discard pile into your hand. That is printed card text; it
+      says nothing about how often the card is played.
 
   # The two injection questions have no turns on purpose, and the reason is the
   # fake's one rule rather than a shortcut. A recorded turn is only replayed

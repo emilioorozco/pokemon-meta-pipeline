@@ -16,8 +16,9 @@
 # or writes leaves the runner.
 #
 # Two jobs, and they measure different things. `golden` builds an agent on the
-# runner out of this commit and scores it: that is the code. `prod` sends the
-# same questions to the deployed function over its URL and scores the
+# runner out of this commit and scores it against the fixture marts: that is
+# the code. `prod` sends the questions that are true of any warehouse to the
+# deployed function over its URL and scores the
 # responses: that is the thing members are talking to, which is a container
 # built from some earlier commit, holding its own warehouse copy, its own gate
 # settings and its own provider key. A green `golden` and a red `prod` is a
@@ -25,10 +26,12 @@
 # nothing at all.
 #
 # What `prod` costs. Each question is one agent loop on Haiku against the real
-# warehouse, which is about a cent, so a full set is roughly twenty-two cents
-# and the weekly schedule is about a dollar a month. The ten adversarial
-# questions are the cheap half, since a refusal is usually one model call with
-# no tool behind it. The SQL gate on the function adds a fraction of a cent
+# warehouse, which is about a cent, so the fourteen it scores are roughly
+# fourteen cents and the weekly schedule is well under a dollar a month. The
+# ten adversarial questions are the cheap half, since a refusal is usually one
+# model call with no tool behind it. The twelve fixture-fact questions are not
+# sent at all, which is the other reason the bill went down rather than up
+# when the set grew. The SQL gate on the function adds a fraction of a cent
 # over the whole run (docs/sql-gate.md). That is the whole bill: the job
 # installs nothing on AWS, writes nothing, and the only call it makes is the
 # one `lambda:InvokeFunctionUrl` grant the application's stack gives the CI
@@ -216,9 +219,14 @@ jobs:
 
       # `--remote` signs each call with these credentials and scores the
       # responses against the same golden file the job above used, so the two
-      # rows of the same question are comparable. `--no-mlflow` because there
-      # is no tracking store on this runner and a `file:` one would be an
-      # MLflow directory nobody reads; the JSON report is the artifact.
+      # rows of the same question are comparable. It scores the questions
+      # marked `warehouse: any`, which is the ten adversarial ones and the
+      # four shape-based ones, and reports the twelve fixture-fact questions
+      # as skipped: those assert "1 game" and "2026-09-14" about the ten
+      # committed fixtures, and the deployed service answers from the real
+      # warehouse. `--no-mlflow` because there is no tracking store on this
+      # runner and a `file:` one would be an MLflow directory nobody reads;
+      # the JSON report is the artifact.
       - name: Score the deployed agent
         if: steps.configured.outputs.ready == 'true'
         env:
@@ -232,6 +240,35 @@ jobs:
             --remote "$PIPELINE_AGENT_URL" \
             --golden evals/golden.yaml \
             --no-mlflow --json | tee artifacts/remote_eval_report.json
+
+      # The table in the job summary, so a red week is one page rather than a
+      # download. `jq` rather than a second Python run: the report is already
+      # JSON on disk, the step runs whether the scoring passed or failed, and
+      # rendering it here cannot change the exit code that matters.
+      - name: Put the table in the job summary
+        if: always() && steps.configured.outputs.ready == 'true'
+        run: |
+          set -eu -o pipefail
+          report=artifacts/remote_eval_report.json
+          if [ ! -s "$report" ]; then
+            echo "The deployed agent produced no report." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            jq -r '"## The deployed agent: \(.passed)/\(.total) scored, \(.skipped | length) skipped"' "$report"
+            echo
+            echo "| question | kind | result | failed | tools called | gate |"
+            echo "| --- | --- | --- | --- | --- | --- |"
+            jq -r '.questions[]
+                   | "| \(.id) | \(.kind) | \(if .passed then "pass" else "**FAIL**" end) "
+                     + "| \(if (.failed_checks | length) > 0 then (.failed_checks | join(",")) else "-" end) "
+                     + "| \(if (.tools_called | length) > 0 then (.tools_called | join(",")) else "-" end) "
+                     + "| \(.gate) |"' "$report"
+            echo
+            jq -r 'if (.skipped | length) > 0
+                   then "\(.skipped | length) skipped, \(.skipped_reason): \(.skipped | join(", "))"
+                   else "Nothing was skipped." end' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Whether it passed or failed, because the failing one is the one worth
       # reading: the report names the missing fact and the forbidden pattern

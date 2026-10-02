@@ -11,14 +11,15 @@ a golden file with a duplicate id or an unknown tool in it is refused at load
 rather than silently scoring nothing.
 
 The committed set is checked here too, because `evals/golden.yaml` is data and
-data rots: twenty-two questions in two kinds, unique ids, every tool name real,
+data rots: twenty-six questions in two kinds, unique ids, every tool name real,
 every question answerable, every question forbidding the player-token shape,
-every adversarial question forbidding something about the run as well, and a
-recorded run in `evals/transcript.yaml` for each one.
+every adversarial question forbidding something about the run as well, every
+question saying which warehouse it is true of, and a recorded run in
+`evals/transcript.yaml` for each one.
 
 The `dbt` half runs the loop for real over the fixture warehouse, and it is
-the one that would catch a harness that scores nothing: twenty-two out of
-twenty-two with the recorded turns replayed through the real tools, fewer when
+the one that would catch a harness that scores nothing: twenty-six out of
+twenty-six with the recorded turns replayed through the real tools, fewer when
 the answers stop carrying the facts, and fewer when the system prompt is
 replaced with the deliberately broken one. It is also where the optional SQL
 gate is driven end to end, with `FakeGate` in the provider's place: the same set, once with the gate
@@ -167,13 +168,13 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_twelve_golden_and_ten_adversarial(golden: evals.Golden) -> None:
-    assert len(golden.questions) == 22
+def test_the_golden_set_is_sixteen_golden_and_ten_adversarial(golden: evals.Golden) -> None:
+    assert len(golden.questions) == 26
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 12
+    assert kinds.count(evals.KIND_GOLDEN) == 16
     assert kinds.count(evals.KIND_ADVERSARIAL) == 10
 
 
@@ -203,6 +204,32 @@ def test_every_question_is_answerable_and_names_only_real_tools(golden: evals.Go
         assert entry.id.replace("_", "").isalnum(), entry.id
         for tool in entry.expect_tools:
             assert tool in evals.VALID_TOOLS, (entry.id, tool)
+
+
+def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -> None:
+    """The field that keeps a fixture fact from being scored against production.
+
+    Twelve golden questions name a number, a date or an archetype out of the
+    ten fixture games and are `fixture`; four assert shapes instead and are
+    `any`; all ten adversarial ones are `any`, because a refusal does not
+    depend on what is in the warehouse. The last loop is the one that would
+    catch the mistake this field exists for: a question marked `any` whose
+    `require` entries are fixture facts in disguise.
+    """
+    by_warehouse = {
+        name: [entry.id for entry in golden.questions if entry.warehouse == name]
+        for name in evals.VALID_WAREHOUSES
+    }
+    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 12
+    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 14
+    for entry in golden.questions:
+        if entry.kind == evals.KIND_ADVERSARIAL:
+            assert entry.any_warehouse, entry.id
+        if not entry.any_warehouse:
+            continue
+        for pattern in (*entry.require, *entry.forbid):
+            assert "2026-" not in pattern, (entry.id, pattern)
+            assert "Dragapult" not in pattern, (entry.id, pattern)
 
 
 def test_every_question_forbids_the_player_token_shape(golden: evals.Golden) -> None:
@@ -266,6 +293,11 @@ def test_a_well_formed_file_loads(tmp_path: Path) -> None:
     # A question that does not say what kind it is is a golden one, so the
     # eleven questions written before the field existed still load.
     assert golden.questions[0].kind == evals.KIND_GOLDEN
+    # And one that does not say which warehouse it is true of is a fixture
+    # question, which is the stricter of the two and the one a remote run
+    # leaves alone.
+    assert golden.questions[0].warehouse == evals.WAREHOUSE_FIXTURE
+    assert golden.questions[0].any_warehouse is False
 
 
 @pytest.mark.parametrize(
@@ -288,6 +320,10 @@ def test_a_well_formed_file_loads(tmp_path: Path) -> None:
         (
             "  - id: only\n    question: q\n    require: [x]\n    kind: adversarial\n",
             "no `forbid` grades nothing",
+        ),
+        (
+            "  - id: only\n    question: q\n    require: [x]\n    warehouse: prod\n",
+            "is not a warehouse",
         ),
     ],
 )
@@ -572,25 +608,24 @@ def test_a_response_missing_everything_optional_is_still_an_answer() -> None:
     assert answer.gate_summary == "off"
 
 
-def test_the_remote_mode_scores_the_whole_set_from_recorded_responses(
-    recorded_ask: dict[str, object], golden: evals.Golden
+def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
+    golden: evals.Golden,
 ) -> None:
     """The runner end to end over `--remote`, with a sender that is a dictionary.
 
-    Only `matchup_win_rate` gets the recorded answer; every other question
-    gets one blanket refusal. The ten adversarial ones pass on it, and so do
-    the two older injection questions, which are the two golden questions a
-    refusal is the right answer to. The nine that need a number fail. That
-    asymmetry is the assertion: a harness that scored a remote run leniently
-    would show more than those twelve.
+    Every question gets one blanket refusal, which is the right answer to the
+    ten adversarial ones and the wrong answer to the four shape-based ones, so
+    the score is 10 out of 14. The assertion that matters is the other half:
+    the twelve fixture questions are never sent at all, and the report says
+    which twelve and why rather than counting them as passes or as failures.
+    A harness that sent them would be the one that produced the four red rows
+    this field exists to stop.
     """
     asked: list[str] = []
 
     def send(url: str, body: dict[str, object]) -> dict[str, object]:
         asked.append(str(body["question"]))
         assert url.endswith("/ask")
-        if "Alakazam" in str(body["question"]):
-            return dict(recorded_ask)
         return {
             "answer": (
                 "I will not do that. Everything I can do is one read-only SELECT over a few "
@@ -606,20 +641,51 @@ def test_the_remote_mode_scores_the_whole_set_from_recorded_responses(
         warehouse=Path("unused"),
         remote=True,
     )
-    assert len(asked) == 22
+    assert len(asked) == 14
+    assert report.total == 14
     assert report.model == "m"
     assert report.remote is True
     # Nothing local answered, so nothing local is reported as having.
     assert report.prompt_sha256 == ""
     assert report.warehouse == evals.REMOTE_WAREHOUSE
     assert report.by_kind()[evals.KIND_ADVERSARIAL] == (10, 10)
-    assert report.by_kind()[evals.KIND_GOLDEN] == (3, 12)
-    assert {result.question.id for result in report.results if result.passed} >= {
-        "matchup_win_rate",
-        "injection_destructive",
-        "injection_out_of_schema",
+    assert report.by_kind()[evals.KIND_GOLDEN] == (0, 4)
+    assert set(report.skipped) == {
+        entry.id for entry in golden.questions if not entry.any_warehouse
     }
-    assert json.loads(json.dumps(report.as_dict()))["remote"] is True
+    assert len(report.skipped) == 12
+    assert "fixture warehouse" in report.skipped_reason
+    assert "weekly_record" in evals.render(report)
+    assert json.loads(json.dumps(report.as_dict()))["skipped"] == list(report.skipped)
+
+
+def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> None:
+    """The other half of the same claim: nothing about a local run changed."""
+
+    from pipeline.agent import Answer
+
+    class Silent:
+        model_name = "quiet"
+
+        def ask(self, question: str) -> Answer:
+            return Answer(answer="", model="quiet")
+
+    report = evals.run_evals(
+        golden,
+        lambda entry: Silent(),
+        warehouse=Path("unused"),
+    )
+    assert report.total == len(golden.questions) == 26
+    assert report.skipped == () and report.skipped_reason == ""
+
+
+def test_a_remote_run_with_nothing_it_could_score_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Otherwise `passed == total` holds at zero and the job goes green on nothing."""
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION)
+    assert evals.main(["--remote", "https://example.com", "--golden", str(path)]) == 2
+    assert "would score nothing" in capsys.readouterr().err
 
 
 def test_a_service_that_will_not_answer_costs_one_question_and_not_the_run(
@@ -665,7 +731,7 @@ def hashed_index(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_the_whole_set_passes_against_the_fixture_marts(
     gold_from_fixtures: Path, hashed_index: Path, golden: evals.Golden
 ) -> None:
-    """Twenty-two out of twenty-two, with every query really run against dbt's warehouse.
+    """Twenty-six out of twenty-six, with every query really run against dbt's warehouse.
 
     The recorded turns go through the real graph, the real SQL gate and real
     DuckDB, so this fails if a mart is renamed, if a number in the fixture
@@ -683,8 +749,8 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 22, evals.render(report)
-    assert report.by_kind() == {evals.KIND_GOLDEN: (12, 12), evals.KIND_ADVERSARIAL: (10, 10)}
+    assert report.passed == report.total == 26, evals.render(report)
+    assert report.by_kind() == {evals.KIND_GOLDEN: (16, 16), evals.KIND_ADVERSARIAL: (10, 10)}
     assert report.model == "replay"
     # Both tools were really used. The two injection questions and the ten
     # adversarial ones call nothing, on purpose: a model that has been told
@@ -750,7 +816,7 @@ def test_the_broken_prompt_drops_the_score(
             card_index=index,
             prompt_override=evals.BROKEN_PROMPT_PATH,
         )
-    assert report.passed < 22
+    assert report.passed < 26
     assert report.prompt_sha256 != _good_prompt_sha()
     assert report.prompt_override is not None
 
@@ -772,8 +838,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "22/22 passed" in printed
-    assert "12/12 golden, 10/10 adversarial" in printed
+    assert "26/26 passed" in printed
+    assert "16/16 golden, 10/10 adversarial" in printed
     assert "matchup_win_rate" in printed
 
 
@@ -794,7 +860,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 22
+    assert payload["total"] == 26
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed

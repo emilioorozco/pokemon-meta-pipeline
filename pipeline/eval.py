@@ -4,13 +4,24 @@
     op run --env-file=.env.op -- uv run python -m pipeline.eval
     uv run python -m pipeline.eval --remote "$PIPELINE_AGENT_URL"
 
-Twenty-two questions in `evals/golden.yaml` in two kinds, each with the tools
-its answer has to call and the facts its answer has to contain. Twelve are
-`golden`, which the fixture marts answer; ten are `adversarial`, which nobody
-should get an answer to. The command runs them through the real `Agent`,
-scores three checks per question, prints a table and exits non-zero when
-anything failed. The score of a run is logged to MLflow, so a prompt change is
-tracked the way a model change is.
+Twenty-six questions in `evals/golden.yaml` in two kinds, each with the tools
+its answer has to call and the facts its answer has to contain. Sixteen are
+`golden`, which a warehouse with games in it answers; ten are `adversarial`,
+which nobody should get an answer to. The command runs them through the real
+`Agent`, scores three checks per question, prints a table and exits non-zero
+when anything failed. The score of a run is logged to MLflow, so a prompt
+change is tracked the way a model change is.
+
+**Which warehouse a question is true of.** Twelve of the sixteen golden
+questions assert facts of the ten-game fixture corpus: "1 game", "Dragapult /
+Dusknoir", "2026-09-14". Those are `warehouse: fixture`, the default, and they
+are the questions the replay and the local run are built around. The rest are
+`warehouse: any`: their `require` entries are shapes rather than facts, a
+percentage with a sample size beside it, an archetype-looking name next to a
+count, so they are as true of two hundred games as of ten. Every adversarial
+question is `any` too, because a refusal does not depend on what is in the
+warehouse. `--remote` scores the `any` questions and skips the rest, saying
+how many and why; every local mode scores all of them.
 
 **The gate is reported, not scored.** With `PRA_SQL_GATE=jev` the optional
 second gate in `pipeline.sql_gate` judges every statement the denylist let
@@ -50,9 +61,10 @@ what anyone can run on a clean checkout; it is not evidence about the model,
 and the transcript file says so at the top.
 
 **A third way, and it measures the deployment.** `--remote <function url>`
-sends each question to `POST <url>/ask` on the hosted service, signed with
-SigV4 from whatever credentials the environment already holds, and scores the
-response with the same `score` against the same file. Nothing is built here:
+sends each `warehouse: any` question to `POST <url>/ask` on the hosted service,
+signed with SigV4 from whatever credentials the environment already holds, and
+scores the response with the same `score` against the same file, reporting the
+fixture-only questions as skipped. Nothing is built here:
 the warehouse, the card index, the SQL gate, the provider key and the system
 prompt are all the deployed image's, which is the point. A green local run
 says the code in this checkout is correct and says nothing about the container
@@ -162,6 +174,27 @@ KIND_GOLDEN: Final = "golden"
 KIND_ADVERSARIAL: Final = "adversarial"
 VALID_KINDS: Final[tuple[str, ...]] = (KIND_GOLDEN, KIND_ADVERSARIAL)
 
+# Which warehouse a question's `require` entries are true of, and the field
+# that keeps a fixture fact from being scored against production. `fixture` is
+# the default and the stricter of the two: the question names a number, a date
+# or an archetype out of the ten-game corpus under `tests/fixtures/`, so it is
+# meaningful exactly there. `any` is a question whose assertions are shapes
+# rather than facts, true of any warehouse that holds games, which is what
+# makes it safe to put to the deployed service. The default is `fixture`
+# because the stricter one is the one a new question should have to opt out
+# of: a fixture fact scored against production is a red week that means
+# nothing, and the four hours of the first live `prod` run went on exactly
+# that.
+WAREHOUSE_FIXTURE: Final = "fixture"
+WAREHOUSE_ANY: Final = "any"
+VALID_WAREHOUSES: Final[tuple[str, ...]] = (WAREHOUSE_FIXTURE, WAREHOUSE_ANY)
+# Why a remote run has fewer rows than the file has questions. One sentence
+# rather than a count, because the count is beside it and the reason is the
+# part nobody can reconstruct from the table.
+SKIPPED_REASON: Final = (
+    "asserts facts of the fixture warehouse, which is not the warehouse that answered"
+)
+
 CHECK_TOOLS: Final = "tools"
 CHECK_REQUIRE: Final = "require"
 CHECK_FORBID: Final = "forbid"
@@ -202,6 +235,12 @@ class Question:
     forbid: tuple[str, ...] = ()
     notes: str = ""
     kind: str = KIND_GOLDEN
+    warehouse: str = WAREHOUSE_FIXTURE
+
+    @property
+    def any_warehouse(self) -> bool:
+        """Whether this question is true of a warehouse that is not the fixture one."""
+        return self.warehouse == WAREHOUSE_ANY
 
 
 @dataclass(frozen=True)
@@ -295,6 +334,11 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         kind = str(raw.get("kind", KIND_GOLDEN)).strip() or KIND_GOLDEN
         if kind not in VALID_KINDS:
             raise GoldenError(f"{where}: {kind!r} is not a kind ({', '.join(VALID_KINDS)})")
+        warehouse = str(raw.get("warehouse", WAREHOUSE_FIXTURE)).strip() or WAREHOUSE_FIXTURE
+        if warehouse not in VALID_WAREHOUSES:
+            raise GoldenError(
+                f"{where}: {warehouse!r} is not a warehouse ({', '.join(VALID_WAREHOUSES)})"
+            )
         forbid = _patterns(raw.get("forbid"), where=f"{where} forbid")
         # An adversarial question is scored on what the run did as well as on
         # what it said, and the only thing that catches "it refused in prose
@@ -312,6 +356,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 forbid=forbid,
                 notes=str(raw.get("notes", "")).strip(),
                 kind=kind,
+                warehouse=warehouse,
             )
         )
     return Golden(version=version, questions=tuple(questions), path=path)
@@ -488,9 +533,17 @@ class Report:
     # function URL is a piece of someone's infrastructure that this repository
     # has never written down (`scripts/check_history.sh`).
     remote: bool = False
+    # The questions this run did not put to the agent at all, by id, and the
+    # one sentence saying why. Reported rather than counted as failures and
+    # rather than left out silently: "14/14 passed" over a file of twenty-six
+    # questions is a number somebody will read as the whole set, and a run
+    # that skipped everything would otherwise be a perfect score.
+    skipped: tuple[str, ...] = ()
+    skipped_reason: str = ""
 
     @property
     def total(self) -> int:
+        """How many questions were scored, which on a remote run is not the file."""
         return len(self.results)
 
     @property
@@ -543,6 +596,8 @@ class Report:
             "git_commit": self.commit,
             "gate": self.gate_name,
             "remote": self.remote,
+            "skipped": list(self.skipped),
+            "skipped_reason": self.skipped_reason,
             "passed": self.passed,
             "total": self.total,
             "pass_rate": round(self.pass_rate, 4),
@@ -1020,10 +1075,24 @@ def run_evals(
     gate_name: str = GATE_OFF,
     remote: bool = False,
 ) -> Report:
-    """Every question, in file order, with one report at the end."""
+    """Every question this run can score, in file order, with one report at the end.
+
+    "Can score" is the whole of the filtering: a remote run is answered by the
+    deployed service's own warehouse, which holds the league's real games
+    rather than the ten fixture ones, so a question asserting "1 game" or
+    "2026-09-14" would fail there for being right about the wrong corpus.
+    Those are skipped by id and reported as skipped. Every local mode scores
+    the file as it stands, which is what keeps the replay and the weekly
+    `golden` job exactly as they were.
+    """
+    scorable = [not remote or question.any_warehouse for question in golden.questions]
+    scored = [question for question, keep in zip(golden.questions, scorable, strict=True) if keep]
+    skipped = tuple(
+        question.id for question, keep in zip(golden.questions, scorable, strict=True) if not keep
+    )
     results: list[Result] = []
     model = ""
-    for question in golden.questions:
+    for question in scored:
         agent = agent_factory(question)
         result = run_question(question, agent)
         # Read after the question rather than before it: a `RemoteAgent` does
@@ -1058,6 +1127,8 @@ def run_evals(
         commit=git_commit(),
         gate_name=gate_name,
         remote=remote,
+        skipped=skipped,
+        skipped_reason=SKIPPED_REASON if skipped else "",
     )
 
 
@@ -1099,6 +1170,8 @@ def render(report: Report) -> str:
         f"{passed}/{total} {kind}" for kind, (passed, total) in report.by_kind().items()
     )
     lines.append(f"{report.passed}/{report.total} passed ({split})")
+    if report.skipped:
+        lines.append(render_skipped(report))
     lines.append(render_gate_cost(report))
     for result in report.results:
         if result.passed:
@@ -1113,6 +1186,16 @@ def render(report: Report) -> str:
         for pattern in result.present_forbidden:
             lines.append(f"    forbidden: {pattern}")
     return "\n".join(lines)
+
+
+def render_skipped(report: Report) -> str:
+    """The one line that says what this run did not ask, and why.
+
+    With the ids on it rather than only the count, because the question a
+    reader has after "12 skipped" is which twelve, and twelve ids fit on a
+    line far more easily than they fit in anybody's memory of the file.
+    """
+    return f"{len(report.skipped)} skipped, {report.skipped_reason}: {', '.join(report.skipped)}"
 
 
 def render_gate_cost(report: Report) -> str:
@@ -1174,6 +1257,7 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
             {
                 "passed": float(report.passed),
                 "total": float(report.total),
+                "skipped": float(len(report.skipped)),
                 "pass_rate": report.pass_rate,
                 "gate_calls": float(report.gate_calls),
                 "gate_refusals": float(report.gate_refusals),
@@ -1234,9 +1318,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--remote",
         default=None,
         metavar="URL",
-        help="score the deployed service instead of an agent built here: every question "
-        f"goes to POST <url>{REMOTE_PATH}, signed with SigV4 from the credentials already "
-        "in the environment",
+        help="score the deployed service instead of an agent built here: every "
+        f"`warehouse: {WAREHOUSE_ANY}` question goes to POST <url>{REMOTE_PATH}, signed with "
+        "SigV4 from the credentials already in the environment, and the fixture-only "
+        "questions are reported as skipped",
     )
     parser.add_argument(
         "--prompt-override",
@@ -1303,6 +1388,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         golden = load_golden(args.golden)
+        # A remote run that would score nothing is a broken run and not a
+        # perfect one: with every question filtered out, `passed == total`
+        # holds at zero and the command would exit 0 having asked nothing.
+        if remote and not any(entry.any_warehouse for entry in golden.questions):
+            raise GoldenError(
+                f"{args.golden}: no question in this file is `warehouse: {WAREHOUSE_ANY}`, "
+                "so a remote run would score nothing"
+            )
         # Built once for the whole run rather than per agent, so a run with the
         # flag set to something unreadable fails before the first question and
         # so the cost of the run is the cost of one configured gate. A remote
@@ -1353,6 +1446,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics.extra = {
             "golden_version": golden.version,
             "pass_rate": report.pass_rate,
+            "skipped": list(report.skipped),
             "model": report.model,
             "prompt_sha256": report.prompt_sha256,
             "gate": report.gate_name,
@@ -1378,6 +1472,7 @@ def main(argv: list[str] | None = None) -> int:
                 "golden_version": golden.version,
                 "passed": report.passed,
                 "total": report.total,
+                "skipped": len(report.skipped),
                 "pass_rate": round(report.pass_rate, 4),
                 "model": report.model,
                 "gate": report.gate_name,
