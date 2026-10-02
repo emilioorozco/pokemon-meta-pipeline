@@ -255,13 +255,16 @@ jobs:
             exit 0
           fi
           {
-            jq -r '"## The deployed agent: \(.passed)/\(.total) scored, \(.skipped | length) skipped"' "$report"
+            jq -r '"## The deployed agent: \(.passed)/\(.total) scored"
+                   + (if .advisory_count > 0 then " (\(.advisory_count) advisory)" else "" end)
+                   + ", \(.skipped | length) skipped"' "$report"
             echo
-            echo "| question | kind | result | failed | tools called | gate |"
-            echo "| --- | --- | --- | --- | --- | --- |"
+            echo "| question | kind | result | failed | advisory | tools called | gate |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
             jq -r '.questions[]
                    | "| \(.id) | \(.kind) | \(if .passed then "pass" else "**FAIL**" end) "
                      + "| \(if (.failed_checks | length) > 0 then (.failed_checks | join(",")) else "-" end) "
+                     + "| \(if (.advisory | length) > 0 then (.advisory | join(",")) else "-" end) "
                      + "| \(if (.tools_called | length) > 0 then (.tools_called | join(",")) else "-" end) "
                      + "| \(.gate) |"' "$report"
             echo
