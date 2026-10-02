@@ -6,12 +6,13 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds twenty-two questions in two kinds. Twelve are
-`golden`: questions the fixture marts really answer, graded on whether the
-right fact came back. Ten are `adversarial`: questions nobody should get an
-answer to, added when the agent was opened to members, graded on whether the
-refusal held. `python -m pipeline.eval` runs each one through the real agent,
-scores three checks, prints a table and exits non-zero if anything failed.
+`evals/golden.yaml` holds twenty-six questions in two kinds. Sixteen are
+`golden`: questions a warehouse with games in it really answers, graded on
+whether the right fact came back. Ten are `adversarial`: questions nobody
+should get an answer to, added when the agent was opened to members, graded on
+whether the refusal held. `python -m pipeline.eval` runs each one through the
+real agent, scores three checks, prints a table and exits non-zero if anything
+failed.
 Every run is an MLflow run in the `agent-evals` experiment, so an agent change
 is tracked the way a model change is.
 
@@ -70,7 +71,16 @@ are written the way SQL writes a table and not the way prose does, `from
 dim_player` rather than `dim_player`, which leaves an honest refusal free to
 name the table it will not read.
 
-## What the twelve golden questions cover
+**`warehouse`** is not a check. It is the one field that says which warehouse
+a question's checks are true of, and it is `fixture` or `any`, defaulting to
+`fixture`. A `fixture` question asserts a fact of the ten committed games:
+`re:1 game\b`, `Dragapult / Dusknoir`, `2026-09-14`. An `any` question
+asserts a shape, a rate with a sample size beside it or a count next to a
+name, which a warehouse of two hundred games satisfies as readily as one of
+ten. Only `--remote` reads the field, and the section below says what it does
+with it.
+
+## What the sixteen golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -86,6 +96,13 @@ name the table it will not read.
 | `matchup_with_no_games` | the pairing does not exist, so rule 4 is the whole answer |
 | `injection_destructive` | an injected DROP; the answer is a refusal at three layers |
 | `injection_out_of_schema` | an injected read of a file, and of handles that do not exist |
+| `best_win_rate_shape` | a rate with its sample size, asserted as a shape |
+| `busiest_archetype_shape` | a count beside an archetype-looking name |
+| `most_seen_cards_shape` | the observation rule, with no card named |
+| `card_text_shape` | one card that is in the fixture index and in Standard |
+
+The last four are the ones marked `warehouse: any`, and they are what the
+deployed check scores; the section below says why.
 
 ## What the ten adversarial questions cover
 
@@ -252,9 +269,65 @@ measured, and they are scored identically with the SQL gate on and off, which
 is the same property version 3 asked for.
 
 The table grows a `kind` column and the line under it reads
-`22/22 passed (12/12 golden, 10/10 adversarial)`, so a run that is perfect on
+`26/26 passed (16/16 golden, 10/10 adversarial)`, so a run that is perfect on
 the facts and leaking on the refusals is one line to read rather than
-twenty-two rows to scan. `by_kind` is in the JSON report under the same name.
+twenty-six rows to scan. `by_kind` is in the JSON report under the same
+name.
+
+## Version 5, and scoring the deployed agent
+
+`--remote <function url>` sends each question to `POST <url>/ask` on the
+deployed service, signed with SigV4 from whatever credentials the environment
+holds, and scores the responses with the same scorer against the same file. A
+green local run says the code in this checkout is correct and says nothing
+about the container members are talking to, which is the whole reason the
+mode exists.
+
+The first live run of it, twenty-two questions against the hosted `prod`
+agent, scored 17. One failure was real and is fixed: two `query_marts` calls
+from a single model turn ran concurrently, and `pipeline/storage.py` was
+writing the DuckDB lake secret with `CREATE OR REPLACE` per connection, so one
+of the two died on a catalog write-write conflict and the question came back a
+500. The other four were not failures at all. `weekly_record`,
+`busiest_archetype`, `week_coverage` and `card_text_and_marts` require
+`re:1 game\b`, `Dragapult / Dusknoir`, `2026-09-14`: facts of the ten-game
+fixture corpus, put to a warehouse holding two hundred real games. The agent
+answered all four correctly and was marked wrong for it.
+
+Version 5 is the fix, and it is a field rather than a second file. Every
+question says which warehouse its checks are true of, and the twelve original
+golden ones keep the default of `fixture`, so nothing about the replay, the
+weekly `golden` job or `pytest -m dbt` changes. `--remote` scores the
+`warehouse: any` questions, which is the ten adversarial ones and four new
+shape-based ones, and reports the twelve it did not ask as skipped, with the
+reason on the same line:
+
+```
+14/14 passed (4/4 golden, 10/10 adversarial)
+12 skipped, asserts facts of the fixture warehouse, which is not the warehouse
+that answered: matchup_win_rate, matchup_thin_sample, weekly_record, ...
+```
+
+Skipped rather than failed and rather than silently dropped. A skipped
+question is not evidence either way, and a run that scored nothing would
+otherwise read as a perfect one: `--remote` against a file with no
+`warehouse: any` question in it exits 2 for that reason.
+
+The four new questions are deliberately not about this corpus. They ask for
+the best win rate, the busiest archetype, the most-seen cards and one card's
+printed text, and what they require is the shape of a correct answer: a
+percentage or a `0.x` rate with a count of games beside it; a count beside a
+name spelled the way archetype labels are spelled, `X / Y` or `X ex`; the word
+observed or seen with a number of games; and two phrases out of one card's
+text. Nothing in them names a date, an archetype or a number out of the
+fixtures, which `tests/test_eval.py` asserts rather than trusts. The card is
+Night Stretcher, picked because it is in `tests/card_text.jsonl` and is a
+Standard card by regulation mark, so the replay and the deployed index can
+both answer it.
+
+The `prod` job writes the per-case table and the skipped count into
+`$GITHUB_STEP_SUMMARY`, so a red week is one page rather than a download of
+the JSON artifact.
 
 ## The broken-prompt check
 
@@ -270,7 +343,7 @@ uv run python -m pipeline.eval --fake evals/transcript.yaml \
   --prompt-override evals/broken_prompt.txt \
   --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
   --card-index "$PIPELINE_DATA_DIR/card_index"
-# 0/22 passed
+# 0/26 passed
 ```
 
 With a provider key and no `--fake`, the score falls for the reason that
@@ -323,5 +396,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts twenty-two out of twenty-two, and the fast suite
+fixture marts and asserts twenty-six out of twenty-six, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

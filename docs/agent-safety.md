@@ -111,9 +111,10 @@ Traces carry the same fields as span attributes and no others:
 than the statement, and the gate's name, verdict, confidence and cost.
 
 The one place a question and an answer are written in full is the golden
-evaluation, in `evals/` and in its MLflow runs. Those twenty-two questions are
-written by this project and answered against the fixture warehouse or against
-the deployed service; none of them is a member's.
+evaluation, in `evals/` and in its MLflow runs. Those twenty-six questions are
+written by this project and answered against the fixture warehouse or, for the
+fourteen whose checks hold of any warehouse, against the deployed service;
+none of them is a member's.
 
 **For how long.** The retention on the function's log group is set by the
 application's CDK stack and not by anything here, so this repository cannot

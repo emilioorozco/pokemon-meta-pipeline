@@ -730,10 +730,13 @@ application repository does this from its own backend with its own role, which
 is the only caller that matters.
 
 The second caller is the evaluation. `python -m pipeline.eval --remote <url>`
-signs each golden question the same way, with botocore and whatever
+signs each golden question whose checks hold of any warehouse the same way,
+with botocore and whatever
 credentials the environment holds, and scores the responses against the same
 file a local run uses, which is how "the code in this checkout is correct"
 stops being mistaken for "the container members are talking to is correct".
+The questions that assert facts of the fixture corpus are reported as skipped
+rather than put to a service that answers from the real one.
 The `prod` job in `.github/workflows/agent-eval.yml` runs it weekly against
 `vars.PIPELINE_AGENT_URL` and skips with a notice when that variable is
 unset; the `lambda:InvokeFunctionUrl` grant on the continuous-integration

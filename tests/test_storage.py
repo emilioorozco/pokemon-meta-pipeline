@@ -11,17 +11,24 @@ statements derived for Spark and DuckDB, which are strings this module owns and
 neither engine is started here to check.
 """
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
+import duckdb
 import pyarrow as pa
 import pytest
 
+from pipeline import storage
 from pipeline.settings import DATA_DIR_VAR, DataRootError, validate_data_root
 from pipeline.storage import (
+    LAKE_SECRET,
     SYNC_WORKERS,
     Location,
     StorageError,
     artifact_root,
+    duckdb_connect,
     duckdb_s3_profile,
     local_file,
     location,
@@ -370,6 +377,130 @@ def test_duckdb_uses_path_style_against_a_local_stand_in(monkeypatch: pytest.Mon
         "url_style": "path",
         "use_ssl": "false",
     }
+
+
+# ------------------------------------------- the lake secret, under threads --
+
+
+class Recorder:
+    """A stand-in for a DuckDB connection that remembers what it was asked to run.
+
+    Enough of one for `duckdb_connect`, which opens the file and then executes
+    two statements on it. `fails` makes the first `CREATE SECRET` raise the
+    conflict a second connection to the same catalog really raises, so the
+    retry is exercised without two threads and a timing window.
+    """
+
+    def __init__(self, *, fails: int = 0) -> None:
+        self.statements: list[str] = []
+        self.fails = fails
+
+    def execute(self, sql: str) -> "Recorder":
+        self.statements.append(sql)
+        if sql.startswith("CREATE SECRET") and self.fails:
+            self.fails -= 1
+            raise duckdb.TransactionException(
+                'TransactionContext Error: Catalog write-write conflict on create with "pra_lake"'
+            )
+        return self
+
+
+@pytest.fixture
+def recorded(monkeypatch: pytest.MonkeyPatch) -> Recorder:
+    """`duckdb_connect` against a fake connection and a warehouse nobody downloads."""
+    recorder = Recorder()
+
+    def connect(*args: Any, **kwargs: Any) -> Recorder:
+        return recorder
+
+    monkeypatch.setattr(duckdb, "connect", connect)
+    monkeypatch.setattr(storage, "local_file", lambda target: Path("meta.duckdb"))
+    return recorder
+
+
+def test_the_lake_secret_is_created_only_when_it_is_not_already_there(
+    recorded: Recorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`OR REPLACE` is a catalog write per connection, and two at once conflict."""
+    monkeypatch.setenv("AWS_REGION", "eu-west-1")
+    monkeypatch.delenv("AWS_ENDPOINT_URL_S3", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+
+    duckdb_connect(Location("s3://a-bucket/lake/warehouse/meta.duckdb"))
+
+    create = recorded.statements[-1]
+    assert create.startswith(f"CREATE SECRET IF NOT EXISTS {LAKE_SECRET} (")
+    assert "OR REPLACE" not in create
+    assert "s3.eu-west-1.amazonaws.com" in create
+
+
+def test_a_local_warehouse_is_told_nothing_about_s3(recorded: Recorder) -> None:
+    """The offline path has to stay offline: no extension, no secret, no network."""
+    duckdb_connect(Path("warehouse") / "meta.duckdb")
+
+    assert recorded.statements == []
+
+
+def test_a_write_write_conflict_on_the_secret_is_retried_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lock is process wide, and the catalog the conflict is in is not."""
+    recorder = Recorder(fails=1)
+    monkeypatch.setattr(duckdb, "connect", lambda *args, **kwargs: recorder)
+    monkeypatch.setattr(storage, "local_file", lambda target: Path("meta.duckdb"))
+
+    duckdb_connect(Location("s3://a-bucket/lake/warehouse/meta.duckdb"))
+
+    assert [statement.split(" (")[0] for statement in recorder.statements] == [
+        "INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws",
+        f"CREATE SECRET IF NOT EXISTS {LAKE_SECRET}",
+        "INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws",
+        f"CREATE SECRET IF NOT EXISTS {LAKE_SECRET}",
+    ]
+
+
+def test_two_threads_opening_one_s3_warehouse_both_get_a_usable_connection(
+    s3_lake: Location, tmp_path: Path
+) -> None:
+    """The failure the first live run of the deployed evaluation hit, in miniature.
+
+    The agent runs the tool calls of one model turn in parallel, so two
+    `query_marts` calls open two connections to the same database file at the
+    same instant. DuckDB gives both of them one catalog, and the secret was
+    being written per connection, so one of the two died with a write-write
+    conflict and the question came back a 500.
+
+    The download is warmed first and a barrier lines the two threads up, so
+    what they race on is the catalog rather than the copy, which is the race
+    that failed.
+    """
+    built = tmp_path / "meta.duckdb"
+    with duckdb.connect(str(built)) as seed:
+        seed.execute("create table mart_matchups as select 1 as games")
+    warehouse = s3_lake / "warehouse" / "meta.duckdb"
+    warehouse.upload_file(built)
+    local_file(warehouse)
+
+    start = threading.Barrier(2)
+
+    def open_it() -> int:
+        start.wait(timeout=30)
+        connection = duckdb_connect(warehouse)
+        try:
+            row = connection.sql("select games from mart_matchups").fetchone()
+            return int(row[0]) if row else 0
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(lambda call: call(), [open_it, open_it])) == [1, 1]
+
+    connection = duckdb_connect(warehouse)
+    try:
+        secrets = connection.sql("select name from duckdb_secrets()").fetchall()
+    finally:
+        connection.close()
+    assert [name for (name,) in secrets] == [LAKE_SECRET]
 
 
 def test_table_bytes_is_a_parquet_file(tmp_path: Path) -> None:
