@@ -78,6 +78,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -110,6 +111,10 @@ DEFAULT_SPARK_PACKAGES: Final = "org.apache.hadoop:hadoop-aws:3.4.2"
 DEFAULT_REGION: Final = "us-west-2"
 # How many objects of a tree sync are in flight at once. See `_in_parallel`.
 SYNC_WORKERS: Final = 16
+# The DuckDB secret that lets a connection read the lake. One name per process
+# rather than one per connection, because every connection in a process wants
+# the same three values; `duckdb_connect` says what follows from that.
+LAKE_SECRET: Final = "pra_lake"
 
 _client: "S3Client | None" = None
 # Files pulled down by `local_file`, and the directory they live in. Both are
@@ -122,6 +127,11 @@ _scratch: tempfile.TemporaryDirectory[str] | None = None
 # is the only reader. See `tracking_store` for why it is a lookup rather than a
 # second yielded value.
 _artifact_roots: dict[str, str] = {}
+# Held while a connection is taught about S3. See `duckdb_connect`: two
+# connections to one database file share a catalog, and two of them writing
+# the lake secret at the same moment is a write-write conflict rather than two
+# identical writes.
+_duckdb_setup = threading.Lock()
 
 
 class StorageError(RuntimeError):
@@ -920,6 +930,33 @@ def duckdb_connect(warehouse: AnyLocation, *, read_only: bool = True) -> "DuckDB
 
     The extensions are loaded only when the warehouse is on S3, so a local read
     stays offline and starts as fast as it did.
+
+    The setting up is serialised, and that is the one thing here that is about
+    concurrency rather than about storage. Two connections opened on the same
+    database file in one process share DuckDB's catalog, and the agent's graph
+    runs the tool calls of a single model turn in parallel, so two questions
+    can arrive at this block at the same instant. Two connections writing the
+    same catalog entry is a `TransactionException` ("write-write conflict on
+    create with pra_lake") that fails one of the two with a 500, which is what
+    the first live run of the deployed evaluation hit.
+
+    Three things make that go away, and they are deliberately belt and braces
+    rather than one fix, because the cost of all three is a lock nobody
+    contends for on a path that is already doing a network call:
+
+    - The lock, so the install, the load and the create happen one connection
+      at a time within this process.
+    - `IF NOT EXISTS` rather than `OR REPLACE`, so the second connection writes
+      nothing instead of rewriting a row with identical contents. The three
+      values come from `duckdb_s3_profile` and the region, all read from the
+      environment, and nothing mutates those inside a process, so every
+      connection would write the same secret; if that ever stopped being true
+      the alternative is a name derived from the parameters rather than one
+      constant name.
+    - One retry of the whole block, because a lock is only process wide and the
+      conflict is a catalog one: two processes sharing a database file would
+      still race, and a retry costs a few milliseconds on a path that has
+      already paid for a download.
     """
     import duckdb
 
@@ -929,13 +966,22 @@ def duckdb_connect(warehouse: AnyLocation, *, read_only: bool = True) -> "DuckDB
         return connection
     profile = duckdb_s3_profile()
     region = os.environ.get("AWS_REGION", "").strip() or DEFAULT_REGION
-    connection.execute("INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws")
-    connection.execute(
-        "CREATE OR REPLACE SECRET pra_lake ("
+    secret = (
+        f"CREATE SECRET IF NOT EXISTS {LAKE_SECRET} ("
         "TYPE s3, PROVIDER credential_chain, "
         f"REGION '{region}', ENDPOINT '{profile['endpoint']}', "
         f"URL_STYLE '{profile['url_style']}', USE_SSL {profile['use_ssl']})"
     )
+    with _duckdb_setup:
+        for remaining in (1, 0):
+            try:
+                connection.execute("INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws")
+                connection.execute(secret)
+                break
+            except duckdb.TransactionException:
+                if not remaining:
+                    raise
+                logger.warning("the lake secret raced another connection, retrying once")
     return connection
 
 
