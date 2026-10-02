@@ -51,11 +51,14 @@ name: Nightly
 
 on:
   schedule:
-    # Daily, 10:00 UTC: after the night's games on the west coast of the
+    # Daily, 10:17 UTC: after the night's games on the west coast of the
     # United States have been played and landed.
-    - cron: "0 10 * * *"
-    # Weekly, Sunday 09:00 UTC: the same run with the backfill in front of it.
-    - cron: "0 9 * * 0"
+    - cron: "17 10 * * *"
+    # Weekly, Sunday 09:17 UTC: the same run with the backfill in front of it.
+    # Both are seventeen minutes past the hour on purpose: GitHub schedules
+    # queue behind everyone else's top-of-the-hour crons, and the first
+    # scheduled run here fired six hours late from the :00 slot.
+    - cron: "17 9 * * 0"
   workflow_dispatch:
     inputs:
       stage:
@@ -135,7 +138,7 @@ jobs:
         run: |
           set -eu
           backfill=false
-          if [ "$SCHEDULE" = "0 9 * * 0" ] || [ "$REQUESTED" = "true" ]; then
+          if [ "$SCHEDULE" = "17 9 * * 0" ] || [ "$REQUESTED" = "true" ]; then
             backfill=true
           fi
           if [ "$backfill" = "true" ]; then

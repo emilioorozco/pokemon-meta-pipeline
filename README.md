@@ -85,7 +85,7 @@ that game into bronze on the lake within seconds, about fifteen measured on
 dev, with a production backlog of 109 games drained in under forty. The
 **batch path** is `.github/workflows/nightly.yml`: silver, gold, train,
 promote, drift, the quality gate and the publish, on a GitHub-hosted runner
-against the lake in S3, every day at 10:00 UTC and again on Sunday at 09:00
+against the lake in S3, every day at 10:17 UTC and again on Sunday at 09:17
 with a backfill in front of it. The laptop path further down, `data/` under
 `op run` with Airflow and MLflow in Compose, is the development mode: it is how
 the pipeline is worked on and demonstrated, not how the product runs.
