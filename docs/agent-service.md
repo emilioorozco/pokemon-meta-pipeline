@@ -632,7 +632,14 @@ So the prompt reads from a second committed artifact now:
 | `pipeline/marts_schema.py` | `scripts/generate_marts_schema.py` | every marts model: name, description, columns with descriptions | `test_the_schema_listing_is_the_committed_parse_of_the_dbt_schema` |
 
 Both are data and not loaders: each imports `typing` and nothing that could
-go looking for a file. Run the generator after editing
+go looking for a file. Everything the run time needs out of the dbt project
+now comes from those two artifacts, the known tables from
+`pipeline/warehouse_tables.py` and the schema listing from
+`pipeline/marts_schema.py`, which between them feed the prompt's table
+listing, the validator's real-table check and the receipt's column words in
+`pipeline.describe` (PLA-207); nothing else under `dbt/` is read at run time,
+and `tests/test_describe.py` scans the package and fails when a module starts
+reading it again. Run the generator after editing
 `dbt/models/marts/schema.yml`, or the test says so. The descriptions are
 committed in full with their whitespace collapsed, and the prompt still cuts
 them to a sentence and to `MAX_TABLE_CHARS` / `MAX_COLUMN_CHARS` at render
