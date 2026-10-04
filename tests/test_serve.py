@@ -20,6 +20,7 @@ request leaves it out, and that an archetype the model never saw arrives as the
 missing-category code rather than as a string.
 """
 
+import hashlib
 import json
 import logging
 from collections.abc import Iterator, Sequence
@@ -33,7 +34,7 @@ from fastapi.testclient import TestClient
 
 from pipeline import serve
 from pipeline.ml_features import MODEL_FEATURES, UNSEEN_CATEGORY
-from pipeline.prompts import JOBS, PLAYBOOKS
+from pipeline.prompts import ALLOWED_TABLES, JOBS, PLAYBOOKS, generated_prompt
 from pipeline.sql_gate import GATE_JEV, GATE_OFF, GATE_VAR
 
 CODES: Final[dict[str, dict[str, int]]] = {
@@ -167,6 +168,30 @@ def test_health_reports_a_loaded_model(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["model_loaded"] is True
+
+
+def test_health_carries_the_prompt_hash_and_the_table_count(client: TestClient) -> None:
+    """The remote half of a check that could not be made before.
+
+    An image can serve a prompt the repository does not hold, and until this
+    the only symptom was the answers getting worse. `prompt_sha256` is the
+    same hash a checkout can take of `generated_prompt`, and `schema_tables`
+    is how many allowlisted tables the listing really describes: on the image
+    that shipped without the dbt tree it was zero, and the prompt went out
+    with no table listing in it at all.
+    """
+    body = client.get("/health").json()
+    assert body["schema_tables"] == len(ALLOWED_TABLES)
+    # The variant is the one `card_tool` names, so the two fields are read
+    # together: a cold container has no card tool and hashes that prompt.
+    expected = hashlib.sha256(
+        generated_prompt(with_card_tool=body["card_tool"]).encode("utf-8")
+    ).hexdigest()
+    assert body["prompt_sha256"] == expected
+    assert len(body["prompt_sha256"]) == 64
+    # And the two variants really are different prompts, so the hash is worth
+    # reading beside the flag rather than on its own.
+    assert serve.prompt_digest(True) != serve.prompt_digest(False)
 
 
 def test_health_is_still_ok_with_nothing_promoted() -> None:
