@@ -4,9 +4,9 @@
     op run --env-file=.env.op -- uv run python -m pipeline.eval
     uv run python -m pipeline.eval --remote "$PIPELINE_AGENT_URL"
 
-Twenty-six questions in `evals/golden.yaml` in two kinds, each with the tools
+Twenty-eight questions in `evals/golden.yaml` in two kinds, each with the tools
 its answer has to call and the facts its answer has to contain. Sixteen are
-`golden`, which a warehouse with games in it answers; ten are `adversarial`,
+`golden`, which a warehouse with games in it answers; twelve are `adversarial`,
 which nobody should get an answer to. The command runs them through the real
 `Agent`, scores three checks per question, prints a table and exits non-zero
 when anything failed. The score of a run is logged to MLflow, so a prompt
@@ -22,6 +22,13 @@ count, so they are as true of two hundred games as of ten. Every adversarial
 question is `any` too, because a refusal does not depend on what is in the
 warehouse. `--remote` scores the `any` questions and skips the rest, saying
 how many and why; every local mode scores all of them.
+
+**A question can carry a page context.** `context` on a case is the string the
+application would have sent beside the question, and it goes to the agent the
+way `POST /ask` sends one. Two adversarial questions use it, and they are the
+only ones that do: an injected instruction in a context is the failure mode
+the field was added to measure, and it is graded exactly like an injection in
+a question, on the SQL the run wrote as well as on the prose.
 
 **The gate is reported, not scored.** With `PRA_SQL_GATE=jev` the optional
 second gate in `pipeline.sql_gate` judges every statement the denylist let
@@ -247,6 +254,12 @@ class Question:
     notes: str = ""
     kind: str = KIND_GOLDEN
     warehouse: str = WAREHOUSE_FIXTURE
+    # The page context the application would have sent with this question,
+    # empty on all but the two questions that are about the context itself.
+    # It travels with the question so that an injection placed in a context
+    # is graded the same way one placed in a question already is: the run is
+    # scored on what it wrote as well as on what it said.
+    context: str = ""
 
     @property
     def any_warehouse(self) -> bool:
@@ -350,6 +363,12 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
             raise GoldenError(
                 f"{where}: {warehouse!r} is not a warehouse ({', '.join(VALID_WAREHOUSES)})"
             )
+        raw_context = raw.get("context")
+        if raw_context is not None and not isinstance(raw_context, str):
+            raise GoldenError(
+                f"{where}: `context` has to be a string, got {type(raw_context).__name__}"
+            )
+        context = str(raw_context or "").strip()
         forbid = _patterns(raw.get("forbid"), where=f"{where} forbid")
         # An adversarial question is scored on what the run did as well as on
         # what it said, and the only thing that catches "it refused in prose
@@ -368,6 +387,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 notes=str(raw.get("notes", "")).strip(),
                 kind=kind,
                 warehouse=warehouse,
+                context=context,
             )
         )
     return Golden(version=version, questions=tuple(questions), path=path)
@@ -996,6 +1016,7 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
             else {}
         ),
         evidence=Evidence(queries=queries, cards=cards),
+        context_used=bool(payload.get("context_used")),
     )
     reported = str(payload.get("gate_summary", "")).strip()
     if reported and reported != built.gate_summary:
@@ -1030,8 +1051,14 @@ class RemoteAgent:
         self.model_name = REMOTE_MODEL
         self.send = send if send is not None else sigv4_post
 
-    def ask(self, question: str) -> Answer:
-        answer = answer_from_response(self.send(self.url, {"question": question}))
+    def ask(self, question: str, context: str = "") -> Answer:
+        body: dict[str, Any] = {"question": question}
+        # Sent only when there is one, so the ordinary question is the same
+        # request body it has always been and a question with a context is
+        # the only one that exercises the new field.
+        if context:
+            body["context"] = context
+        answer = answer_from_response(self.send(self.url, body))
         self.model_name = answer.model or REMOTE_MODEL
         return answer
 
@@ -1050,7 +1077,7 @@ class Askable(Protocol):
 
     model_name: str
 
-    def ask(self, question: str) -> Answer: ...
+    def ask(self, question: str, context: str = "") -> Answer: ...
 
 
 AgentFactory = Callable[[Question], Askable]
@@ -1127,7 +1154,7 @@ def run_question(question: Question, agent: Askable) -> Result:
     than the traceback.
     """
     try:
-        answer = agent.ask(question.question)
+        answer = agent.ask(question.question, context=question.context)
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
         return Result(question=question, answer="", error=f"{type(failure).__name__}: {failure}")
