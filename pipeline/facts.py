@@ -34,6 +34,17 @@ model that has a sentence full of turn numbers in front of it and writes one
 that was never in it. What it cannot catch is a number that is real and
 irrelevant, or a sentence that is wrong about numbers it quotes correctly;
 docs/agent-safety.md says so out loud.
+
+**An earlier answer is a fourth place a number can come from, and it is
+reported apart.** Since PLA-204 a follow-up carries the last few turns of the
+conversation back with it, so the model has its own previous answers in front
+of it. A number out of one of those is neither an invention nor a finding: it
+is this agent quoting itself about rows it has not read again, which is what
+rule 11 of the prompt is about. So the check searches the assistant's turns
+last, and what it finds only there comes back as `from_history` rather than
+inside `unverified_numbers`. Two counts, because "the model made a number up"
+and "the model repeated its own number" are two different things to be
+looking at.
 """
 
 import re
@@ -137,13 +148,19 @@ class FactEvidence:
 class NumberCheck:
     """What the numeric check found: the numbers nowhere, and what it searched.
 
-    The second half is here for the tests and for a reader debugging a false
-    report, and nothing serialises it: the response carries the list of
-    strings and the count, which is all an application can act on.
+    `known` is here for the tests and for a reader debugging a false report,
+    and nothing serialises it: the response carries the two lists of strings
+    and their counts, which is all an application can act on.
     """
 
     unverified: tuple[str, ...] = ()
     known: frozenset[float] = field(default_factory=frozenset)
+    # Numbers this run cannot account for that an earlier answer in the
+    # conversation stated. Reported apart from `unverified` because the two
+    # mean different things: one is a number nobody wrote and the other is a
+    # number this agent wrote before, out of rows it has not read again
+    # (rule 11 of the prompt, docs/agent-service.md).
+    from_history: tuple[str, ...] = ()
 
 
 def clean_facts(facts: Sequence[Fact] | None) -> tuple[Fact, ...]:
@@ -295,12 +312,28 @@ def covered(token: str, known: Iterable[float]) -> bool:
     return False
 
 
+def remembered_numbers(history: Iterable[str] = ()) -> frozenset[float]:
+    """Every number the assistant's earlier turns in this conversation stated.
+
+    A fourth place a number in an answer can have come from, and the one that
+    is not evidence: an earlier answer is this agent's own words, written out
+    of rows that were read in another request and are not in front of it now
+    (rule 11 of the prompt). Only the assistant's turns are read, because a
+    number a member typed is not a number the agent may repeat as a finding.
+    """
+    found: set[float] = set()
+    for text in history:
+        found.update(_numbers_in(text))
+    return frozenset(found)
+
+
 def check_numbers(
     answer: str,
     *,
     rows: Iterable[Mapping[str, Any]] = (),
     cards: Iterable[str] = (),
     facts: Sequence[Fact] = (),
+    history: Iterable[str] = (),
     allowlist: Sequence[float] = ALLOWED_NUMBERS,
 ) -> NumberCheck:
     """Every number in the prose that nothing the run read can account for.
@@ -309,17 +342,29 @@ def check_numbers(
     floats, no model. The result is a report and never a refusal, so a false
     positive costs a line on a receipt rather than an answer.
 
+    `history` is the assistant's earlier turns, and it is searched last and
+    reported apart. A number found there and nowhere else is not an invention
+    and is not a finding either: it is this agent quoting itself, which rule
+    11 allows only when the evidence behind it is fetched again. So it comes
+    back as `from_history` rather than as `unverified`, and the two counts
+    answer two different questions about the same answer.
+
     Duplicates are reported once, in the order they were written, because
     "9, 9, 9" is one thing wrong and three lines about it is a receipt nobody
     reads.
     """
     known = known_numbers(rows=rows, cards=cards, facts=facts, allowlist=allowlist)
+    remembered = remembered_numbers(history)
     unverified: list[str] = []
+    from_history: list[str] = []
     for token in number_tokens(answer):
-        if token in unverified or covered(token, known):
+        if token in unverified or token in from_history or covered(token, known):
+            continue
+        if covered(token, remembered):
+            from_history.append(token)
             continue
         unverified.append(token)
-    return NumberCheck(unverified=tuple(unverified), known=known)
+    return NumberCheck(unverified=tuple(unverified), known=known, from_history=tuple(from_history))
 
 
 def cite_facts(answer: str, facts: Sequence[Fact]) -> list[FactEvidence]:

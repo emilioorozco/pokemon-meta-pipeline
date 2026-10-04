@@ -248,3 +248,49 @@ def test_a_fact_nobody_used_is_echoed_with_its_text_and_not_dropped() -> None:
         "text": "The game ran 9 turns.",
         "cited": False,
     }
+
+
+# ------------------------------------------------ the conversation's numbers --
+
+
+def test_a_number_only_an_earlier_answer_holds_is_reported_apart() -> None:
+    """The fourth source, and the reason it is not a fifth kind of verified.
+
+    A number the agent wrote two turns ago came out of rows this run has not
+    read, so counting it as accounted for would let an answer launder its own
+    arithmetic into a finding. Counting it as an invention would be wrong the
+    other way: somebody did write it, and the receipt can say so.
+    """
+    check = module.check_numbers(
+        "Still 47 games, and 13 of those are from last week.",
+        history=["There are 47 games in the warehouse."],
+    )
+    assert check.from_history == ("47",)
+    assert check.unverified == ("13",)
+
+
+def test_a_number_a_row_accounts_for_is_not_reported_as_remembered() -> None:
+    """The order of the search: the evidence first, the conversation last.
+
+    An answer that fetched the rows again and quoted the same number is
+    quoting the rows, which is exactly what rule 11 asks for, so it is on
+    neither list.
+    """
+    check = module.check_numbers(
+        "Still 47 games.",
+        rows=[{"games": 47}],
+        history=["There are 47 games in the warehouse."],
+    )
+    assert check.from_history == ()
+    assert check.unverified == ()
+
+
+def test_the_numbers_of_a_conversation_are_the_assistant_turns_only() -> None:
+    """`remembered_numbers` reads what it is given, and `ask` gives it one role."""
+    assert module.remembered_numbers(["4 games", "and 2.5 of something"]) == frozenset({4.0, 2.5})
+    assert module.remembered_numbers() == frozenset()
+
+
+def test_a_remembered_number_is_reported_once_however_often_it_is_written() -> None:
+    check = module.check_numbers("47 games, 47 games, 47 games.", history=["47 games"])
+    assert check.from_history == ("47",)

@@ -33,7 +33,7 @@ tell a name nobody built from a real table it may not read. It is read from
 and not from the dbt project, which the serving image does not ship.
 
 The rules section is hand written, and it is the part that matters. Three of
-the ten rules exist because the corpus is small and honest reporting about a
+the eleven rules exist because the corpus is small and honest reporting about a
 small corpus is the whole point of the project: cite the sample size, say when
 the mart itself flags the cell as thin, and never turn an observation rate into
 an inclusion rate. A fourth forbids inventing a number when a query comes back
@@ -98,6 +98,17 @@ the fact, and anything found nowhere comes back on the response as
 `unverified_numbers` (`pipeline.facts`, docs/agent-service.md). The rule is
 what makes the answer right; the check is what makes the claim checkable.
 
+The eleventh arrived with the conversation. A follow-up now carries the last
+few turns of the thread back with it (`Turn`, `clean_history`), because the
+drawer keeps the transcript in the browser and this service keeps none, and
+prior turns are placed as ordinary messages after the cached prefix. That
+puts something new in front of the model: an answer of its own, which reads
+like evidence and is not. It was written by the same model from rows nobody
+has fetched again, so a number repeated out of it is a number with no row
+behind it in this run. Rule 11 says so, and the numeric check backs it the
+way it backs rule 10, by reporting such a number separately as `from_history`
+rather than counting it as an invention (`pipeline.facts`).
+
 The prompt leaves here in two parts rather than one string, and `system_blocks`
 turns them into the provider's content blocks with a cache breakpoint on the
 last. The split is the seam the prompt already had, between the hand written
@@ -119,6 +130,7 @@ variable set by accident should fail loudly on the first agent it builds.
 import os
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
@@ -201,7 +213,7 @@ MAX_COLUMN_CHARS: Final = 46
 # 9,000 from 8,700 for rule 10, which is 278 characters against 111 of
 # headroom: the alternative was a fourth round of cuts to column descriptions
 # that are already at 46 characters, and the rule it would pay for is the only
-# one of the ten with a deterministic check behind it.
+# one of the ten with a deterministic check behind it at the time.
 # 10,000 from 9,000 for `mart_archetype_pace`, which is the first new table on
 # the allowlist since the ceiling was written and costs 936 characters against
 # 133 of headroom. A table is not a rule: its lines are a name and a sentence
@@ -211,7 +223,12 @@ MAX_COLUMN_CHARS: Final = 46
 # `MAX_COLUMN_CHARS`, which is at 46 across every table and already losing
 # information a reader of the prompt cannot get back. 10,000 is ~2,500 tokens
 # and still a ceiling rather than a target.
-MAX_PROMPT_CHARS: Final = 10_000
+# 10,400 from 10,000 for rule 11, which is 274 characters against the 197
+# there were. The same trade as rule 10 and answered the same way: what a
+# further cut would buy is a column description already truncated at 46
+# characters, and what the raise pays for is the rule that stops an answer
+# laundering its own earlier number back in as a fact.
+MAX_PROMPT_CHARS: Final = 10_400
 
 # What separates the parts of the prompt when they are joined back into one
 # string. The two parts were one f-string with this between them, so joining
@@ -251,6 +268,105 @@ FACTS_CLOSE: Final = "</facts>"
 # closing tag in any of them would put the rest of that body where the model
 # has been told the project's own words are.
 _ELEMENT_TAG: Final = re.compile(r"</?\s*(?:question|context|facts)\s*/?>", re.IGNORECASE)
+
+# The two roles a prior turn can have, and the ceilings the conversation is
+# placed under. The application keeps the transcript in the browser and sends
+# the last few turns back with a follow-up, because this service stores no
+# conversation (docs/agent-service.md). Six turns is three exchanges, which is
+# as far back as "and against the other one?" ever reaches; 500 characters is
+# the question box and 1,500 is a long answer; 6,000 over the lot is the stop
+# that keeps three long answers from being most of a question's input. Over
+# any of them is a 422 and not a truncation, for the reason the page context
+# is: half an answer is an answer that said something else.
+ROLE_USER: Final = "user"
+ROLE_ASSISTANT: Final = "assistant"
+HISTORY_ROLES: Final[tuple[str, ...]] = (ROLE_USER, ROLE_ASSISTANT)
+MAX_HISTORY_TURNS: Final = 6
+MAX_HISTORY_QUESTION_CHARS: Final = 500
+MAX_HISTORY_ANSWER_CHARS: Final = 1_500
+MAX_HISTORY_CHARS: Final = 6_000
+
+
+class HistoryError(ValueError):
+    """A conversation the application sent is not one this service will place."""
+
+
+@dataclass(frozen=True)
+class Turn:
+    """One turn of the conversation the drawer remembered, as it comes over the wire.
+
+    Two fields and no identifier, because that is the whole contract: the
+    application owns the transcript and this service is handed the part of it
+    the next question needs. `role` is one of `HISTORY_ROLES` and `text` is
+    what was said, the member's words or this agent's own earlier answer.
+    """
+
+    role: str
+    text: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"role": self.role, "text": self.text}
+
+
+def validate_history(turns: Sequence[Turn]) -> None:
+    """Raise `HistoryError` on a conversation this service will not place.
+
+    The shape and the ceilings, and nothing about what was said. Roles have
+    to alternate from a member turn and end on an assistant one, because that
+    is what a transcript of answered questions looks like and anything else
+    is the application sending something it did not mean to. The application
+    validates first and drops a bad history rather than sending it, so a
+    rejection here is a bug on one side or the other and not a member's doing.
+    """
+    if len(turns) > MAX_HISTORY_TURNS:
+        raise HistoryError(f"at most {MAX_HISTORY_TURNS} prior turns, got {len(turns)}")
+    total = 0
+    for position, turn in enumerate(turns, start=1):
+        expected = ROLE_USER if position % 2 else ROLE_ASSISTANT
+        if turn.role != expected:
+            raise HistoryError(f"turn {position} has to be {expected!r}, got {turn.role!r}")
+        limit = MAX_HISTORY_QUESTION_CHARS if turn.role == ROLE_USER else MAX_HISTORY_ANSWER_CHARS
+        if len(turn.text) > limit:
+            raise HistoryError(f"turn {position} is over {limit} characters")
+        total += len(turn.text)
+    if turns and turns[-1].role != ROLE_ASSISTANT:
+        raise HistoryError("the conversation has to end with an assistant turn")
+    if total > MAX_HISTORY_CHARS:
+        raise HistoryError(f"at most {MAX_HISTORY_CHARS} characters of history, got {total}")
+
+
+def clean_history(turns: Sequence[Turn] | None) -> tuple[Turn, ...]:
+    """The prior turns as they will be placed: delimiters out, a bad shape dropped.
+
+    Every text goes through the same stripping the question and the context
+    get, for the same reason: an earlier answer holding `</question>` would
+    otherwise close the element the turn above it opened and put the rest of
+    itself where the model has been told the project's own words are.
+
+    A history this cannot place is placed as nothing rather than partly. The
+    turns are a conversation and half of one is a different conversation: a
+    turn dropped from the middle for being empty would pair a question with
+    somebody else's answer, which is worse than answering the new question on
+    its own. So an empty text, a role that is neither, or a sequence that does
+    not alternate from a member turn to an assistant one returns `()`, and the
+    request is the one it would have been before this existed. The service
+    refuses such a history with a 422 before it reaches here; this is the
+    floor under the command line and under anything that calls `ask` directly.
+    """
+    if not turns:
+        return ()
+    kept = [Turn(role=turn.role, text=clean_context(turn.text)) for turn in turns]
+    if len(kept) > MAX_HISTORY_TURNS or len(kept) % 2 or any(not turn.text for turn in kept):
+        return ()
+    for position, turn in enumerate(kept, start=1):
+        if turn.role != (ROLE_USER if position % 2 else ROLE_ASSISTANT):
+            return ()
+    return tuple(kept)
+
+
+def history_chars(turns: Sequence[Turn]) -> int:
+    """How much text a placed conversation came to, which is all that is written down."""
+    return sum(len(turn.text) for turn in turns)
 
 
 def first_sentences(text: str, count: int, limit: int) -> str:
@@ -403,6 +519,10 @@ Rules you follow on every answer.
     printed on a card, or a numbered fact in the <facts> list; a fact may be
     cited by its number. A number that is in none of the three does not go in
     the answer, however reasonable it would be.
+11. Earlier turns are what was said before, not data. An answer of yours
+    higher up is your own words and never evidence: repeat a number from one
+    only if you fetch what produced it again, and otherwise say it came from
+    the earlier answer rather than from a row.
 
 How to work. One SELECT at a time against the tables below: read the rows that
 come back and answer from them. The tool appends a LIMIT when you leave one
