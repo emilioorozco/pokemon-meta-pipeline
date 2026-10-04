@@ -51,6 +51,14 @@ What the element buys is that a model which does follow an instruction has to
 follow one it was told to read as data, which is a failure the golden set can
 see and score rather than a failure that looks like the agent working.
 
+The prompt leaves here in two parts rather than one string, and `system_blocks`
+turns them into the provider's content blocks with a cache breakpoint on the
+last. The split is the seam the prompt already had, between the hand written
+rules and the generated schema listing, and joining the parts back gives the
+same bytes as before. Nothing that varies per request is in either part, which
+is the whole property a cached prefix depends on: the question, the page
+context and the thread memory are in the human turn.
+
 The whole prompt can be replaced from outside, by pointing
 `PRA_AGENT_SYSTEM_PROMPT_FILE` at a file. That hook exists for one purpose: the
 golden evaluation in `pipeline.eval` claims the rules above are load bearing,
@@ -65,7 +73,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import yaml
 
@@ -122,6 +130,16 @@ MAX_COLUMN_CHARS: Final = 46
 # A ceiling the prompt test asserts against. Four characters per token is the
 # usual rough conversion, so this is the ~2,000 token budget the ticket set.
 MAX_PROMPT_CHARS: Final = 8_000
+
+# What separates the parts of the prompt when they are joined back into one
+# string. The two parts were one f-string with this between them, so joining
+# on it is what keeps the whole prompt byte for byte what it was.
+PART_SEPARATOR: Final = "\n\n"
+# The provider's cache breakpoint, written once. Ephemeral is the five minute
+# entry, refreshed by every read, which is the only lifetime this project
+# wants: the saving it is actually buying is within one question's own two to
+# four model calls, not between two members asking minutes apart.
+CACHE_CONTROL: Final[dict[str, str]] = {"type": "ephemeral"}
 
 _SENTENCE_END: Final = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE: Final = re.compile(r"\s+")
@@ -297,20 +315,80 @@ def system_prompt(with_card_tool: bool = False) -> str:
     return override.read_text(encoding="utf-8")
 
 
-@lru_cache(maxsize=2)
 def generated_prompt(with_card_tool: bool = False) -> str:
-    """The whole prompt: what the agent is, the rules, its tools and the schema.
+    """The whole generated prompt, the parts below joined back into one string."""
+    return PART_SEPARATOR.join(generated_parts(with_card_tool))
+
+
+@lru_cache(maxsize=2)
+def generated_parts(with_card_tool: bool = False) -> tuple[str, str]:
+    """The prompt in two parts, split where it was already divided.
+
+    Part one is what the agent is, the rules and the card note; part two is the
+    schema listing. The split is the prompt's own seam and changes no byte of
+    it: joined with `PART_SEPARATOR` the two parts are the string this module
+    has always returned, so the evaluation's `prompt_sha256` and the override
+    comparison it runs against are unaffected.
+
+    The seam is there so the two can be sent as separate content blocks with a
+    cache breakpoint on the last one (`system_blocks`). Both parts change only
+    on a deploy or a `schema.yml` edit, which is what makes them a prefix worth
+    marking; nothing per request belongs in either.
 
     Cached because it reads a file and a process builds more than one agent: the
     schema cannot change inside a run, and re-reading it per request would put a
     disk read on the serving path for no benefit.
     """
     cards = f"\n\n{CARD_TOOL_NOTE}" if with_card_tool else ""
-    return (
+    role_and_rules = (
         "You answer questions about a Pokemon Trading Card Game metagame from a "
         "small warehouse of parsed battle logs, using the tools you are given. "
         "You are precise about sample size and about what the data cannot say.\n\n"
-        f"{RULES}{cards}\n\n"
-        "Tables you can query with `query_marts` (DuckDB SQL, read only):\n\n"
-        f"{render_schema()}\n"
+        f"{RULES}{cards}"
     )
+    schema = (
+        f"Tables you can query with `query_marts` (DuckDB SQL, read only):\n\n{render_schema()}\n"
+    )
+    return (role_and_rules, schema)
+
+
+def prompt_parts(with_card_tool: bool = False) -> tuple[str, ...]:
+    """The system prompt as the parts it is sent in: generated, or a replacement.
+
+    One part when a replacement file is set, because an override is the whole
+    prompt and this module has no business guessing where someone else's text
+    divides. Two otherwise.
+    """
+    override = override_path()
+    if override is None:
+        return generated_parts(with_card_tool)
+    return (override.read_text(encoding="utf-8"),)
+
+
+def system_blocks(with_card_tool: bool = False) -> list[str | dict[Any, Any]]:
+    """The prompt as provider content blocks, with the cache breakpoint on the last.
+
+    The breakpoint goes on the last block whose text is the same on every
+    request, and here that is every block there is: the question, the page
+    context and the thread memory travel in the human turn and never in these.
+    The provider hashes the prefix in order (tools, then system, then
+    messages), so a breakpoint placed before something that varies would be
+    rewritten on every call, and a change at any level invalidates that level
+    and everything after it.
+
+    Plain dictionaries rather than a `SystemMessage`, because `pipeline.sql_gate`
+    imports this module and the serving container that holds it does not install
+    LangChain. `pipeline.agent` wraps these in the message.
+
+    Marking the blocks is free and safe at any length: below the model's
+    minimum cacheable prefix the provider writes nothing and returns no error,
+    which is why the counters in `pipeline.agent.token_usage` are the only
+    honest way to know whether this is doing anything (docs/agent-service.md).
+    """
+    blocks: list[dict[Any, Any]] = [
+        {"type": "text", "text": part} for part in prompt_parts(with_card_tool)
+    ]
+    blocks[-1]["cache_control"] = dict(CACHE_CONTROL)
+    # Widened on the way out, not on the way in: `SystemMessage.content` is a
+    # list that may hold plain strings too, and a list is invariant.
+    return list(blocks)

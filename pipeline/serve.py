@@ -370,7 +370,11 @@ class AskResponse(BaseModel):
     )
     model: str = Field(description="Provider model that answered")
     usage: dict[str, int] = Field(
-        description="Token counts the provider reported; empty when it reported none"
+        description="Token counts the provider reported; empty when it reported none. "
+        "`input_tokens`, `output_tokens` and `total_tokens`, plus "
+        "`cache_read_input_tokens` and `cache_creation_input_tokens`, which are the "
+        "share of the input side served from and written to the cached prompt prefix "
+        "and are zero when the prefix was too short to cache"
     )
     evidence: EvidenceResponse = Field(
         default_factory=EvidenceResponse,
