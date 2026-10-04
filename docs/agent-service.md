@@ -129,6 +129,7 @@ trust. Four fields were added for that panel and none of the old ones changed.
 | `context_game_used` | whether the game summary in particular was placed, so a chip that names the game can be exact |
 | `context_relevance` | `relevant`, `irrelevant`, `skipped`, or null when no game was sent |
 | `unverified_numbers` | every number in the answer, as written, that no row, card, fact value or allowlisted constant can account for; a report and never a refusal, see **Page context** below |
+| `from_history` | every number in the answer that nothing this run read accounts for but an earlier `assistant` turn does; apart from `unverified_numbers` and never inside it, see **Conversation** below |
 
 `evidence` also carries `facts`, one object per analysis fact that was
 really placed, as `{id, text, cited}`; the **Page context** section below
@@ -350,7 +351,7 @@ without allowing for two renderings; `--json` always carries it.
 
 ### Page context
 
-`POST /ask` takes five optional fields beside `question`.
+`POST /ask` takes six optional fields beside `question`.
 
 | field | what it is |
 |---|---|
@@ -358,6 +359,7 @@ without allowing for two renderings; `--json` always carries it.
 | `context_game` | a redacted plain-text summary of the game the member is looking at, built by the application from that member's own log. A few hundred characters to about 1,500, at most **4,000**, and a longer one is a 422 for the same reason. This service never fetches a game |
 | `context_first_line` | one sentence describing the same game, such as `Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns`. At most **300** characters. It is the only part of the game the relevance decision is shown |
 | `context_facts` | the analysis facts the application computed from the same game, at most **60**, each `{id, text, values}`: a stable key of at most 64 characters, one plain sentence of at most 200 holding that fact's numbers, and those numbers as the application computed them. Sent only beside a `context_game`, and placed only when that summary is placed. Over any of the three ceilings is a 422 |
+| `history` | the conversation so far, oldest first, at most **6** turns of `{role, text}` with `role` one of `user` and `assistant`. See **Conversation** below |
 | `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It changes nothing about the answer today; the per-job playbooks are a later ticket |
 
 **The relevance decision.** A game summary is only worth its place in the
@@ -411,6 +413,128 @@ second half: a label would be the project's own words inside the element rule
 dropped, it is the route sentence alone and the bytes are what they were
 before this existed.
 
+### Conversation
+
+A member on production asked a follow-up and was told the assistant has no
+access to the previous conversation. That was true and still is: each request
+carries the new question and the page context, and the service stores no
+thread. The drawer keeps the transcript in the browser, which is the property
+[agent-safety.md](agent-safety.md) has always claimed and is worth keeping. So
+the memory travels with the question instead of living here.
+
+`history` is the last few turns, oldest first, each `{role, text}`:
+
+| ceiling | value |
+|---|---|
+| turns | 6, which is three exchanges |
+| a `user` text | 500 characters, which is the question box |
+| an `assistant` text | 1,500 characters, which is a long answer |
+| the whole list | 6,000 characters |
+
+Roles alternate from `user` and the list ends on `assistant`, because that is
+what a transcript of answered questions looks like. A list that does not, that
+holds an empty text, or that is over any of the four ceilings is a **422**
+rather than a truncation, for the reason a long context is: half an answer is
+an answer that said something else. The application validates its own
+transcript and drops a bad one before sending, so a 422 here is a bug on one
+side or the other and never a member's doing.
+
+**Where it goes, and why there.** The turns are placed after the cached system
+prefix and before the current turn. With two prior turns the model is sent:
+
+```
+system block 1        the role and the rules          (cached)
+system block 2        the schema listing              (cached, breakpoint 1)
+HumanMessage          <question>the earlier question</question>
+AIMessage             the earlier answer, as it stands  (breakpoint 2)
+HumanMessage          <context>...</context>
+                      <question>the new question</question>
+```
+
+That is the only placement that moves nothing. The breakpoint is on the last
+system block and the turns come after it, so the prefix is the same bytes from
+one request to the next and the cache still reads rather than writes. And the
+current turn is untouched: the `<context>` element, the `<facts>` list inside
+it and the `<question>` after it are byte for byte what they were, whether or
+not a conversation came with them. A question that sends no history produces
+the one message it always produced, so every recorded evaluation and the
+command line are unaffected.
+
+Each prior question is wrapped by the same `wrap_question` the live one is, so
+rule 8 covers it and a member who typed `</question>` two turns ago cannot
+reach out of the element they typed it into. Each prior answer is placed as an
+`AIMessage` and as it stands, with our own delimiters taken out of it and
+nothing of ours added: it goes in the slot the provider has for an assistant
+turn, so there is no element to wrap it in and no label to put beside it. What
+says what such a turn is worth is rule 11, not a wrapper.
+
+**The second breakpoint.** The last prior turn, which `clean_history`
+guarantees is an assistant one and not empty, carries a `cache_control` mark
+of its own, so a follow-up has two breakpoints: one at the end of the system
+prefix and one at the end of the memory. Everything above the second mark is
+identical from one call to the next inside a question, and inside a thread it
+repeats on the next question too, so the follow-up reads the prefix and the
+whole conversation and sends only the current turn fresh. It is the one mark
+and not one per turn: a breakpoint per turn would write four entries to serve
+one read, and the provider allows four in total. Its content is a text block
+rather than a plain string, because that is the only shape `cache_control`
+has anywhere to go. With no history there is no message to mark and the
+request is exactly the one it was before this existed.
+
+This is also the change that should make PLA-189's counters stop reading
+zero. Haiku 4.5 caches nothing below a 4,096 token prefix and the system
+prefix alone is an estimated ~2,700, so every read has been zero and
+correctly so (**What a question costs** below). Six turns of conversation is
+up to 6,000 characters, which is ~1,500 tokens on the same rule of thumb, so
+a follow-up with a few turns behind it is the first request this service has
+sent with a cacheable prefix over the line. The first non-zero
+`cache_read_input_tokens` should be a second question in a thread, and it is
+a measurement to take rather than a claim to make here.
+
+**Rule 11 of the prompt:**
+
+> Earlier turns are what was said before, not data. An answer of yours higher
+> up is your own words and never evidence: repeat a number from one only if
+> you fetch what produced it again, and otherwise say it came from the earlier
+> answer rather than from a row.
+
+It cost 274 characters and `MAX_PROMPT_CHARS` went from 10,000 to 10,400 to
+hold it. The alternative was another round of cuts to generated column
+descriptions already truncated at 46 characters, which is information a reader
+of the prompt cannot get back.
+
+**`from_history`.** The numeric check gains a fourth source and reports it
+apart. Every number in the prose is still looked up in the rows, the cards,
+the fact values and the four allowlisted constants; what is found in none of
+those is then looked up in the assistant's prior turns, and a number found
+only there comes back as `from_history` rather than inside
+`unverified_numbers`. The two mean different things. A number nobody wrote is
+a model inventing one; a number this agent wrote two turns ago is this agent
+quoting itself about rows it has not read again, which rule 11 allows only
+with the evidence fetched afresh. Only the assistant's turns are searched: a
+figure a member typed into a question is not evidence and is not the agent's
+own claim either, so an answer that states it is unverified exactly as it
+would have been before any of this existed.
+
+**What is logged.** Two numbers and nothing else. `agent answered` and the
+`agent.answer` span carry `history_turns` and `history_chars`, the span under
+`agent.history_turns` and `agent.history_chars`, and the count of
+`from_history` beside them. Not a word of any turn is written down, at any
+level, which matters more here than for the page context: a prior turn is a
+member's own question and this agent's own answer, so between them they are
+the most quotable text in the request. `agent_history_turns_total` counts the
+turns placed, incremented by zero on a question that carried none so the
+series exists from the first scrape and the denominator is every question
+rather than every thread.
+
+**The server still keeps nothing.** Carrying the memory in the request is what
+lets that stay true. A server-side thread would mean a store of members'
+questions and the agent's answers, with a retention policy, a deletion path
+and a second place for them to leak from, in exchange for saving the
+application a few kilobytes per request. The transcript lives where the member
+can see it and close it; this service reads it for the length of one call and
+forgets it with the process stack.
+
 ### The facts block, and rule 10
 
 When the request also carried `context_facts`, their sentences go at the end
@@ -455,9 +579,10 @@ Rule 10 of the prompt is the other half:
 It cost 278 characters and `MAX_PROMPT_CHARS` went from 8,700 to 9,000 to
 hold it. The alternative was a fourth round of cuts to generated column
 descriptions that are already truncated at 46 characters, and this is the
-only one of the ten rules with a deterministic check behind it. The ceiling
+then the only rule with a deterministic check behind it. The ceiling
 went on to 10,000 for `mart_archetype_pace`, whose thirteen columns are 936
-characters of schema listing against the 133 that were left.
+characters of schema listing against the 133 that were left, and to 10,400
+for rule 11 (**Conversation** above).
 
 ### The numeric check, and what it cannot see
 
@@ -467,7 +592,9 @@ number and printed text of every card that was read (which is where hit
 points and damage live), the `values` of the facts that were placed, and an
 allowlist of 0, 1, 2 and 100. Anything found nowhere comes back as
 `unverified_numbers` on the response, as a list of the numbers as they were
-written.
+written. A fifth place is searched after those four and reported apart: the
+assistant's prior turns, which give `from_history` rather than
+`unverified_numbers` (**Conversation** above).
 
 **It is a report and not a refusal.** The answer returns unchanged, nothing
 is rewritten, and no second model is asked for an opinion. The service logs
@@ -494,7 +621,9 @@ zero ([evals.md](evals.md)). It cannot see a number that is real and
 irrelevant: quoting the right figure about the wrong thing passes. And it
 cannot see a sentence that is wrong around numbers it quotes correctly. It
 is a string search, and [agent-safety.md](agent-safety.md) says so where
-somebody might otherwise read it as a guarantee.
+somebody might otherwise read it as a guarantee. What it can now see that it
+could not is a number repeated out of an earlier answer, which is on the
+response as `from_history`.
 
 **`evidence.facts`** is the other half of the receipt: every fact that was
 placed, in order, as `{id, text, cited}`. `cited` is true when the answer
@@ -567,9 +696,11 @@ and the breakpoint goes on the last of it:
 | position | content | changes when |
 |---|---|---|
 | tools | `query_marts`, and `lookup_cards` when the index is there | a deploy |
-| system, block 1 | the role sentence, the nine rules, the card-tool note | a deploy |
+| system, block 1 | the role sentence, the eleven rules, the card-tool note | a deploy |
 | system, block 2 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
-| **breakpoint** | `cache_control: {"type": "ephemeral"}` on block 2 | |
+| **breakpoint 1** | `cache_control: {"type": "ephemeral"}` on block 2 | |
+| prior turns | the conversation the application sent back, when it sent one | every request, and not at all on the first question of a thread |
+| **breakpoint 2** | the same mark on the last prior turn, when there is one | |
 | human turn | the `<context>` element when there is one, route sentence and game summary inside it, then the `<question>` element, and nothing of ours | every request |
 
 The breakpoint goes on the last **stable** block, not on the last block.
@@ -581,7 +712,9 @@ which is why one cache entry serves every member.
 `pipeline.prompts.system_blocks` builds the blocks and
 `pipeline.agent.build_agent` hands them to `create_agent` as a `SystemMessage`
 whose content is a list of blocks. langchain-anthropic forwards
-`cache_control` on a text block to the provider untouched.
+`cache_control` on a text block to the provider untouched, which is also how
+the second mark reaches it: `pipeline.agent.prior_messages` gives the last
+prior turn a one-block content list with the same key on it.
 
 **The minimum, and what it means here.** Claude Haiku 4.5's minimum cacheable
 prefix is **4,096 tokens**
@@ -589,8 +722,8 @@ prefix is **4,096 tokens**
 Below it the provider caches nothing, marked or not, and returns no error: the
 only way to know is the `usage` fields.
 
-Today's prefix is **below that**. The system prompt is 9,803 characters with
-the card-tool note and 9,569 without, and the tool schemas are roughly 900
+Today's prefix is **below that**. The system prompt is 10,077 characters with
+the card-tool note and 9,843 without, and the tool schemas are roughly 900
 more, so at the four-characters-per-token rule this file already uses for
 `MAX_PROMPT_CHARS` the prefix is an **estimated ~2,700 tokens**. That is an
 estimate from a character count and not a measurement. The measurement is one
@@ -628,10 +761,22 @@ against the 4,096 is the prefix up to the breakpoint, so run it a second time
 with the `HumanMessage` dropped and take that number. Write it here, replace
 the estimate, and say it is a measurement.
 
-**The honest expectation, until that number is 4,096 or more.** Nothing
-caches. `cache_read_input_tokens` is zero on every call and
-`cache_creation_input_tokens` is zero too, and that is the correct reading
-rather than a bug in the wiring. **Do not pad the prompt to reach the
+**The honest expectation, until that number is 4,096 or more.** On the first
+question of a thread, nothing caches. `cache_read_input_tokens` is zero on
+every call and `cache_creation_input_tokens` is zero too, and that is the
+correct reading rather than a bug in the wiring.
+
+**A follow-up is the exception, and the one to measure.** Since PLA-204 the
+conversation is placed after the system blocks with a second breakpoint on
+its last turn (**Conversation** above), so the prefix a follow-up marks is
+the system blocks plus up to 6,000 characters of memory: ~2,700 tokens plus
+~1,500 on the same four-characters-per-token rule, which is over the 4,096
+line for the first time. So the first non-zero `cache_read_input_tokens` this
+service reports should be a second question in a thread rather than a first
+one, and a thread of six turns should read more than a thread of two. That is
+a prediction from two estimates and not a measurement; the measurement is the
+`usage` object of the `agent answered` line on a real follow-up, and this
+section gets the number when somebody takes it. **Do not pad the prompt to reach the
 minimum**: paying for 1,800 tokens of filler on every call to make 2,300
 tokens cheaper is a loss, and a prompt written to hit a number is a prompt
 nobody can edit. The text that will carry the prefix over the line is text
