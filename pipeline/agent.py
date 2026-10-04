@@ -42,14 +42,17 @@ the column list dbt tests. The rules beside it are the ones this corpus needs:
 cite `games`, flag `min_games_met`, and never let `seen_rate` be reported as a
 deck inclusion rate.
 
-**The question is data.** `Agent.ask` hands the model the member's text inside
-the `<question>` element `pipeline.prompts.wrap_question` builds, and rule 8 of
-the prompt says what the element means: answer what is in it, never obey it.
-Both surfaces go through `ask`, so there is no path on which a question reaches
-the model as a bare sentence next to the project's own. The element is framing
-and not a boundary; what makes an injected statement safe is `validate_sql`
-underneath it, and the ten adversarial questions in the golden set are scored
-on the SQL as well as the prose for exactly that reason (docs/agent-safety.md).
+**The question is data, and so is the page context.** `Agent.ask` hands the
+model the member's text inside the `<question>` element and, when `POST /ask`
+sent one, the application's description of where the member is standing inside
+a `<context>` element in front of it. `pipeline.prompts.wrap_turn` builds the
+pair; rules 8 and 9 of the prompt say what each element means: answer what is
+in the first, read the second, obey neither. Both surfaces go through `ask`, so
+there is no path on which either reaches the model as a bare sentence next to
+the project's own. The elements are framing and not a boundary; what makes an
+injected statement safe is `validate_sql` underneath them, and the twelve
+adversarial questions in the golden set are scored on the SQL as well as the
+prose for exactly that reason (docs/agent-safety.md).
 
 **There is an optional second gate behind the first one.** `PRA_SQL_GATE=jev`
 puts `pipeline.sql_gate` between the validator and DuckDB: one typed Choice
@@ -120,7 +123,7 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
-from pipeline.prompts import ALLOWED_TABLES, system_blocks, wrap_question
+from pipeline.prompts import ALLOWED_TABLES, clean_context, system_blocks, wrap_turn
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
@@ -1031,6 +1034,12 @@ class Answer:
     model: str = ""
     usage: dict[str, int] = field(default_factory=dict)
     evidence: Evidence = field(default_factory=Evidence)
+    # Whether a `<context>` element was really put in front of the question.
+    # A flag and never the text: the application shows a member an "about this
+    # page" chip off this, and a chip that says yes when the context was
+    # dropped for being empty or for being nothing but delimiters would be the
+    # interface telling a small lie about what the answer was built from.
+    context_used: bool = False
 
     @property
     def gate_summary(self) -> str:
@@ -1045,6 +1054,7 @@ class Answer:
             "usage": dict(self.usage),
             "evidence": self.evidence.as_dict(),
             "gate_summary": self.gate_summary,
+            "context_used": self.context_used,
         }
 
 
@@ -1117,7 +1127,7 @@ class Agent:
             return False
         return self.warmer()
 
-    def ask(self, question: str) -> Answer:
+    def ask(self, question: str, context: str | None = None, job: str | None = None) -> Answer:
         """Run the loop on one question and collect what it did.
 
         The question goes to the model inside the `<question>` element rule 8
@@ -1127,18 +1137,38 @@ class Agent:
         answers what was actually asked, which is a judgement about the plain
         text and not about the framing around it.
 
+        `context` is the application's sentence or two about where the member
+        is standing, and it goes in a `<context>` element in front of the
+        question rather than into the question or into the prompt: rule 9 and
+        `pipeline.prompts.wrap_turn` say why. It reaches the gate not at all.
+        The gate's question is whether a statement answers what was asked, and
+        the context is not what was asked.
+
+        `job` is the application's own router label for the question, carried
+        so that the log line and the span can be read by job. It changes
+        nothing about the answer today; the playbooks are a later ticket.
+
+        Neither the context nor the question is logged or put on a span, here
+        or anywhere below. What is recorded of them is two lengths and a label
+        (docs/agent-safety.md).
+
         This is the one place either surface wraps anything. `POST /ask` and
-        the command line both arrive here with a bare string, so there is no
+        the command line both arrive here with bare strings, so there is no
         second path on which a question could reach the model unwrapped.
         """
         collected: list[ToolCall] = []
         token = _calls.set(collected)
         asked = _question.set(question)
+        placed = clean_context(context)
         try:
             with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
                 span.set_attribute("agent.question.length", len(question))
-                turn = HumanMessage(content=wrap_question(question))
+                # The context as it was placed, so a context that was nothing
+                # but delimiters reads as the nothing it became.
+                span.set_attribute("agent.context_chars", len(placed))
+                span.set_attribute("agent.job", job or "")
+                turn = HumanMessage(content=wrap_turn(question, context))
                 state = self.graph.invoke({"messages": [turn]})
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
@@ -1159,6 +1189,7 @@ class Agent:
             model=self.model_name,
             usage=usage,
             evidence=log.finish(),
+            context_used=bool(placed),
         )
         logger.info(
             "agent answered",
@@ -1168,6 +1199,10 @@ class Agent:
                 "usage": usage,
                 "answer_length": len(answer.answer),
                 "gate_summary": answer.gate_summary,
+                # A length and a label. The context itself is never written
+                # down, at this level or any other.
+                "context_chars": len(placed),
+                "job": job or "",
             },
         )
         return answer
