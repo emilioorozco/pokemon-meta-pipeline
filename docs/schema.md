@@ -378,7 +378,11 @@ One row per `turn` segment.
 | `n_evolve` | int | no | `evolve` |
 | `n_retreat` | int | no | `retreat` |
 | `n_knockout` | int | no | `knockout` |
-| `n_prize_taken` | int | no | `prize` |
+| `n_prize_taken` | int | no | `prize`, counted in lines |
+| `n_attack_self`, `n_attack_opp` | int | no | `attack`, split by the seat the line is credited to |
+| `n_energy_attach_self`, `n_energy_attach_opp` | int | no | `attach` with `fields.energy` true, split the same way |
+| `n_prize_self`, `n_prize_opp` | int | no | `prize`, weighed by `fields.n` and split the same way |
+| `n_knockout_self`, `n_knockout_opp` | int | no | `knockout`, credited to the seat that does not own the Pokemon that went down |
 | `concession` | boolean | no | a `concede` line in this segment |
 
 The buckets follow the producer's own `deriveStats` definitions (section 5), so
@@ -386,6 +390,18 @@ a counter summed over a game matches the side counter it came from. `drawn_cards
 is deliberately in no bucket: it is the sub-entry that lists what a `draw` drew,
 so counting it would count the same draw twice. A kind in no bucket still counts
 toward `n_entries`. A manual game has no segments and therefore no turn rows.
+
+The eight `_self` and `_opp` columns are a second attribution of four of those
+kinds, and they exist because the first one cannot answer "how fast does this
+deck play". `_self` is the seat whose turn it was, which is the seat on the
+row; `_opp` is the other seat. A line's seat is the one the log names as its
+actor, except a knockout, where the actor is the knocked-out Pokemon's owner
+and the credit goes to the other side, which is how the producer counts
+`stats.knockouts`. Over the committed games the two attributions differ on
+four knockouts and four prize lines, `n_attach` counts seventeen tools among a
+hundred and seven attachments, and five prize lines take two or three cards
+each. These are the only columns in the stage that parse `fields_json`, for
+`energy` and for `n`, and `int_game_side_pace` in gold is what reads them.
 
 ### 8.4 `cards_seen`
 

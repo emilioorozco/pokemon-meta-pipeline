@@ -463,7 +463,19 @@ of everything downstream:
   plus `concession`. Every action line in the segment is counted, the top-level
   entries and the sub-entries under them alike, because the draw a Professor's
   Research causes is printed as a sub-entry of the line that played it. A kind
-  with no counter still lands in `n_entries`. No `fields_json` is parsed here.
+  with no counter still lands in `n_entries`.
+
+  Four of those kinds are counted a second time, by the seat the log credits
+  each line to rather than by the seat whose turn it was: `n_attack_self` and
+  `n_attack_opp`, `n_energy_attach_self` and `n_energy_attach_opp`,
+  `n_prize_self` and `n_prize_opp`, `n_knockout_self` and `n_knockout_opp`.
+  The two attributions are not the same number. A Pokemon can go down on its
+  own owner's turn from a card effect, so the knockout and the prizes taken
+  for it belong to the other seat; `n_attach` counts tools as well as energy;
+  and `n_prize_taken` counts prize lines, while a line can take two or three
+  cards. These eight are the only place the stage looks inside `fields_json`,
+  for the `energy` flag of an attachment and the `n` of a prize, and
+  `mart_archetype_pace` is what reads them.
 - `cards_seen`: one row per (game, seat, card) from `summary.observedCards`,
   left joined to the card catalog.
 
