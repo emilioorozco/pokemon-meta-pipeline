@@ -22,7 +22,7 @@ missing-category code rather than as a string.
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -420,6 +420,7 @@ class StubAgent:
         self.jobs: list[str | None] = []
         self.games: list[str | None] = []
         self.first_lines: list[str | None] = []
+        self.facts: list[tuple[Any, ...]] = []
 
     def ask(
         self,
@@ -428,12 +429,14 @@ class StubAgent:
         job: str | None = None,
         context_game: str | None = None,
         context_first_line: str | None = None,
+        context_facts: Sequence[Any] | None = None,
     ) -> "StubAgent":
         self.asked.append(question)
         self.contexts.append(context)
         self.jobs.append(job)
         self.games.append(context_game)
         self.first_lines.append(context_first_line)
+        self.facts.append(tuple(context_facts or ()))
         return self
 
     def as_dict(self) -> dict[str, Any]:
@@ -515,11 +518,13 @@ ANSWER: Final[dict[str, Any]] = {
                 "text": "Each player shuffles their hand and puts it on the bottom of their deck.",
             }
         ],
+        "facts": [],
     },
     "gate_summary": "refused",
     "context_used": False,
     "context_game_used": False,
     "context_relevance": None,
+    "unverified_numbers": [],
 }
 
 
@@ -576,7 +581,7 @@ def test_an_agent_that_reports_no_evidence_still_answers(registry: Registry) -> 
     with TestClient(app) as started:
         body = started.post("/ask", json={"question": "anything"}).json()
 
-    assert body["evidence"] == {"queries": [], "cards": []}
+    assert body["evidence"] == {"queries": [], "cards": [], "facts": []}
     assert body["gate_summary"] == "off"
 
 
@@ -684,6 +689,85 @@ def test_the_game_on_screen_and_its_first_line_reach_the_agent(registry: Registr
     assert response.status_code == 200
     assert agent.games == [GAME_SUMMARY]
     assert agent.first_lines == [GAME_FIRST_LINE]
+
+
+def test_the_analysis_facts_reach_the_agent_as_three_plain_fields(registry: Registry) -> None:
+    """The fifth context field, carried through rather than read and dropped.
+
+    The route turns each one into the plain object the agent takes and does
+    nothing else with it: whether a fact is placed, and whether the answer
+    used it, are the agent's decisions and not the handler's.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask",
+            json={
+                "question": "which turns did I not attack",
+                "context": "The member is on their own game page.",
+                "context_game": GAME_SUMMARY,
+                "context_first_line": GAME_FIRST_LINE,
+                "context_facts": [
+                    {"id": "turn_count:both", "text": "The game ran 9 turns.", "values": [9]},
+                    {"id": "no_values:me", "text": "You never attacked."},
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    (sent,) = agent.facts
+    assert [(fact.id, fact.text, fact.values) for fact in sent] == [
+        ("turn_count:both", "The game ran 9 turns.", (9.0,)),
+        ("no_values:me", "You never attacked.", ()),
+    ]
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        [{"id": "x" * 65, "text": "A sentence."}],
+        [{"id": "x", "text": "A" * 201}],
+        [{"id": "x", "text": ""}],
+        [{"id": f"f{n}", "text": "A."} for n in range(serve.MAX_FACTS + 1)],
+        [{"id": "x", "text": "A.", "values": ["nine"]}],
+    ],
+)
+def test_a_facts_list_the_service_will_not_place_is_a_422(
+    registry: Registry, facts: list[dict[str, Any]]
+) -> None:
+    """The ceilings are the service's and they are refused rather than truncated.
+
+    A list cut down to sixty would place a different context from the one the
+    application built, and an application is better placed to decide which of
+    its own facts to drop than this service is.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post("/ask", json={"question": "anything", "context_facts": facts})
+
+    assert response.status_code == 422
+    assert agent.facts == []
+
+
+def test_the_unverified_numbers_and_the_cited_facts_are_on_the_body(registry: Registry) -> None:
+    """Both halves of the receipt the facts added, straight off the agent."""
+    payload = dict(ANSWER)
+    payload["unverified_numbers"] = ["12"]
+    payload["evidence"] = {
+        "queries": [],
+        "cards": [],
+        "facts": [{"id": "turn_count:both", "text": "The game ran 9 turns.", "cited": True}],
+    }
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(payload))
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "anything"}).json()
+
+    assert body["unverified_numbers"] == ["12"]
+    assert body["evidence"]["facts"] == [
+        {"id": "turn_count:both", "text": "The game ran 9 turns.", "cited": True}
+    ]
 
 
 @pytest.mark.parametrize(

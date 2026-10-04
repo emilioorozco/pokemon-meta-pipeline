@@ -47,12 +47,14 @@
         "refused_code": null
       }
     ],
-    "cards": []
+    "cards": [],
+    "facts": []
   },
   "gate_summary": "allowed",
   "context_used": false,
   "context_game_used": false,
   "context_relevance": null,
+  "unverified_numbers": [],
   "latency_ms": 2841,
   "run_id": "fixture-run"
 }

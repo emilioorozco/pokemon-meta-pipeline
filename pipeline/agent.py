@@ -139,6 +139,7 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.describe import LIMIT_CLAUSE, describe_sql, referenced_tables, strip_literals
+from pipeline.facts import Fact, FactEvidence, check_numbers, cite_facts, clean_facts
 from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import (
     ALLOWED_TABLES,
@@ -731,10 +732,18 @@ def dedupe_cards(cards: Sequence[CardEvidence]) -> list[CardEvidence]:
 
 @dataclass(frozen=True)
 class Evidence:
-    """What one run read: its queries in call order, and the cards it matched."""
+    """What one run read: its queries, the cards it matched, and the facts it was given.
+
+    The first two are produced by the tools as the run goes. The third is not
+    produced at all: the facts arrived with the request, and they are echoed
+    here with a `cited` flag so the panel can show which of them the answer
+    used (`pipeline.facts`). A fact is evidence in exactly the way a row is,
+    which is why it is in this object rather than beside it.
+    """
 
     queries: list[QueryEvidence] = field(default_factory=list)
     cards: list[CardEvidence] = field(default_factory=list)
+    facts: list[FactEvidence] = field(default_factory=list)
 
     @property
     def gate_summary(self) -> str:
@@ -745,6 +754,7 @@ class Evidence:
         return {
             "queries": [query.as_dict() for query in self.queries],
             "cards": [card.as_dict() for card in self.cards],
+            "facts": [fact.as_dict() for fact in self.facts],
         }
 
 
@@ -761,9 +771,16 @@ class EvidenceLog:
         self.queries: list[QueryEvidence] = []
         self.cards: list[CardEvidence] = []
 
-    def finish(self) -> Evidence:
-        """The collected evidence, deduplicated and capped."""
-        return Evidence(queries=list(self.queries), cards=dedupe_cards(self.cards))
+    def finish(self, facts: Sequence[FactEvidence] = ()) -> Evidence:
+        """The collected evidence, deduplicated and capped, with the facts beside it.
+
+        The facts are a parameter rather than something the log collected,
+        because nothing collected them: they came in with the request and
+        the only thing the run adds is whether the answer used each one.
+        """
+        return Evidence(
+            queries=list(self.queries), cards=dedupe_cards(self.cards), facts=list(facts)
+        )
 
 
 # The calls made by the run happening on this task, and the question that run
@@ -1204,6 +1221,11 @@ class Answer:
     # game was sent and there was nothing to decide. One of `relevant`,
     # `irrelevant`, `skipped` (`pipeline.sql_gate.RELEVANCE_VERDICTS`).
     context_relevance: str | None = None
+    # Every number in the prose that nothing this run read can account for,
+    # as it was written. A report and never a refusal: the answer is here
+    # whatever is in this list, and an empty list is the ordinary case
+    # (`pipeline.facts.check_numbers`, docs/agent-safety.md).
+    unverified_numbers: list[str] = field(default_factory=list)
 
     @property
     def gate_summary(self) -> str:
@@ -1221,6 +1243,7 @@ class Answer:
             "context_used": self.context_used,
             "context_game_used": self.context_game_used,
             "context_relevance": self.context_relevance,
+            "unverified_numbers": list(self.unverified_numbers),
         }
 
 
@@ -1321,6 +1344,7 @@ class Agent:
         job: str | None = None,
         context_game: str | None = None,
         context_first_line: str | None = None,
+        context_facts: Sequence[Fact] | None = None,
     ) -> Answer:
         """Run the loop on one question and collect what it did.
 
@@ -1351,6 +1375,20 @@ class Agent:
         ignores, and a missing game on a question about that game is a worse
         answer.
 
+        `context_facts` is the numbered list of analysis facts the
+        application computed from the same log, and it rides with the game:
+        the facts are placed when the summary is placed and dropped when the
+        judge drops it, because a fact about a game that is not in front of
+        the model is a sentence with nothing to attach to. They go inside the
+        same `<context>` element, after the game text, as the `<facts>` list
+        rule 10 describes.
+
+        After the answer comes back, every number in its prose is looked up
+        in the rows, the cards and those fact values, and whatever is found
+        nowhere is reported on the answer as `unverified_numbers`. A report
+        and not a refusal: the answer returns either way, and what is written
+        down is the count (`pipeline.facts`).
+
         `job` is the application's own router label for the question, carried
         so that the log line and the span can be read by job. It changes
         nothing about the answer today; the playbooks are a later ticket.
@@ -1374,6 +1412,10 @@ class Agent:
             self.metrics.observe_context_relevance(decision.verdict, decision.latency_ms / 1000)
         attached = game if decision is not None and decision.attach else ""
         placed = CONTEXT_JOINER.join(part for part in (route, attached) if part)
+        # With the game and never without it, which is one decision and not
+        # two: the judge already said whether what the member is looking at
+        # belongs in front of the question.
+        facts = clean_facts(context_facts) if attached else ()
         try:
             with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
@@ -1386,7 +1428,10 @@ class Agent:
                 span.set_attribute("agent.context_relevance", decision.verdict if decision else "")
                 span.set_attribute("agent.relevance_ms", decision.latency_ms if decision else 0)
                 span.set_attribute("agent.job", job or "")
-                turn = HumanMessage(content=wrap_turn(question, placed))
+                span.set_attribute("agent.facts", len(facts))
+                turn = HumanMessage(
+                    content=wrap_turn(question, placed, [fact.text for fact in facts])
+                )
                 state = self.graph.invoke({"messages": [turn]})
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
@@ -1398,18 +1443,34 @@ class Agent:
                     span.set_attribute(f"agent.usage.{name}", value)
                 if self.metrics is not None:
                     self.metrics.count_prompt_tokens(usage)
+                # Inside the span, because the count is one of its
+                # attributes and the check is a scan of a string that has
+                # already been produced: nothing here asks the provider
+                # anything or adds a call to a member's wait.
+                text = final_text(messages)
+                evidence = log.finish(cite_facts(text, facts))
+                check = check_numbers(
+                    text,
+                    rows=[row for query in evidence.queries for row in query.rows],
+                    cards=[f"{card.number} {card.text}" for card in evidence.cards],
+                    facts=facts,
+                )
+                span.set_attribute("agent.unverified_numbers", len(check.unverified))
+                if self.metrics is not None:
+                    self.metrics.count_unverified_numbers(len(check.unverified))
         finally:
             _question.reset(asked)
             _calls.reset(token)
         answer = Answer(
-            answer=final_text(messages),
+            answer=text,
             tool_calls=collected,
             model=self.model_name,
             usage=usage,
-            evidence=log.finish(),
+            evidence=evidence,
             context_used=bool(placed),
             context_game_used=bool(attached),
             context_relevance=decision.verdict if decision else None,
+            unverified_numbers=list(check.unverified),
         )
         logger.info(
             "agent answered",
@@ -1427,6 +1488,10 @@ class Agent:
                 "context_relevance": decision.verdict if decision else "",
                 "relevance_ms": decision.latency_ms if decision else 0,
                 "job": job or "",
+                # The count and never the numbers: a number an answer wrote
+                # is the answer, and this line has never carried any of it.
+                "facts": len(facts),
+                "unverified_numbers": len(check.unverified),
             },
         )
         return answer

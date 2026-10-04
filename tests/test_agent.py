@@ -27,10 +27,13 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import pipeline.warehouse_tables
 from pipeline import agent
+from pipeline.facts import Fact
 from pipeline.prompts import (
     ALLOWED_TABLES,
     CONTEXT_CLOSE,
     CONTEXT_OPEN,
+    FACTS_CLOSE,
+    FACTS_OPEN,
     MAX_PROMPT_CHARS,
     PART_SEPARATOR,
     QUESTION_CLOSE,
@@ -1426,3 +1429,140 @@ def test_the_provider_key_names_the_same_variable_the_serving_app_checks() -> No
     from pipeline.serve import PROVIDER_KEY_VAR
 
     assert PROVIDER_KEY_VAR == agent.API_KEY_VAR
+
+
+# ------------------------------------------------- the facts and the numbers --
+#
+# The block and the check in the agent rather than in `pipeline.facts`: what
+# is asserted here is that the two are wired to the relevance verdict and to
+# the evidence, which is the half the unit tests in `tests/test_facts.py`
+# cannot see.
+
+GAME_FACTS: Final[tuple[Fact, ...]] = (
+    Fact(id="turn_count:both", text="The game ran 9 turns.", values=(9.0,)),
+    Fact(id="prizes_taken:both", text="You took 2 prizes and they took 6.", values=(2.0, 6.0)),
+)
+
+
+def test_the_facts_are_placed_under_the_game_and_never_without_it(tmp_path: Path) -> None:
+    """One decision, not two: the facts ride with the game the judge kept."""
+    built, model = built_with(tmp_path, FakeRelevance("relevant"))
+    answer = built.ask(
+        "how did I lose this one",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+        context_facts=GAME_FACTS,
+    )
+    assert human_turn(model) == (
+        f"{CONTEXT_OPEN}\n{ROUTE}\n\n{GAME}\n"
+        f"{FACTS_OPEN}\n"
+        "1. The game ran 9 turns.\n"
+        "2. You took 2 prizes and they took 6.\n"
+        f"{FACTS_CLOSE}\n"
+        f"{CONTEXT_CLOSE}\n"
+        f"{QUESTION_OPEN}\nhow did I lose this one\n{QUESTION_CLOSE}"
+    )
+    assert [fact.id for fact in answer.evidence.facts] == [fact.id for fact in GAME_FACTS]
+
+
+def test_a_dropped_game_drops_its_facts_with_it(tmp_path: Path) -> None:
+    """`irrelevant` is about the game, and the facts are about the game."""
+    built, model = built_with(tmp_path, FakeRelevance("irrelevant"))
+    answer = built.ask(
+        "which deck is best this week",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+        context_facts=GAME_FACTS,
+    )
+    turn = human_turn(model)
+    assert FACTS_OPEN not in turn
+    assert "The game ran 9 turns" not in turn
+    assert answer.evidence.facts == []
+    assert answer.context_game_used is False
+
+
+def test_a_number_in_no_row_and_no_fact_comes_back_on_the_answer(tmp_path: Path) -> None:
+    """The deliberate failure, at the level a member would meet it.
+
+    The model is scripted to answer with a turn number nothing in front of it
+    holds. The answer is returned, unchanged and unmarked, and the number is
+    on `unverified_numbers` for the application to draw a mark beside
+    (docs/agent-safety.md).
+    """
+    model = scripted(final("You went quiet on turn 12, in a game that ran 9 turns."))
+    built = agent.build_agent(
+        model=model,
+        warehouse=tmp_path / "none.duckdb",
+        gate=FakeGate(),
+        relevance=FakeRelevance("relevant"),
+    )
+    answer = built.ask(
+        "which turns did I not attack",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+        context_facts=GAME_FACTS,
+    )
+    assert answer.unverified_numbers == ["12"]
+    assert answer.as_dict()["unverified_numbers"] == ["12"]
+    assert answer.answer.startswith("You went quiet on turn 12")
+
+
+def test_a_fact_the_answer_used_is_marked_cited_and_one_it_ignored_is_not(
+    tmp_path: Path,
+) -> None:
+    model = scripted(final("The game ran 9 turns."))
+    built = agent.build_agent(
+        model=model,
+        warehouse=tmp_path / "none.duckdb",
+        gate=FakeGate(),
+        relevance=FakeRelevance("relevant"),
+    )
+    answer = built.ask(
+        "how long was it",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+        context_facts=GAME_FACTS,
+    )
+    assert [(fact.id, fact.cited) for fact in answer.evidence.facts] == [
+        ("turn_count:both", True),
+        ("prizes_taken:both", False),
+    ]
+    assert answer.evidence.as_dict()["facts"][0]["cited"] is True
+
+
+def test_the_count_is_written_down_and_the_numbers_are_not(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A number an answer wrote is the answer, and the log line has never held one."""
+    spans = InMemorySpanExporter()
+    metrics = build_metrics()
+    model = scripted(final("You went quiet on turn 12 and again on turn 15."))
+    built = agent.build_agent(
+        model=model,
+        warehouse=tmp_path / "none.duckdb",
+        gate=FakeGate(),
+        relevance=FakeRelevance("relevant"),
+        metrics=metrics,
+        tracer=build_tracer_provider(exporter=spans).get_tracer("tests"),
+    )
+    with caplog.at_level("DEBUG"):
+        built.ask(
+            "which turns did I not attack",
+            context=ROUTE,
+            context_game=GAME,
+            context_first_line=FIRST_LINE,
+            context_facts=GAME_FACTS,
+        )
+
+    record = next(entry for entry in caplog.records if entry.message == "agent answered")
+    assert record.unverified_numbers == 2  # type: ignore[attr-defined]
+    assert record.facts == 2  # type: ignore[attr-defined]
+    assert "turn 12" not in caplog.text
+    (span,) = [one for one in spans.get_finished_spans() if one.name == agent.ANSWER_SPAN]
+    assert attribute(span, "agent.unverified_numbers") == 2
+    assert attribute(span, "agent.facts") == 2
+    assert metrics.agent_unverified_numbers._value.get() == 2  # noqa: SLF001

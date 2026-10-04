@@ -284,6 +284,7 @@ class ServiceMetrics:
     agent_prompt_tokens: Counter
     agent_context_relevance: Counter
     agent_relevance_duration: Histogram
+    agent_unverified_numbers: Counter
     model_info: Gauge
 
     def observe_request(self, method: str, route: str, status: int, duration_s: float) -> None:
@@ -359,6 +360,24 @@ class ServiceMetrics:
         """
         self.agent_context_relevance.labels(verdict=verdict).inc()
         self.agent_relevance_duration.observe(duration_s)
+
+    def count_unverified_numbers(self, count: int) -> None:
+        """Numbers one answer stated that nothing the run read can account for.
+
+        A count of numbers rather than of answers, and incremented by zero on
+        a healthy question so the series exists from the first scrape: a
+        counter that appears only when something is wrong is a counter nobody
+        has a baseline for. No label, because the only labels available would
+        be the numbers themselves, and a number a model wrote is one time
+        series per hallucination.
+
+        It does not sit at zero on a healthy service, because the check
+        knows values and not arithmetic and a correctly summed total counts
+        here too. What it is good for is the slope: a rate climbing against
+        the questions answered is the prompt's rule 10 losing, and it is
+        visible here before it is visible in anybody's reading of an answer.
+        """
+        self.agent_unverified_numbers.inc(count)
 
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
@@ -442,6 +461,11 @@ def build_metrics() -> ServiceMetrics:
             "Wall time of the one Choice call that decides whether the game on screen "
             "bears on the question.",
             buckets=_RELEVANCE_BUCKETS,
+            registry=registry,
+        ),
+        agent_unverified_numbers=Counter(
+            "agent_unverified_numbers_total",
+            "Numbers in an agent answer that no row, card or fact of its run can account for.",
             registry=registry,
         ),
         model_info=Gauge(
