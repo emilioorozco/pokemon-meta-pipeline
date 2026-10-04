@@ -55,12 +55,11 @@ import re
 from functools import lru_cache
 from typing import Final
 
+from pipeline.marts_schema import MARTS_MODELS
 from pipeline.prompts import (
     ALLOWED_TABLES,
     COLUMN_SENTENCES,
-    SCHEMA_FILES,
     first_sentences,
-    read_models,
     warehouse_tables,
 )
 
@@ -321,12 +320,12 @@ def referenced_tables(sql: str) -> list[str]:
 def schema_column_words() -> dict[str, str]:
     """The prompt's own column one-liners, for columns `COLUMN_WORDS` has not named.
 
-    The schema listing in the system prompt is generated from
-    `dbt/models/marts/schema.yml` so that a renamed column cannot go stale in
-    two places, and the same file is the only description of a column this
-    project has written down. So a column nobody has given short words to
-    borrows the first sentence of its description rather than having its raw
-    name spelled out, which is the one thing the line may not do.
+    The schema listing in the system prompt is generated from the dbt marts
+    schema so that a renamed column cannot go stale in two places, and that
+    schema is the only description of a column this project has written down.
+    So a column nobody has given short words to borrows the first sentence of
+    its description rather than having its raw name spelled out, which is the
+    one thing the line may not do.
 
     Borrowed under three conditions, because a description is written for a
     reader of the model and not for a receipt: it has to be short enough to
@@ -335,23 +334,22 @@ def schema_column_words() -> dict[str, str]:
     yields nothing, and the filter it would have described is left out of the
     line rather than guessed at.
 
-    Empty when the dbt project is not beside the warehouse, which is the
-    serving image: the hand written table above is the whole vocabulary there,
-    and it is the one that covers every column the marts are filtered on.
+    From the committed `pipeline.marts_schema` and no filesystem at all, for
+    the reason `pipeline.prompts.render_schema` gives: the serving image
+    copies `pipeline/` and not `dbt/` (`Dockerfile.agent`), so the parse that
+    used to happen here found no file and this whole vocabulary came back
+    empty on the one deployment that matters. It degraded quietly, because a
+    column with no words is a filter left out of the line rather than an
+    error, so a receipt on the image said less than the same receipt in a
+    checkout and nothing said why.
     """
     forbidden = raw_names()
     words: dict[str, str] = {}
-    for model in read_models(SCHEMA_FILES).values():
-        columns = model.get("columns") or []
-        if not isinstance(columns, list):
-            continue
-        for column in columns:
-            name = str(column.get("name") or "")
+    for _table, _description, columns in MARTS_MODELS:
+        for name, note in columns:
             if not name or name in COLUMN_WORDS:
                 continue
-            sentence = first_sentences(
-                str(column.get("description", "")), COLUMN_SENTENCES, MAX_VALUE_CHARS
-            )
+            sentence = first_sentences(note, COLUMN_SENTENCES, MAX_VALUE_CHARS)
             phrase = sentence.rstrip(".").strip()
             if not phrase or phrase.endswith("...") or len(phrase) > 36:
                 continue
@@ -373,19 +371,24 @@ def column_words(name: str) -> str:
 def raw_names() -> frozenset[str]:
     """Every relation and column name a description may not contain.
 
-    The seven allowlisted tables, every column of them, and every relation dbt
+    The eight allowlisted tables, every column of them, and every relation dbt
     builds. This is what the no-raw-names rule is checked against, and it is
     also what keeps a borrowed description in `schema_column_words` from
     putting a column name back on the screen by the back door.
+
+    Two committed lists and no filesystem, for the reason
+    `schema_column_words` gives: the columns come from
+    `pipeline.marts_schema` and the relations from
+    `pipeline.warehouse_tables`, both generated at build time from the dbt
+    tree. A set that was short on the serving image would be a rule that
+    passed there by having nothing to check against, which is the worst way
+    for this particular check to hold.
     """
     names = set(ALLOWED_TABLES) | set(warehouse_tables())
-    for table, model in read_models(SCHEMA_FILES).items():
+    for table, _description, columns in MARTS_MODELS:
         if table not in ALLOWED_TABLES:
             continue
-        columns = model.get("columns") or []
-        if not isinstance(columns, list):
-            continue
-        names.update(str(column.get("name") or "").lower() for column in columns)
+        names.update(name.lower() for name, _note in columns)
     names.discard("")
     return frozenset(names)
 
