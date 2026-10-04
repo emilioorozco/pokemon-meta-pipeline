@@ -1191,9 +1191,10 @@ def test_a_run_collects_the_queries_and_the_rows_behind_its_answer(
     }
     # Values JSON can carry, which is what the response body needs of them.
     json.dumps(answer.as_dict())
-    # The gate is off in this run, and a refusal is still the worst thing that
-    # happened to a query in it.
-    assert answer.gate_summary == "refused"
+    # The gate is off in this run and the second query answered the question,
+    # so the summary describes that rather than the attempt before it. The
+    # refused attempt is still in the evidence, with its reason and its code.
+    assert answer.gate_summary == "off"
 
 
 @pytest.mark.dbt
@@ -1263,13 +1264,22 @@ def query(gate: str = "off", *, refused: bool = False) -> agent.QueryEvidence:
         ([query("jev:allowed")], "allowed"),
         ([query("jev:allowed_low")], "allowed_low"),
         ([query("jev:error")], "allowed_low"),
+        # The lowest-confidence allowed gate, in either order.
         ([query("jev:allowed"), query("jev:allowed_low")], "allowed_low"),
+        ([query("jev:allowed_low"), query("jev:allowed")], "allowed_low"),
+        # Nothing ran, so there is nothing to describe but the refusal.
         ([query("jev:refused", refused=True)], "refused"),
         ([query("off", refused=True)], "refused"),
-        ([query("jev:allowed"), query("jev:refused", refused=True)], "refused"),
+        ([query("off", refused=True), query("jev:refused", refused=True)], "refused"),
+        # The shape PLA-198 was filed over: a refused attempt, then a query
+        # that ran and answered the question. The member saw an answer.
+        ([query("jev:allowed"), query("jev:refused", refused=True)], "allowed"),
+        ([query("off", refused=True), query("jev:allowed")], "allowed"),
+        ([query("off", refused=True), query("jev:allowed_low")], "allowed_low"),
+        ([query("off", refused=True), query("off")], "off"),
     ],
 )
-def test_the_gate_summary_is_the_worst_thing_that_happened(
+def test_the_gate_summary_describes_the_answer_rather_than_the_worst_attempt(
     queries: list[agent.QueryEvidence], expected: str
 ) -> None:
     """One word over the whole run, because the banner over the panel is one word."""

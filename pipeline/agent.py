@@ -215,8 +215,10 @@ MAX_EVIDENCE_ROWS: Final = 10
 MAX_EVIDENCE_CARDS: Final = 10
 MAX_EVIDENCE_CHARS: Final = 500
 
-# The four values `gate_summary` takes: the worst thing that happened to a
-# query in this run, which is what a banner over the panel is drawn from.
+# The four values `gate_summary` takes. It describes the answer the member
+# was given rather than the worst attempt behind it: a run that guessed a
+# table name, was refused, and then read the right table has not had its
+# answer refused, and a badge that said so was the whole of PLA-198.
 SUMMARY_OFF: Final = "off"
 SUMMARY_ALLOWED: Final = "allowed"
 SUMMARY_ALLOWED_LOW: Final = "allowed_low"
@@ -700,21 +702,33 @@ class CardEvidence:
 
 
 def summarize_gate(queries: Sequence[QueryEvidence]) -> str:
-    """The worst thing that happened to a query in this run, as one word.
+    """What happened to the answer this run gave, as one word.
 
-    A ladder rather than a count, because the question it answers is whether
-    anything in the answer needs a second look. A refusal, from the validator
-    or from the gate, is the worst and ends the walk. A gate that allowed a
-    statement it was not sure about, and a gate that errored and let the
-    statement through under `PRA_SQL_GATE_ON_ERROR`, are both "allowed, with
-    a caveat". `off` is a run that asked the warehouse nothing, and a run
-    whose queries ran with no gate in front of them: in neither case did a
-    gate have an opinion to report.
+    The rule, since PLA-198: if anything was allowed to run, this describes
+    those runs and not the attempts before them. `refused` is reserved for a
+    run that got nothing, which is every query refused, or no query at all
+    because the one that was tried was refused. The application draws an
+    error-tone badge on `refused`, and a correct answer behind a guessed
+    table name was earning one: the model wrote `mart_leaderboard`, read the
+    refusal, queried `mart_player_summary` and answered, and the member was
+    told the data query was refused.
+
+    Among the queries that did run it is still a ladder, worst first, because
+    the question that half answers is whether the answer needs a second look.
+    A gate that allowed a statement it was not sure about, and a gate that
+    errored and let the statement through under `PRA_SQL_GATE_ON_ERROR`, are
+    both "allowed, with a caveat". `off` is a run that asked the warehouse
+    nothing, and a run whose queries ran with no gate in front of them: in
+    neither case did a gate have an opinion to report.
+
+    The refused attempt stays in `evidence.queries` with its reason and its
+    code either way. Nothing is hidden; it is read as the detour it was.
     """
+    ran = [query for query in queries if not query.refused]
+    if not ran:
+        return SUMMARY_REFUSED if queries else SUMMARY_OFF
     worst = SUMMARY_OFF
-    for query in queries:
-        if query.refused:
-            return SUMMARY_REFUSED
+    for query in ran:
         outcome = query.gate.partition(":")[2]
         if outcome in {"allowed_low", "error"}:
             worst = SUMMARY_ALLOWED_LOW
@@ -760,7 +774,7 @@ class Evidence:
 
     @property
     def gate_summary(self) -> str:
-        """The worst gate outcome over this run's queries."""
+        """What happened to the answer, over this run's queries."""
         return summarize_gate(self.queries)
 
     def as_dict(self) -> dict[str, Any]:
@@ -1229,7 +1243,7 @@ class Answer:
 
     @property
     def gate_summary(self) -> str:
-        """The worst gate outcome over this run's queries, as one word."""
+        """What happened to the answer, over this run's queries, as one word."""
         return self.evidence.gate_summary
 
     def as_dict(self) -> dict[str, Any]:

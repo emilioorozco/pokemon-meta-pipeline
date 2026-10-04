@@ -492,9 +492,11 @@ class AskResponse(BaseModel):
     )
     gate_summary: str = Field(
         default="off",
-        description="The worst outcome across this run's queries: `refused` if any was "
-        "refused, `allowed_low` if the gate let one through unsurely, `allowed` if they "
-        "ran under the gate, `off` if there were none or the gate is not on",
+        description="What happened to the answer, not to the worst attempt behind it: "
+        "`refused` only when every query was refused or none ran, `allowed_low` if the "
+        "gate let one through unsurely, `allowed` if they ran under the gate, `off` if "
+        "there were none or the gate is not on. A refused attempt followed by a query "
+        "that ran is not `refused`; the attempt is still in `evidence.queries`",
     )
     latency_ms: int = Field(
         default=0, description="Wall time of the whole call inside the service, in milliseconds"
