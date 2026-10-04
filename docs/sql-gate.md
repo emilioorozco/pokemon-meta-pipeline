@@ -138,6 +138,28 @@ per decision carries the provider, the verdict, the confidence, the input
 tokens and the cost. Nothing logs the SQL or the question, and the key leaves
 the process only as an `Authorization` header on the one request.
 
+## The other question this client is asked
+
+`JEV_API_KEY` now buys two things rather than one. `POST /ask` can be told
+that the member is looking at one of their own games, and when it is, the
+same client asks the same model a second Choice question: does that game bear
+on what they asked? It is a different question id, a different pair of
+options (`relevant` and `irrelevant`) and a state of one sentence rather than
+a statement and a schema, and it goes to the same base URL with the same key
+and the same five second budget ([agent-service.md](agent-service.md)).
+
+Two things about it are worth knowing here. It is not controlled by
+`PRA_SQL_GATE`: a deployment with the key set asks it whether or not the SQL
+gate is on, because the key is for the judge and gating SQL is a separate
+decision. And it fails open, which is the opposite of everything above: a
+timeout or a 500 is reported as `skipped` and the game is attached anyway,
+because this question stands in front of a context window rather than in
+front of the warehouse. With the gate on, there is one client object for both
+questions, so the two are one connection and one secret.
+
+Its cost is the same per-input-token rate on a shorter state, one call per
+question asked from a game page.
+
 ## In the golden set
 
 `python -m pipeline.eval` prints a `gate` column per question (`-` when the
