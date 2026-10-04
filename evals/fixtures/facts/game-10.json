@@ -1,0 +1,98 @@
+{
+  "case_id": "mistake_game_10",
+  "source_fixture": "game-10-1b28b75c.json",
+  "context": "The member is on their own game page, reviewing one game.",
+  "context_first_line": "Your game against Festival Lead, you went second, lost in 4 turns.",
+  "context_game": "Your deck against Festival Lead. You went second and lost on turn 4. You took 0 prizes and your opponent took 2. You never attacked in this game. Your opponent first attacked on turn 3.",
+  "context_facts": [
+    {
+      "id": "turn_count:both",
+      "text": "The game ran 4 turns.",
+      "values": [
+        4
+      ]
+    },
+    {
+      "id": "first_attack_turn:me",
+      "text": "You never attacked in this game.",
+      "values": []
+    },
+    {
+      "id": "first_attack_turn:opponent",
+      "text": "Your opponent first attacked on turn 3.",
+      "values": [
+        3
+      ]
+    },
+    {
+      "id": "turns_without_attack:me",
+      "text": "You made no attack on 1 of your turns, on turn 2.",
+      "values": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "turns_without_energy_attach:me",
+      "text": "You attached energy on every turn you took.",
+      "values": []
+    },
+    {
+      "id": "first_prize_turn:me",
+      "text": "You took no prize in this game.",
+      "values": []
+    },
+    {
+      "id": "prizes_taken:both",
+      "text": "You took 0 prizes and your opponent took 2.",
+      "values": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "prizes_by_turn:me",
+      "text": "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8.",
+      "values": [
+        0,
+        4,
+        0,
+        6,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "first_knockout_turn:me",
+      "text": "You took no knockout in this game.",
+      "values": []
+    },
+    {
+      "id": "knockouts:both",
+      "text": "You took 0 knockouts and your opponent took 2.",
+      "values": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "biggest_attack:me",
+      "text": "None of your attacks dealt damage.",
+      "values": []
+    },
+    {
+      "id": "energy_per_turn:me",
+      "text": "You attached 1 energy cards per turn you took.",
+      "values": [
+        1
+      ]
+    },
+    {
+      "id": "concession_turn:both",
+      "text": "The game ended in a concession on turn 4.",
+      "values": [
+        4
+      ]
+    }
+  ]
+}

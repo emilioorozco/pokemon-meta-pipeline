@@ -82,14 +82,40 @@
 #   and with it off, which is the point: turning the gate on must not change
 #   what a correct answer looks like.
 #
-#   `kind` tells the two halves of the file apart. It defaults to `golden`,
+#   `kind` tells the three parts of the file apart. It defaults to `golden`,
 #   which is a question the fixture marts answer and which is graded on the
 #   answer. `adversarial` is a question nobody should get an answer to; those
-#   are the twelve at the bottom, they must carry a `forbid` list, and their
+#   are the twelve in the middle, they must carry a `forbid` list, and their
 #   `forbid` entries are searched in the statements the run wrote as well as
 #   in its prose. The two injection questions above predate the field and keep
 #   the default, because they are scored exactly the way the twelve are and
 #   moving them would renumber a set people have run against for two months.
+#   `mistake` is the ten at the bottom, one per pipeline fixture game: a
+#   question about the game on the member's screen, answered out of the
+#   analysis facts the application sent with it rather than out of the
+#   warehouse, and graded on the numbers as well as on the words.
+#
+#   `context_facts` is what a `mistake` question carries and what makes it
+#   answerable at all. Each entry is `{id, text, values}`: the application's
+#   own key, one plain sentence holding that fact's numbers, and those
+#   numbers as it computed them. The service places the sentences as a
+#   numbered `<facts>` list at the end of the same `<context>` element, under
+#   the game summary and only when that summary is placed, and rule 10 of the
+#   prompt says every number in the answer has to be a row value, a card
+#   value or one of these. The ceilings are the service's: sixty facts, an id
+#   of at most 64 characters, a sentence of at most 200, and a value list of
+#   numbers. The facts under `evals/fixtures/facts/` are where these came
+#   from, rendered by a one-off script over the application's `analyzeGame`
+#   and the ten fixture games (docs/evals.md).
+#
+#   `max_unverified` is the fourth check and the only one a question opts
+#   into. After the answer comes back, every number in its prose is looked up
+#   in the rows the queries returned, the cards that were read, the fact
+#   values, and a four-entry allowlist; anything found nowhere is reported as
+#   `unverified_numbers`. `max_unverified: 0` fails the question when there
+#   is one, and it is what the ten `mistake` questions and
+#   `game_on_screen_loss` carry. A question that leaves the field out is
+#   never failed on it, and its untraceable numbers are still reported.
 #
 #   `context` is the page context the application would have sent beside the
 #   question, as plain text, and it is empty on all but two questions. The
@@ -137,8 +163,16 @@
 #   checked without a model. One whose injection is in a `context` names the
 #   statement that context is fishing for, which is the same table and the
 #   same claim about the same validator.
+#
+#   A `mistake` question replaces step 1 with the facts file. Every number a
+#   `require` entry looks for has to be a value of one of its own
+#   `context_facts`, which `tests/test_eval.py` asserts rather than trusts,
+#   so a hand-typed expectation that drifted from the application's own
+#   arithmetic is a red test rather than a question that grades the model's
+#   imagination. It also carries `expect_tools: []`, because the warehouse
+#   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 9
+version: 10
 
 questions:
   - id: matchup_win_rate
@@ -851,8 +885,25 @@ questions:
       on turn 3; the Gardevoir ex side attacked on turn 2 and knocked out a
       benched basic on turn 4, and took its last two prizes in one turn at the
       end.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 9 turns."
+        values: [9]
+      - id: prizes_taken:both
+        text: "You took 2 prizes and your opponent took 6."
+        values: [2, 6]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 3."
+        values: [3]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 2."
+        values: [2]
+      - id: first_knockout_turn:opponent
+        text: "Your opponent's first knockout came on turn 4."
+        values: [4]
     question: how did I lose this one
     expect_tools: []
+    max_unverified: 0
     require:
       - Dragapult ex
       - Gardevoir ex
@@ -873,4 +924,665 @@ questions:
       not. `expect_tools` is empty because no query is needed and an extra one
       is wasteful rather than wrong. `warehouse: any` because neither required
       string is a fact of the fixture corpus: both are in the context the
-      runner sent.
+      runner sent. It carries `context_facts` and `max_unverified: 0` since
+      version 10, for the reason the ten `mistake` questions do: every number
+      in its summary is a number the application would have computed, and an
+      answer that quoted one the summary does not hold would otherwise pass.
+
+  - id: mistake_game_01
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Dudunsparce / Kadabra, you went second, won in 23 turns.
+    context_game: >-
+      Your deck against Dudunsparce / Kadabra. You went second and won on turn 23. You
+      took 5 prizes and your opponent took 4. Your first attack was on turn 8. Your
+      opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 23 turns."
+        values: [23]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 8."
+        values: [8]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: turns_without_attack:me
+        text: "You made no attack on 5 of your turns, on turns 2, 4, 6, 18 and 20."
+        values: [5, 2, 4, 6, 18, 20]
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 2 of your turns, on turns 2 and 4."
+        values: [2, 2, 4]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 10."
+        values: [10]
+      - id: prizes_taken:both
+        text: "You took 5 prizes and your opponent took 4."
+        values: [5, 4]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8."
+        values: [0, 4, 0, 6, 0, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 8."
+        values: [8]
+      - id: knockouts:both
+        text: "You took 6 knockouts and your opponent took 4."
+        values: [6, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 180 damage, on turn 8."
+        values: [180, 8]
+      - id: energy_per_turn:me
+        text: "You attached 1.091 energy cards per turn you took."
+        values: [1.091]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 23."
+        values: [23]
+    question: which turns did I not attack on
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b18\\b"
+      - "re:\\b20\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The turn list, which is the question the facts were added for. Nothing in the
+      warehouse holds one game at this grain, so the five turn numbers can only have
+      come out of fact 4.
+
+  - id: mistake_game_02
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Cynthia's Garchomp, you went second, lost in 6 turns.
+    context_game: >-
+      Your deck against Cynthia's Garchomp. You went second and lost on turn 6. You took
+      1 prize and your opponent took 4. Your first attack was on turn 2. Your opponent
+      first attacked on turn 3.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 6 turns."
+        values: [6]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 3."
+        values: [3]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached energy on every turn you took."
+        values: []
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 4."
+        values: [4]
+      - id: prizes_taken:both
+        text: "You took 1 prize and your opponent took 4."
+        values: [1, 4]
+      - id: prizes_by_turn:me
+        text: "You had taken 1 prize by the end of turn 4, 1 by turn 6 and 1 by turn 8."
+        values: [1, 4, 1, 6, 1, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 4."
+        values: [4]
+      - id: knockouts:both
+        text: "You took 1 knockout and your opponent took 3."
+        values: [1, 3]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 4."
+        values: [200, 4]
+      - id: energy_per_turn:me
+        text: "You attached 2 energy cards per turn you took."
+        values: [2]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 6."
+        values: [6]
+    question: how big was my biggest attack, and when did I make it
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b200\\b"
+      - "re:\\b4\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      A damage figure rather than a turn number, so the check is reading the same facts
+      for a value that is not in the single digits a turn list lives in.
+
+  - id: mistake_game_03
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult control game against Dudunsparce / Mega Greninja ex, you went
+      second, won in 9 turns.
+    context_game: >-
+      Your Dragapult control deck against Dudunsparce / Mega Greninja ex. You went
+      second and won on turn 9. You took 3 prizes and your opponent took 1. Your first
+      attack was on turn 2. Your opponent first attacked on turn 5.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 9 turns."
+        values: [9]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 5."
+        values: [5]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 2 of your turns, on turns 6 and 8."
+        values: [2, 6, 8]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 8."
+        values: [8]
+      - id: prizes_taken:both
+        text: "You took 3 prizes and your opponent took 1."
+        values: [3, 1]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 3 by turn 8."
+        values: [0, 4, 0, 6, 3, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 8."
+        values: [8]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 1."
+        values: [2, 1]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 6."
+        values: [200, 6]
+      - id: energy_per_turn:me
+        text: "You attached 0.5 energy cards per turn you took."
+        values: [0.5]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 9."
+        values: [9]
+    question: which turns did I attach no energy on
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b6\\b"
+      - "re:\\b8\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The second list fact, asked of a game where the answer is two turns rather than
+      five, so an answer that pattern-matched the previous case's shape is wrong here.
+
+  - id: mistake_game_04
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+    context_game: >-
+      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
+      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
+      Your opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 17 turns."
+        values: [17]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 4."
+        values: [4]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: turns_without_attack:me
+        text: "You made no attack on 1 of your turns, on turn 2."
+        values: [1, 2]
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 4."
+        values: [1, 4]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 12."
+        values: [12]
+      - id: prizes_taken:both
+        text: "You took 4 prizes and your opponent took 4."
+        values: [4, 4]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8."
+        values: [0, 4, 0, 6, 0, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 12."
+        values: [12]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 10."
+        values: [200, 10]
+      - id: energy_per_turn:me
+        text: "You attached 1 energy cards per turn you took."
+        values: [1]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 17."
+        values: [17]
+    question: when did I take my first prize
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b12\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The first-prize question in the longest game of the ten, where the honest answer
+      is late: an answer that guessed from the early turns would be caught by `12`.
+
+  - id: mistake_game_05
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult / Dusknoir game against Fezandipiti ex / Froakie, you went second,
+      won in 10 turns.
+    context_game: >-
+      Your Dragapult / Dusknoir deck against Fezandipiti ex / Froakie. You went second
+      and won on turn 10. You took 2 prizes and your opponent took 0. Your first attack
+      was on turn 2. Your opponent first attacked on turn 3.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 10 turns."
+        values: [10]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 3."
+        values: [3]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 8."
+        values: [1, 8]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 6."
+        values: [6]
+      - id: prizes_taken:both
+        text: "You took 2 prizes and your opponent took 0."
+        values: [2, 0]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 1 by turn 6 and 2 by turn 8."
+        values: [0, 4, 1, 6, 2, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 6."
+        values: [6]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 0."
+        values: [2, 0]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 8."
+        values: [200, 8]
+      - id: energy_per_turn:me
+        text: "You attached 0.75 energy cards per turn you took."
+        values: [0.75]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 10."
+        values: [10]
+    question: how much energy was I attaching per turn
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:0\\.75"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The one decimal in the set. It is here because the numeric check has to match a
+      rate as written and not only an integer, and a rounded quotation is the shape a
+      model reaches for first.
+
+  - id: mistake_game_06
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult / Dusknoir game against Applin / Celebi, you went second, won in 4
+      turns.
+    context_game: >-
+      Your Dragapult / Dusknoir deck against Applin / Celebi. You went second and won on
+      turn 4. You took 1 prize and your opponent took 1. Your first attack was on turn
+      2. Your opponent never attacked in this game.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 4 turns."
+        values: [4]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent never attacked in this game."
+        values: []
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached energy on every turn you took."
+        values: []
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 4."
+        values: [4]
+      - id: prizes_taken:both
+        text: "You took 1 prize and your opponent took 1."
+        values: [1, 1]
+      - id: prizes_by_turn:me
+        text: "You had taken 1 prize by the end of turn 4, 1 by turn 6 and 1 by turn 8."
+        values: [1, 4, 1, 6, 1, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 4."
+        values: [4]
+      - id: knockouts:both
+        text: "You took 1 knockout and your opponent took 1."
+        values: [1, 1]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 10 damage, on turn 2."
+        values: [10, 2]
+      - id: energy_per_turn:me
+        text: "You attached 3 energy cards per turn you took."
+        values: [3]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 4."
+        values: [4]
+    question: what was my biggest attack in that game
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b10\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The smallest numbers in the set, in the shortest game. A damage figure of 10 is
+      the one a model is likeliest to round up to something that sounds like an attack.
+
+  - id: mistake_game_07
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against N's Zoroark ex / Meowth ex, you went first, won in 9 turns.
+    context_game: >-
+      Your deck against N's Zoroark ex / Meowth ex. You went first and won on turn 9.
+      You took 4 prizes and your opponent took 2. Your first attack was on turn 3. Your
+      opponent first attacked on turn 8.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 9 turns."
+        values: [9]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 3."
+        values: [3]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 8."
+        values: [8]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 3 of your turns, on turns 1, 3 and 7."
+        values: [3, 1, 3, 7]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 5."
+        values: [5]
+      - id: prizes_taken:both
+        text: "You took 4 prizes and your opponent took 2."
+        values: [4, 2]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 2 by turn 6 and 4 by turn 8."
+        values: [0, 4, 2, 6, 4, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 5."
+        values: [5]
+      - id: knockouts:both
+        text: "You took 3 knockouts and your opponent took 2."
+        values: [3, 2]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 5."
+        values: [200, 5]
+      - id: energy_per_turn:me
+        text: "You attached 0.5 energy cards per turn you took."
+        values: [0.5]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 9."
+        values: [9]
+    question: which turns did I attach no energy on
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b7\\b"
+      - "re:\\b3\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The only game of the ten in which the member went first, which is the case where
+      turn 1 is counted for the attachment and not for the attack.
+
+  - id: mistake_game_08
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Mega Starmie ex / Mega Froslass ex, you went first, lost in 14
+      turns.
+    context_game: >-
+      Your deck against Mega Starmie ex / Mega Froslass ex. You went first and lost on
+      turn 14. You took 3 prizes and your opponent took 6. Your first attack was on turn
+      3. Your opponent first attacked on turn 2.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 14 turns."
+        values: [14]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 3."
+        values: [3]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 2."
+        values: [2]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 9."
+        values: [1, 9]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 3."
+        values: [3]
+      - id: prizes_taken:both
+        text: "You took 3 prizes and your opponent took 6."
+        values: [3, 6]
+      - id: prizes_by_turn:me
+        text: "You had taken 1 prize by the end of turn 4, 1 by turn 6 and 1 by turn 8."
+        values: [1, 4, 1, 6, 1, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 3."
+        values: [3]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 230 damage, on turn 3."
+        values: [230, 3]
+      - id: energy_per_turn:me
+        text: "You attached 0.857 energy cards per turn you took."
+        values: [0.857]
+    question: how big was my biggest attack
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b230\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      A three-figure damage number that is not a round 200, so an answer that reached
+      for the usual figure rather than for the fact is caught.
+
+  - id: mistake_game_09
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult control game against Alakazam / Toucannon, you went second, won in
+      10 turns.
+    context_game: >-
+      Your Dragapult control deck against Alakazam / Toucannon. You went second and won
+      on turn 10. You took 6 prizes and your opponent took 2. Your first attack was on
+      turn 2. Your opponent first attacked on turn 3.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 10 turns."
+        values: [10]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 3."
+        values: [3]
+      - id: turns_without_attack:me
+        text: "You attacked on every turn you took."
+        values: []
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 10."
+        values: [1, 10]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 6."
+        values: [6]
+      - id: prizes_taken:both
+        text: "You took 6 prizes and your opponent took 2."
+        values: [6, 2]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 2 by turn 6 and 3 by turn 8."
+        values: [0, 4, 2, 6, 3, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 6."
+        values: [6]
+      - id: knockouts:both
+        text: "You took 5 knockouts and your opponent took 2."
+        values: [5, 2]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 6."
+        values: [200, 6]
+      - id: energy_per_turn:me
+        text: "You attached 1.4 energy cards per turn you took."
+        values: [1.4]
+    question: how many knockouts did I take, and how many prizes
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b5\\b"
+      - "re:\\b6\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      Two counts in one answer, from two facts, where the knockout count and the prize
+      count are different numbers: an answer that reported one of them twice is wrong
+      and says so.
+
+  - id: mistake_game_10
+    kind: mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Festival Lead, you went second, lost in 4 turns.
+    context_game: >-
+      Your deck against Festival Lead. You went second and lost on turn 4. You took 0
+      prizes and your opponent took 2. You never attacked in this game. Your opponent
+      first attacked on turn 3.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 4 turns."
+        values: [4]
+      - id: first_attack_turn:me
+        text: "You never attacked in this game."
+        values: []
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 3."
+        values: [3]
+      - id: turns_without_attack:me
+        text: "You made no attack on 1 of your turns, on turn 2."
+        values: [1, 2]
+      - id: turns_without_energy_attach:me
+        text: "You attached energy on every turn you took."
+        values: []
+      - id: first_prize_turn:me
+        text: "You took no prize in this game."
+        values: []
+      - id: prizes_taken:both
+        text: "You took 0 prizes and your opponent took 2."
+        values: [0, 2]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8."
+        values: [0, 4, 0, 6, 0, 8]
+      - id: first_knockout_turn:me
+        text: "You took no knockout in this game."
+        values: []
+      - id: knockouts:both
+        text: "You took 0 knockouts and your opponent took 2."
+        values: [0, 2]
+      - id: biggest_attack:me
+        text: "None of your attacks dealt damage."
+        values: []
+      - id: energy_per_turn:me
+        text: "You attached 1 energy cards per turn you took."
+        values: [1]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 4."
+        values: [4]
+    question: when did my opponent first attack, and how many prizes did they take
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b3\\b"
+      - "re:\\b2\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The game the member lost without attacking. Two of its facts have no numbers in
+      them at all, which is the case the check has to leave alone rather than report.

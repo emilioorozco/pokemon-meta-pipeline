@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 7
+version: 8
 
 runs:
   matchup_win_rate:
@@ -445,3 +445,71 @@ runs:
       numbers are from the summary of that game, not from a query: the
       warehouse I can read holds aggregates across games rather than a single
       one.
+
+  mistake_game_01:
+    turns: []
+    answer: >-
+      From the game on screen: you made no attack on 5 of your turns, on turns 2, 4, 6,
+      18 and 20. Your first attack came on turn 8, in a game that ran 23 turns. These
+      numbers are from the analysis of that game, not from a query.
+
+  mistake_game_02:
+    turns: []
+    answer: >-
+      From the game on screen: your biggest attack dealt 200 damage, on turn 4. That was
+      also the turn you took your first prize. The game ran 6 turns and ended 1 prize to
+      your opponent's 4.
+
+  mistake_game_03:
+    turns: []
+    answer: >-
+      From the game on screen: you attached no energy on 2 of your turns, on turns 6 and
+      8. You attacked on every turn you took, first on turn 2, and the game ran 9 turns.
+
+  mistake_game_04:
+    turns: []
+    answer: >-
+      From the game on screen: your first prize came on turn 12, and so did your first
+      knockout. By the end of turn 8 you had taken 0 prizes. The game ran 17 turns and
+      finished 4 prizes each.
+
+  mistake_game_05:
+    turns: []
+    answer: >-
+      From the game on screen: you attached 0.75 energy cards per turn you took, and
+      there was 1 turn you attached none, turn 8. You won on turn 10 with 2 prizes to
+      your opponent's 0.
+
+  mistake_game_06:
+    turns: []
+    answer: >-
+      From the game on screen: your biggest attack dealt 10 damage, on turn 2. The game
+      ran 4 turns, you took 1 knockout and 1 prize, and your opponent never attacked.
+
+  mistake_game_07:
+    turns: []
+    answer: >-
+      From the game on screen: you attached no energy on 3 of your turns, on turns 1, 3
+      and 7. You first attacked on turn 3, took your first prize on turn 5, and the game
+      ran 9 turns.
+
+  mistake_game_08:
+    turns: []
+    answer: >-
+      From the game on screen: your biggest attack dealt 230 damage, on turn 3, which is
+      also the turn you took your first prize. You ended with 3 prizes to your
+      opponent's 6, over 14 turns.
+
+  mistake_game_09:
+    turns: []
+    answer: >-
+      From the game on screen: you took 5 knockouts and 6 prizes, against 2 knockouts
+      and 2 prizes for your opponent. Your first prize came on turn 6 and the game ran
+      10 turns.
+
+  mistake_game_10:
+    turns: []
+    answer: >-
+      From the game on screen: your opponent first attacked on turn 3 and took 2 prizes.
+      You never attacked and took none, over a game that ran 4 turns and ended in a
+      concession.

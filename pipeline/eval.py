@@ -143,6 +143,7 @@ from pipeline.agent import (
     referenced_tables,
 )
 from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
+from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fact, FactEvidence
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
@@ -216,7 +217,16 @@ BLIND_ANSWER: Final = (
 # "11/11 golden, 9/10 adversarial" is readable without knowing the ids.
 KIND_GOLDEN: Final = "golden"
 KIND_ADVERSARIAL: Final = "adversarial"
-VALID_KINDS: Final[tuple[str, ...]] = (KIND_GOLDEN, KIND_ADVERSARIAL)
+# A question about the game on the member's screen, answered out of the
+# analysis facts the application sent with it and not out of the warehouse at
+# all. Its own kind rather than more `golden` questions for the reason the
+# adversarial half is its own: what it grades is different. A golden question
+# asks whether the right row was read; a mistake question asks whether a
+# number the application computed survived the trip through a model intact,
+# which is why every one of them also asserts that nothing in the answer is
+# unverified.
+KIND_MISTAKE: Final = "mistake"
+VALID_KINDS: Final[tuple[str, ...]] = (KIND_GOLDEN, KIND_ADVERSARIAL, KIND_MISTAKE)
 
 # Which warehouse a question's `require` entries are true of, and the field
 # that keeps a fixture fact from being scored against production. `fixture` is
@@ -243,6 +253,13 @@ CHECK_TOOLS: Final = "tools"
 CHECK_REQUIRE: Final = "require"
 CHECK_FORBID: Final = "forbid"
 CHECK_ERROR: Final = "error"
+# The fourth check, and the only one a question has to opt into. `require`
+# and `forbid` grade the prose; this grades the numbers in it, by failing a
+# question whose run reported more `unverified_numbers` than the question
+# allows. `max_unverified: 0` is what the mistake questions carry and what
+# the field is for; leaving it out asserts nothing, which is what every
+# question written before PLA-188 wants.
+CHECK_UNVERIFIED: Final = "unverified"
 
 # The token counts a run totals, named as `pipeline.agent.token_usage` reports
 # them. `total_tokens` is left out because it is the sum of the other two plain
@@ -304,6 +321,17 @@ class Question:
     # question uses them (docs/evals.md).
     context_game: str = ""
     context_first_line: str = ""
+    # The analysis facts the application would have sent with the game, which
+    # the runner sends the same way and the service places as a numbered
+    # `<facts>` list under the summary. The ten `mistake` questions carry
+    # them and nothing else does.
+    context_facts: tuple[Fact, ...] = ()
+    # How many numbers this question's answer may state that nothing the run
+    # read can account for. None is the default and asserts nothing, which is
+    # what every question written before the check existed wants; `0` is what
+    # a question answered out of the facts carries, because a number in that
+    # answer that is in no fact is the failure the facts were added to risk.
+    max_unverified: int | None = None
 
     @property
     def any_warehouse(self) -> bool:
@@ -378,6 +406,44 @@ def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, 
     return patterns
 
 
+def _facts(raw: Any, *, where: str) -> tuple[Fact, ...]:
+    """A question's `context_facts`, checked against the same ceilings the service holds.
+
+    Checked here rather than trusted, for the reason every other field in this
+    loader is: a fact over the service's limits would be a 422 on a remote run
+    and a silently truncated list on a local one, which is two different
+    failures for one typo. An id or a sentence over the ceiling, a value that
+    is not a number, or more than `MAX_FACTS` of them is a load error naming
+    the question.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GoldenError(f"{where}: `context_facts` has to be a list")
+    if len(raw) > MAX_FACTS:
+        raise GoldenError(f"{where}: at most {MAX_FACTS} facts, got {len(raw)}")
+    facts: list[Fact] = []
+    for position, entry in enumerate(raw, start=1):
+        place = f"{where}: fact {position}"
+        if not isinstance(entry, dict):
+            raise GoldenError(f"{place}: expected a mapping with `id`, `text` and `values`")
+        identifier = str(entry.get("id", "")).strip()
+        text = str(entry.get("text", "")).strip()
+        if not identifier or not text:
+            raise GoldenError(f"{place}: every fact needs an `id` and a `text`")
+        if len(identifier) > MAX_FACT_ID_CHARS:
+            raise GoldenError(f"{place}: `id` is over {MAX_FACT_ID_CHARS} characters")
+        if len(text) > MAX_FACT_TEXT_CHARS:
+            raise GoldenError(f"{place}: `text` is over {MAX_FACT_TEXT_CHARS} characters")
+        raw_values = entry.get("values") or []
+        if not isinstance(raw_values, list) or any(
+            isinstance(value, bool) or not isinstance(value, int | float) for value in raw_values
+        ):
+            raise GoldenError(f"{place}: `values` has to be a list of numbers")
+        facts.append(Fact(id=identifier, text=text, values=tuple(float(v) for v in raw_values)))
+    return tuple(facts)
+
+
 def load_golden(path: Path = GOLDEN_PATH) -> Golden:
     """Read and check the golden file. Raises `GoldenError` on anything wrong.
 
@@ -445,6 +511,16 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         # nothing: the relevance decision is only taken when a game was sent.
         if contexts["context_first_line"] and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_first_line` needs a `context_game` to describe")
+        facts = _facts(raw.get("context_facts"), where=where)
+        # Facts with no game to belong to reach nothing: they are placed
+        # inside the context element and only when the game summary is.
+        if facts and not contexts["context_game"]:
+            raise GoldenError(f"{where}: `context_facts` needs a `context_game` to belong to")
+        limit = raw.get("max_unverified")
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+            raise GoldenError(f"{where}: `max_unverified` has to be an integer, got {limit!r}")
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit < 0:
+            raise GoldenError(f"{where}: `max_unverified` cannot be negative")
         forbid = _patterns(raw.get("forbid"), where=f"{where} forbid", allow_codes=True)
         # An adversarial question is scored on what the run did as well as on
         # what it said, and the only thing that catches "it refused in prose
@@ -463,6 +539,8 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 notes=str(raw.get("notes", "")).strip(),
                 kind=kind,
                 warehouse=warehouse,
+                context_facts=facts,
+                max_unverified=limit if isinstance(limit, int) else None,
                 **contexts,
             )
         )
@@ -501,6 +579,16 @@ class Result:
     # the run can sum it. Empty on a replayed or scripted model, which reports
     # no usage at all, and empty on a question that raised before it was asked.
     usage: dict[str, int] = field(default_factory=dict)
+    # Every number of this answer that no row, card or fact of its run can
+    # account for, as it was written. Reported on every question and scored
+    # only on one that set `max_unverified`, because a number nobody can trace
+    # is worth seeing whether or not the question thought to ask about it.
+    unverified_numbers: tuple[str, ...] = ()
+    # The facts this run was given, each with whether the answer used it.
+    # Carried for the same reason the receipt is: the evidence does not
+    # survive scoring and the report prints these under a question that
+    # failed with facts in front of it.
+    facts: tuple[FactEvidence, ...] = ()
 
     @property
     def _require_is_advisory(self) -> bool:
@@ -527,7 +615,20 @@ class Result:
             failed.append(CHECK_REQUIRE)
         if self.present_forbidden:
             failed.append(CHECK_FORBID)
+        if self.over_unverified:
+            failed.append(CHECK_UNVERIFIED)
         return tuple(failed)
+
+    @property
+    def over_unverified(self) -> bool:
+        """Whether this question asked about untraceable numbers and found too many.
+
+        False for every question that left `max_unverified` out, which is
+        every question but the ten `mistake` ones: the numbers are still
+        reported, and a question that did not ask is not failed on them.
+        """
+        limit = self.question.max_unverified
+        return limit is not None and len(self.unverified_numbers) > limit
 
     @property
     def advisory(self) -> tuple[str, ...]:
@@ -563,6 +664,8 @@ class Result:
             "gate_cost_usd": self.gate_cost_usd,
             "refused_codes": list(self.refused_codes),
             "query_descriptions": list(self.query_descriptions),
+            "unverified_numbers": list(self.unverified_numbers),
+            "facts": [fact.as_dict() for fact in self.facts],
             "usage": dict(self.usage),
             "answer": self.answer,
         }
@@ -651,6 +754,7 @@ def score(
     calls: Sequence[ToolCall] = (),
     evidence: Evidence | None = None,
     usage: Mapping[str, int] | None = None,
+    unverified: Sequence[str] = (),
 ) -> Result:
     """Score one answer against one question. Pure, and the unit the tests hit.
 
@@ -669,6 +773,12 @@ def score(
     `usage` changes no check either: it is the provider's token counts,
     carried so that the run can total them and the tracking run can show a
     prompt change that quietly stopped caching.
+
+    `unverified` is the one new check since PLA-188, and it is the service's
+    answer rather than this function's: the numbers are computed where the
+    rows and the cards still exist (`pipeline.facts.check_numbers`) and
+    carried here to be reported, and to fail the question when it set a
+    `max_unverified` the run went over.
     """
     called = tuple(tools_called)
     unique = set(called)
@@ -697,6 +807,8 @@ def score(
         refused_codes=codes,
         query_descriptions=lines,
         usage=dict(usage or {}),
+        unverified_numbers=tuple(unverified),
+        facts=tuple(evidence.facts) if evidence is not None else (),
     )
 
 
@@ -810,6 +922,26 @@ class Report:
             for result in self.results
         )
 
+    @property
+    def unverified_numbers(self) -> int:
+        """Numbers the run wrote that nothing it read can account for, question wide.
+
+        A count of numbers and not of questions, for the reason
+        `guessed_tables` is: a question that wrote three untraceable numbers
+        is three sentences a member should not have been shown. Printed on
+        every run, zero included, and logged as an MLflow metric, because a
+        number that appears only when it is bad is a number nobody reads as a
+        series.
+
+        It is a floor and not zero. The check knows values and not
+        arithmetic, so a total a model summed correctly out of the rows it
+        read is counted here, which is what the two of the replay are
+        (docs/evals.md). What the number is good for is the step: the same
+        set answered the same way should report the same count, and a jump
+        is a question that started writing numbers from somewhere else.
+        """
+        return sum(len(result.unverified_numbers) for result in self.results)
+
     def usage_totals(self) -> dict[str, int]:
         """The provider's token counts summed over every question of the run.
 
@@ -854,6 +986,7 @@ class Report:
             "gate_refusals": self.gate_refusals,
             "gate_cost_usd": self.gate_cost_usd,
             "guessed_tables": self.guessed_tables,
+            "unverified_numbers": self.unverified_numbers,
             "usage_totals": self.usage_totals(),
             "questions": [result.as_dict() for result in self.results],
         }
@@ -1146,6 +1279,15 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
         )
         for entry in raw_cards or []
     ]
+    raw_facts = evidence.get("facts") if isinstance(evidence, dict) else None
+    facts = [
+        FactEvidence(
+            id=str(entry.get("id", "")),
+            text=str(entry.get("text", "")),
+            cited=bool(entry.get("cited")),
+        )
+        for entry in raw_facts or []
+    ]
 
     verdicts = [query.gate for query in queries]
     position = 0
@@ -1174,7 +1316,7 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
             if isinstance(usage, dict)
             else {}
         ),
-        evidence=Evidence(queries=queries, cards=cards),
+        evidence=Evidence(queries=queries, cards=cards, facts=facts),
         context_used=bool(payload.get("context_used")),
         context_game_used=bool(payload.get("context_game_used")),
         context_relevance=(
@@ -1182,6 +1324,7 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
             if isinstance(payload.get("context_relevance"), str)
             else None
         ),
+        unverified_numbers=[str(value) for value in payload.get("unverified_numbers") or []],
     )
     reported = str(payload.get("gate_summary", "")).strip()
     if reported and reported != built.gate_summary:
@@ -1222,8 +1365,11 @@ class RemoteAgent:
         context: str = "",
         context_game: str = "",
         context_first_line: str = "",
+        context_facts: Sequence[Fact] = (),
     ) -> Answer:
         body: dict[str, Any] = {"question": question}
+        if context_facts:
+            body["context_facts"] = [fact.as_dict() for fact in context_facts]
         # Each sent only when there is one, so the ordinary question is the
         # same request body it has always been and a question that carries a
         # context is the only one that exercises those fields.
@@ -1264,6 +1410,7 @@ class Askable(Protocol):
         *,
         context_game: str = "",
         context_first_line: str = "",
+        context_facts: Sequence[Fact] = (),
     ) -> Answer: ...
 
 
@@ -1346,6 +1493,7 @@ def run_question(question: Question, agent: Askable) -> Result:
             context=question.context,
             context_game=question.context_game,
             context_first_line=question.context_first_line,
+            context_facts=question.context_facts,
         )
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
@@ -1357,6 +1505,7 @@ def run_question(question: Question, agent: Askable) -> Result:
         calls=answer.tool_calls,
         evidence=answer.evidence,
         usage=getattr(answer, "usage", None),
+        unverified=getattr(answer, "unverified_numbers", ()) or (),
     )
 
 
@@ -1479,8 +1628,9 @@ def render(report: Report) -> str:
         lines.append(render_skipped(report))
     lines.append(render_gate_cost(report))
     lines.append(render_guessed_tables(report))
+    lines.append(render_unverified_numbers(report))
     for result in report.results:
-        if result.passed and not result.advisory:
+        if result.passed and not result.advisory and not result.unverified_numbers:
             continue
         lines.append(f"  {result.question.id}:")
         if result.error:
@@ -1499,6 +1649,12 @@ def render(report: Report) -> str:
             lines.append(f"    {label}: {pattern}")
         for pattern in result.present_forbidden:
             lines.append(f"    forbidden: {pattern}")
+        if result.unverified_numbers:
+            # Under a passing question too, which is why the loop above lets
+            # one through: a number nothing accounts for is news whether or
+            # not the question thought to set a `max_unverified`.
+            numbers = ", ".join(result.unverified_numbers)
+            lines.append(f"    unverified numbers: {numbers}")
     return "\n".join(lines)
 
 
@@ -1545,6 +1701,20 @@ def render_guessed_tables(report: Report) -> str:
         }
     )
     return f"guessed tables: {guesses} refused on {', '.join(asked)}"
+
+
+def render_unverified_numbers(report: Report) -> str:
+    """The one line that says how many numbers of this run trace to nothing.
+
+    Printed on every run, zero included, beside the gate cost and the guessed
+    tables and for the same reason. The ids are on it when there are any,
+    because the useful next question is which answer wrote them.
+    """
+    found = report.unverified_numbers
+    if not found:
+        return "unverified numbers: 0"
+    asked = sorted({result.question.id for result in report.results if result.unverified_numbers})
+    return f"unverified numbers: {found} in {', '.join(asked)}"
 
 
 def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str | None:
@@ -1602,6 +1772,12 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 # on: a prompt edit that stops the model inventing names
                 # shows up here and in the token counts and nowhere else.
                 "guessed_tables": float(report.guessed_tables),
+                # Numbers an answer wrote that no row, card or fact of its
+                # run can account for. The series rule 10 of the prompt is
+                # judged on. A small constant rather than zero on a healthy
+                # run, because a correctly summed total is in it too; the
+                # step between runs is the thing to read.
+                "unverified_numbers": float(report.unverified_numbers),
                 # The input side split by how it was paid for. A prompt edit
                 # that moves a byte into the cached prefix, or breaks it, is a
                 # step in these two columns of the run table and nowhere else.
