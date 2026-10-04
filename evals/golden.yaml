@@ -172,7 +172,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 10
+version: 11
 
 questions:
   - id: matchup_win_rate
@@ -275,6 +275,37 @@ questions:
       four rows of that week sum to four and the week holds two games.
       `week_games` is the count that is already per game, and 4 archetypes over
       2 games is the pair of numbers the question asks for.
+
+  - id: pace_first_attack
+    question: >-
+      Is Dudunsparce / Kadabra slower than Dragapult control to its first
+      attack?
+    expect_tools: [query_marts]
+    require:
+      - Dudunsparce / Kadabra
+      - Dragapult control
+      - "re:\\b7(\\.0)?\\b"
+      - "re:\\b2(\\.0)?\\b"
+      - "re:1 game\\b"
+      - "re:2 games\\b"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+      - "desc:re:\\b[a-z]+_[a-z_]+\\b"
+    notes: >-
+      The pace mart's question, and the one it was built for: a member asking
+      how their deck's tempo compares is asking for an average over the
+      community, which is the one thing a per-game sidecar cannot give them.
+      Dudunsparce / Kadabra first attacks on turn 7 over its 1 game and
+      Dragapult control on turn 2 over its 2, so the answer is yes and both
+      sample sizes belong in the sentence; the two archetypes with two seats
+      each in this corpus both average turn 2, which is why the comparison is
+      drawn against a one-game row instead.
+
+      The `desc:` entry is here as well as on `matchup_win_rate`, because the
+      pace columns are the newest words in `COLUMN_WORDS` and the ones most
+      likely to reach a member's screen untranslated: `first_attack_turn` in a
+      receipt line is the bug this catches.
 
   - id: card_text_lookup
     question: What does Dragapult ex's Phantom Dive attack do?

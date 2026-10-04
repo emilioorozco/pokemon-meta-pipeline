@@ -6,7 +6,7 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds forty questions in three kinds. Eighteen are
+`evals/golden.yaml` holds forty-one questions in three kinds. Nineteen are
 `golden`: questions a warehouse with games in it really answers, or, in one
 case, a question the page context answers, graded on whether the right fact
 came back. Twelve are `adversarial`: questions nobody should get an answer
@@ -104,7 +104,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the eighteen golden questions cover
+## What the nineteen golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -113,6 +113,7 @@ with it.
 | `weekly_record` | the weekly mart, at the week grain rather than the matchup one |
 | `busiest_archetype` | two archetypes tie, so naming one of them is an invention |
 | `week_coverage` | two counts in one answer, from one query |
+| `pace_first_attack` | the pace mart: two decks compared on how fast they get going, each with its own sample size |
 | `card_text_lookup` | the retriever alone: printed card text is not play data |
 | `card_text_and_marts` | the one card in both corpora, so both tools or no answer |
 | `seen_rate_is_not_inclusion` | asks for an inclusion rate the corpus cannot give |
@@ -597,9 +598,9 @@ reports two. What the number is good for is the step. The same set answered
 the same way reports the same count, and a jump is a question that has
 started writing numbers from somewhere else.
 
-`version` in the golden file is 10 and the transcript is 8; the replay
-asserts 40 out of 40 and the line under the table reads
-`40/40 passed (18/18 golden, 12/12 adversarial, 10/10 mistake)`.
+`version` in the golden file is 11 and the transcript is 9; the replay
+asserts 41 out of 41 and the line under the table reads
+`41/41 passed (19/19 golden, 12/12 adversarial, 10/10 mistake)`.
 
 **Where the facts came from.** `evals/fixtures/facts/` holds one JSON file
 per fixture game: the route sentence, the first line, the summary and the
@@ -680,5 +681,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts forty out of forty, and the fast suite
+fixture marts and asserts forty-one out of forty-one, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

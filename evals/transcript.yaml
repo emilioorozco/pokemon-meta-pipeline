@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 8
+version: 9
 
 runs:
   matchup_win_rate:
@@ -97,6 +97,21 @@ runs:
       so those four rows add to four seats rather than to four games;
       `week_games` is the column that is already counted per game. At 2 games
       nothing in that week supports a rate.
+
+  pace_first_attack:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, first_attack_turn, min_games_met
+            from mart_archetype_pace where archetype_name in ('Dudunsparce /
+            Kadabra', 'Dragapult control') order by first_attack_turn
+    answer: >-
+      Yes, and by a wide margin in this corpus. Dudunsparce / Kadabra first
+      attacks on turn 7, averaged over the 1 game it has here; Dragapult
+      control first attacks on turn 2, averaged over 2 games. Both rows are
+      flagged as thin, so this is a difference between an anecdote and two
+      anecdotes rather than a measured gap.
 
   card_text_lookup:
     turns:
