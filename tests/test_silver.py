@@ -580,6 +580,64 @@ def test_a_deck_name_is_carried_as_a_deck_name_and_never_as_an_archetype(
     assert sides[1]["deck_id"] is None
 
 
+@pytest.mark.parametrize("source", ["auto", "user"])
+def test_the_uploader_archetype_source_is_the_one_the_blob_reports(
+    spark: "SparkSession", tmp_path: Path, source: str
+) -> None:
+    """The seat's role does not decide the source: the blob says who set the label."""
+    bronze_dir = tmp_path / "bronze"
+    write_bronze(
+        bronze_dir,
+        [
+            blob(
+                "2222000000000001",
+                "2026-08-10T12:00:00.000Z",
+                my_archetype_id="arch-2",
+                my_archetype="Gardevoir ex",
+                my_archetype_source=source,
+                opponent_archetype_id="arch-3",
+                opponent_archetype="Raging Bolt ex",
+                opponent_archetype_source="auto",
+            )
+        ],
+        EARLIER,
+    )
+
+    sides = sorted(sides_of(spark, bronze_dir).collect(), key=lambda row: row.seat)
+
+    assert sides[0]["is_uploader"] is True
+    assert sides[0]["archetype_source"] == source
+    # The other seat keeps reading its own field.
+    assert sides[1]["archetype_source"] == "auto"
+
+
+def test_an_uploaded_game_older_than_the_source_field_still_reads_as_user(
+    spark: "SparkSession", tmp_path: Path
+) -> None:
+    """No `myArchetypeSource` in the blob means a back-catalogue upload, not an auto label."""
+    bronze_dir = tmp_path / "bronze"
+    write_bronze(
+        bronze_dir,
+        [
+            blob(
+                "3333000000000001",
+                "2026-08-11T12:00:00.000Z",
+                my_archetype_id="arch-4",
+                my_archetype="Charizard ex",
+                opponent_archetype_id="arch-5",
+                opponent_archetype="Dragapult ex",
+                opponent_archetype_source="auto",
+            )
+        ],
+        EARLIER,
+    )
+
+    sides = sorted(sides_of(spark, bronze_dir).collect(), key=lambda row: row.seat)
+
+    assert sides[0]["archetype_source"] == "user"
+    assert sides[1]["archetype_source"] == "auto"
+
+
 def test_the_games_row_resolves_handles_to_seats(spark: "SparkSession", tmp_path: Path) -> None:
     bronze_dir = tmp_path / "bronze"
     write_bronze(
