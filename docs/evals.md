@@ -6,7 +6,7 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds twenty-nine questions in two kinds. Seventeen are
+`evals/golden.yaml` holds thirty questions in two kinds. Eighteen are
 `golden`: questions a warehouse with games in it really answers, or, in one
 case, a question the page context answers, graded on whether the right fact
 came back. Twelve are `adversarial`: questions nobody should get an answer
@@ -72,6 +72,11 @@ are written the way SQL writes a table and not the way prose does, `from
 dim_player` rather than `dim_player`, which leaves an honest refusal free to
 name the table it will not read.
 
+An entry written `code:<refusal code>` is the third kind, and it is only
+allowed in `forbid`. It names a refusal rather than a piece of text and is
+present when any statement of the run was refused for that reason. The
+section on version 8 below says why one check cannot be a pattern.
+
 **`warehouse`** is not a check. It is the one field that says which warehouse
 a question's checks are true of, and it is `fixture` or `any`, defaulting to
 `fixture`. A `fixture` question asserts a fact of the ten committed games:
@@ -81,7 +86,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the seventeen golden questions cover
+## What the eighteen golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -101,9 +106,10 @@ with it.
 | `busiest_archetype_shape` | a count beside an archetype-looking name |
 | `most_seen_cards_shape` | the observation rule, with no card named |
 | `card_text_shape` | one card that is in the fixture index and in Standard |
+| `season_best_win_rate_shape` | the same rate and sample size, asked with "this season" in it, and a run that guesses a season or summary table fails |
 | `game_on_screen_loss` | a question about the game in the page context, answered out of the summary rather than out of a query |
 
-The last five are the ones marked `warehouse: any`, and they are what the
+The last six are the ones marked `warehouse: any`, and they are what the
 deployed check scores; the section below says why.
 
 ## What the twelve adversarial questions cover
@@ -413,6 +419,48 @@ every verdict and every failure, is covered offline in
 `version` in the golden file is 7 and the transcript is 6; the replay asserts
 29 out of 29.
 
+## Version 8, and the table names the model invented
+
+Three dev runs in one day guessed a table. "Which archetype has the best win
+rate this season" produced `mart_archetype_summary`; a question asked from the
+leaderboard produced `mart_leaderboard`; a third produced one more. None of
+the three names is a model dbt builds, so the allowlist refused all three, and
+in two of the three the run then read the right table and answered correctly.
+The answer was fine. The receipt said the data query was refused
+([agent-service.md](agent-service.md) has the whole of that, and
+[sql-gate.md](sql-gate.md) has why a guessed name and a blocked name are two
+different events).
+
+Version 8 adds the question that would have caught it:
+
+| id | what it grades |
+| --- | --- |
+| `season_best_win_rate_shape` | `best_win_rate_shape` with "this season" in the question, which is the word that broke it. The required half is identical, so a failure here against a pass there is the season wording and nothing else. The forbidden half adds `code:table_not_found` |
+
+**A third kind of `forbid` entry.** `code:<refusal code>` names a refusal
+rather than a piece of text, and it is present when any statement of the run
+was refused for that reason. It exists because a guess leaves no trace a
+pattern can find: the model writes `mart_leaderboard`, is refused, writes
+`mart_archetype_weekly`, and answers correctly without mentioning the first
+attempt in its prose or in the SQL of the query that actually ran. The
+refused statement is in the evidence with its code, and the code is the only
+honest handle on it. The codes are the six in
+[agent-service.md](agent-service.md); a misspelt one is a load error, and a
+`code:` entry in `require` is a load error too, since no question in this file
+wants the agent to be refused.
+
+**A new number on every run.** `guessed_tables` counts the statements of a run
+refused with `table_not_found`, printed under the table on every run including
+when it is zero, in the JSON report, and logged as an MLflow metric beside
+`gate_calls` and the token totals. A count of statements and not of questions:
+a question that guessed twice wasted two model calls, two refusals and two
+turns of context before it answered. The prompt's table-list line
+([agent-service.md](agent-service.md)) is the change this number measures, and
+zero is what a healthy run shows.
+
+`version` in the golden file is 8 and the transcript is 7; the replay asserts
+30 out of 30.
+
 ## The broken-prompt check
 
 The claim that the rules in `pipeline/prompts.py` are load bearing is only
@@ -427,7 +475,7 @@ uv run python -m pipeline.eval --fake evals/transcript.yaml \
   --prompt-override evals/broken_prompt.txt \
   --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
   --card-index "$PIPELINE_DATA_DIR/card_index"
-# 0/29 passed
+# 0/30 passed
 ```
 
 With a provider key and no `--fake`, the score falls for the reason that
@@ -459,9 +507,10 @@ parameter: the generated half of the prompt comes out of
 `dbt/models/marts/schema.yml`, so a column rename in dbt changes what the model
 was told without touching a line of `pipeline/`.
 
-Metrics are `passed`, `total`, `pass_rate`, and one 0/1 metric per question as
-`q.<id>`, so the run table shows which question broke rather than only that
-something did. The whole report goes up as `eval_report.json`.
+Metrics are `passed`, `total`, `pass_rate`, `guessed_tables`, and one 0/1
+metric per question as `q.<id>`, so the run table shows which question broke
+rather than only that something did. The whole report goes up as
+`eval_report.json`.
 
 ## In continuous integration
 
@@ -480,5 +529,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts twenty-nine out of twenty-nine, and the fast suite
+fixture marts and asserts thirty out of thirty, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

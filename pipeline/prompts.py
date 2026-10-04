@@ -11,6 +11,14 @@ Only the allowed tables are rendered. The prompt and the SQL tool's allowlist
 read the same constant, so a table the tool would refuse is never advertised,
 which is what keeps a refusal rare rather than routine.
 
+The listing says so out loud, which it did not until PLA-198. A model asked
+about "the leaderboard" or "this season" read the listing as a sample and
+wrote a plausible name that dbt has never built, and the only thing that said
+otherwise was the refusal it got back. `TABLE_LIST_NOTE` is the sentence that
+closes the list, and it goes in two places for one reason: at the head of the
+schema block, and in the `query_marts` tool description in `pipeline.agent`,
+which is the text in front of the model at the moment it writes a FROM clause.
+
 Descriptions are cut to their first sentence, and to a character budget inside
 that. The full text in `schema.yml` is written for a person reading the model
 and runs to several thousand tokens across the seven tables, which would be
@@ -103,6 +111,14 @@ from pipeline.config import REPO_ROOT
 MARTS_SCHEMA: Final = REPO_ROOT / "dbt" / "models" / "marts" / "schema.yml"
 SCHEMA_FILES: Final[tuple[Path, ...]] = (MARTS_SCHEMA,)
 
+# Every model dbt builds, which is a wider set than the agent may read. The
+# validator needs it to tell a name it is not allowed to read from a name that
+# is not a table at all, and one directory listing answers that for the whole
+# warehouse: a dbt model is a `.sql` file and the file's stem is the relation's
+# name. The schema files cannot stand in for it, because a model with no
+# `schema.yml` entry is still a model dbt builds (`ml_labeled_side` today).
+DBT_MODELS_DIR: Final = REPO_ROOT / "dbt" / "models"
+
 # A file whose contents replace the whole prompt, schema and rules included.
 # Read on every call rather than at import, because the evaluation sets it and
 # then builds an agent inside the same process.
@@ -158,8 +174,11 @@ MAX_COLUMN_CHARS: Final = 46
 # ceiling rather than a target; it went from 8,400 when rule 9 grew the
 # sentence about the game summary, which is 213 characters against 174 of
 # headroom, and the alternative was a third round of cuts to descriptions
-# already at 46 characters.
-MAX_PROMPT_CHARS: Final = 8_600
+# already at 46 characters. 8,700 from 8,600 for `TABLE_LIST_NOTE`, which
+# costs 145 characters of the 156 there were: the line fits under the old
+# ceiling with eleven to spare, which is a ceiling a one-column rename would
+# break, so the modest raise buys back the headroom rather than the line.
+MAX_PROMPT_CHARS: Final = 8_700
 
 # What separates the parts of the prompt when they are joined back into one
 # string. The two parts were one f-string with this between them, so joining
@@ -210,6 +229,26 @@ def first_sentences(text: str, count: int, limit: int) -> str:
     if len(taken) <= limit:
         return taken
     return taken[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+
+
+@lru_cache(maxsize=4)
+def warehouse_tables(root: Path = DBT_MODELS_DIR) -> frozenset[str]:
+    """Every relation dbt builds in this project, by name, allowlisted or not.
+
+    One glob over the models directory, cached, because the caller is
+    `pipeline.agent.check_sql`, which runs on every statement the model writes
+    and is otherwise a pure function of a string. A directory listing on the
+    first call and a dictionary lookup afterwards is the whole cost, and the
+    set cannot change inside a process: the models are files in the image.
+
+    Empty when the directory is not there, which is a container that ships the
+    warehouse without the dbt project. The caller falls back to a naming rule
+    in that case rather than calling every unknown name a guess; what it must
+    not do is claim to know a warehouse it cannot see.
+    """
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(path.stem.lower() for path in root.glob("**/*.sql"))
 
 
 def read_models(paths: tuple[Path, ...] = SCHEMA_FILES) -> dict[str, dict[str, object]]:
@@ -313,6 +352,20 @@ CARD_TOOL_NOTE: Final = """\
 `lookup_cards(query, k)` searches printed card text: abilities, attacks, rules.
 It is a reference, not game data, so nothing it returns says how often a card
 is played. Use it for what a card does and `query_marts` for every number."""
+
+# The line that stands between the tool's name and the table listing, and the
+# cheapest half of PLA-198. A model asked for "the leaderboard" or "this
+# season" wrote `mart_leaderboard` and `mart_archetype_summary`, neither of
+# which dbt builds, and the validator refused a name it had invented. The
+# listing below was never wrong; it was read as a sample. So this says it is
+# the whole of it and names the four words the invented tables were built out
+# of. It is carried into the `query_marts` tool description too
+# (`pipeline.agent`), so the sentence is in front of the model at the moment
+# it writes the FROM clause as well as at the top of the schema.
+TABLE_LIST_NOTE: Final = (
+    "This list is complete. There is no leaderboard, rankings, season or summary table "
+    "beyond it, so choose a name from it rather than inferring one."
+)
 
 
 def wrap_question(question: str) -> str:
@@ -445,7 +498,8 @@ def generated_parts(with_card_tool: bool = False) -> tuple[str, str]:
         f"{RULES}{cards}"
     )
     schema = (
-        f"Tables you can query with `query_marts` (DuckDB SQL, read only):\n\n{render_schema()}\n"
+        "Tables you can query with `query_marts` (DuckDB SQL, read only). "
+        f"{TABLE_LIST_NOTE}\n\n{render_schema()}\n"
     )
     return (role_and_rules, schema)
 

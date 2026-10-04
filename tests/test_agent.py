@@ -21,6 +21,7 @@ from typing import Any, Final
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -33,6 +34,7 @@ from pipeline.prompts import (
     PART_SEPARATOR,
     QUESTION_CLOSE,
     QUESTION_OPEN,
+    TABLE_LIST_NOTE,
     render_schema,
     system_blocks,
     system_prompt,
@@ -128,6 +130,63 @@ def test_the_fact_and_the_player_dimension_are_not_readable() -> None:
         refusal = agent.validate_sql(f"select * from {table}")
         assert refusal is not None, table
         assert table in refusal
+
+
+@pytest.mark.parametrize(
+    ("table", "code"),
+    [
+        # The two dev runs this ticket was filed over. Neither name is a dbt
+        # model, so neither is a table anybody blocked.
+        ("mart_leaderboard", agent.REFUSED_TABLE_NOT_FOUND),
+        ("mart_archetype_summary", agent.REFUSED_TABLE_NOT_FOUND),
+        ("dim_rankings", agent.REFUSED_TABLE_NOT_FOUND),
+        # Real relations dbt builds and the allowlist keeps off: a privacy
+        # boundary, a fact at the wrong grain, a staging model and the
+        # pipeline's own telemetry.
+        ("dim_player", agent.REFUSED_TABLE_NOT_ALLOWED),
+        ("fct_game_side", agent.REFUSED_TABLE_NOT_ALLOWED),
+        ("stg_games", agent.REFUSED_TABLE_NOT_ALLOWED),
+        ("run_metrics", agent.REFUSED_TABLE_NOT_ALLOWED),
+        # A model with no `schema.yml` entry is still a model dbt builds,
+        # which is why the listing is of the `.sql` files and not of the yml.
+        ("ml_labeled_side", agent.REFUSED_TABLE_NOT_ALLOWED),
+    ],
+)
+def test_a_guessed_table_and_a_blocked_table_are_two_different_refusals(
+    table: str, code: str
+) -> None:
+    """The distinction PLA-198 turns on, asserted name by name.
+
+    Both are refused and both always were. What is new is the word beside the
+    refusal: a name no model builds is the agent guessing, and a real table
+    off the allowlist is the boundary doing its job, and an application that
+    draws the same badge on both tells a member a correct answer was blocked.
+    """
+    refusal = agent.check_sql(f"select * from {table}")
+    assert refusal is not None, table
+    assert refusal.code == code, table
+    assert table in refusal.message
+    # The message is still the one the model reads, and still names the rule.
+    assert refusal.message.startswith("refused")
+    assert agent.validate_sql(f"select * from {table}") == refusal.message
+
+
+def test_a_guessed_name_is_only_a_guess_when_the_warehouse_can_be_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no dbt project to read, the prefix rule stands in and says so.
+
+    A container that ships the warehouse without the models cannot tell the
+    two apart, so it falls back to the naming convention: a `mart_`, `dim_` or
+    `fct_` name is read as a real table being blocked, and everything else as
+    a guess. That is wrong about `mart_leaderboard`, which is the honest cost
+    of the fallback and the reason it is not the rule (docs/sql-gate.md).
+    """
+    monkeypatch.setattr(agent, "warehouse_tables", lambda: frozenset())
+    assert agent.table_exists("mart_leaderboard") is True
+    assert agent.table_exists("dim_player") is True
+    assert agent.table_exists("leaderboard") is False
+    assert agent.table_exists("ml_labeled_side") is False
 
 
 def test_two_statements_are_refused_even_when_both_would_be_allowed() -> None:
@@ -763,6 +822,37 @@ def test_the_prompt_carries_the_three_rules_that_keep_it_honest() -> None:
     assert "sample size" in prompt
 
 
+def test_the_prompt_says_the_table_list_is_the_whole_list() -> None:
+    """The cheapest half of PLA-198: the listing was read as a sample.
+
+    Three dev runs invented `mart_leaderboard` and `mart_archetype_summary`
+    out of four words the application uses and the warehouse does not, so the
+    line names those four and says the list is closed. It is in the schema
+    block, which is the prompt's own description of `query_marts`, and in the
+    tool description, which is what the model reads as it writes a FROM
+    clause.
+    """
+    prompt = system_prompt()
+    assert TABLE_LIST_NOTE in prompt
+    for word in ("leaderboard", "rankings", "season", "summary"):
+        assert word in TABLE_LIST_NOTE
+    # The schema block and not the rules block, so the sentence sits on the
+    # list it is about.
+    _, schema = (block["text"] for block in text_blocks())
+    assert TABLE_LIST_NOTE in schema
+    assert "Rules you follow" not in schema
+
+
+def test_the_sql_tool_carries_the_same_sentence(tmp_path: Path, metrics: ServiceMetrics) -> None:
+    """One constant in two places, so the two cannot drift apart."""
+    tool = agent.make_query_marts_tool(
+        warehouse=tmp_path / "none.duckdb",
+        tracer=trace.get_tracer(__name__),
+        metrics=metrics,
+    )
+    assert TABLE_LIST_NOTE in tool.description
+
+
 def test_the_prompt_fits_its_budget() -> None:
     """A generated prompt can grow silently; this is the thing that notices."""
     assert len(system_prompt()) < MAX_PROMPT_CHARS
@@ -1082,6 +1172,10 @@ def test_a_run_collects_the_queries_and_the_rows_behind_its_answer(
     assert refused.rows == []
     assert refused.refused_reason is not None
     assert "dim_player" in refused.refused_reason
+    # A real table off the allowlist, which is the boundary holding rather
+    # than the model guessing a name.
+    assert refused.refused_code == agent.REFUSED_TABLE_NOT_ALLOWED
+    assert ran.refused_code is None
     # The whole statement, not the hundred characters `tool_calls` carries.
     assert ran.sql == MATCHUP_SQL
     assert len(MATCHUP_SQL) > len(answer.tool_calls[1].input_summary)
@@ -1097,9 +1191,10 @@ def test_a_run_collects_the_queries_and_the_rows_behind_its_answer(
     }
     # Values JSON can carry, which is what the response body needs of them.
     json.dumps(answer.as_dict())
-    # The gate is off in this run, and a refusal is still the worst thing that
-    # happened to a query in it.
-    assert answer.gate_summary == "refused"
+    # The gate is off in this run and the second query answered the question,
+    # so the summary describes that rather than the attempt before it. The
+    # refused attempt is still in the evidence, with its reason and its code.
+    assert answer.gate_summary == "off"
 
 
 @pytest.mark.dbt
@@ -1169,13 +1264,22 @@ def query(gate: str = "off", *, refused: bool = False) -> agent.QueryEvidence:
         ([query("jev:allowed")], "allowed"),
         ([query("jev:allowed_low")], "allowed_low"),
         ([query("jev:error")], "allowed_low"),
+        # The lowest-confidence allowed gate, in either order.
         ([query("jev:allowed"), query("jev:allowed_low")], "allowed_low"),
+        ([query("jev:allowed_low"), query("jev:allowed")], "allowed_low"),
+        # Nothing ran, so there is nothing to describe but the refusal.
         ([query("jev:refused", refused=True)], "refused"),
         ([query("off", refused=True)], "refused"),
-        ([query("jev:allowed"), query("jev:refused", refused=True)], "refused"),
+        ([query("off", refused=True), query("jev:refused", refused=True)], "refused"),
+        # The shape PLA-198 was filed over: a refused attempt, then a query
+        # that ran and answered the question. The member saw an answer.
+        ([query("jev:allowed"), query("jev:refused", refused=True)], "allowed"),
+        ([query("off", refused=True), query("jev:allowed")], "allowed"),
+        ([query("off", refused=True), query("jev:allowed_low")], "allowed_low"),
+        ([query("off", refused=True), query("off")], "off"),
     ],
 )
-def test_the_gate_summary_is_the_worst_thing_that_happened(
+def test_the_gate_summary_describes_the_answer_rather_than_the_worst_attempt(
     queries: list[agent.QueryEvidence], expected: str
 ) -> None:
     """One word over the whole run, because the banner over the panel is one word."""
@@ -1227,6 +1331,7 @@ def test_an_answer_carries_its_evidence_and_the_tally_it_always_carried() -> Non
         "rows",
         "gate",
         "refused_reason",
+        "refused_code",
     }
 
 

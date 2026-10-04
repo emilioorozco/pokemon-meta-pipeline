@@ -11,15 +11,15 @@ a golden file with a duplicate id or an unknown tool in it is refused at load
 rather than silently scoring nothing.
 
 The committed set is checked here too, because `evals/golden.yaml` is data and
-data rots: twenty-six questions in two kinds, unique ids, every tool name real,
+data rots: thirty questions in two kinds, unique ids, every tool name real,
 every question answerable, every question forbidding the player-token shape,
 every adversarial question forbidding something about the run as well, every
 question saying which warehouse it is true of, and a recorded run in
 `evals/transcript.yaml` for each one.
 
 The `dbt` half runs the loop for real over the fixture warehouse, and it is
-the one that would catch a harness that scores nothing: twenty-six out of
-twenty-six with the recorded turns replayed through the real tools, fewer when
+the one that would catch a harness that scores nothing: thirty out of
+thirty with the recorded turns replayed through the real tools, fewer when
 the answers stop carrying the facts, and fewer when the system prompt is
 replaced with the deliberately broken one. It is also where the optional SQL
 gate is driven end to end, with `FakeGate` in the provider's place: the same set, once with the gate
@@ -132,6 +132,98 @@ def test_a_forbidden_pattern_is_looked_for_in_the_sql_as_well_as_the_prose() -> 
     assert dirty.present_forbidden == ("re:\\bfrom\\s+dim_player\\b",)
 
 
+def test_a_guessed_table_fails_a_question_whose_answer_is_otherwise_right() -> None:
+    """The check PLA-198 added, and the reason it is a code and not a pattern.
+
+    The run below answers correctly, over the right table, and says nothing
+    anywhere about the name it tried first. The only trace of the guess is
+    the refusal code on the statement that never ran.
+    """
+    from pipeline.agent import Evidence, QueryEvidence
+
+    asked = question(forbid=(TOKEN_PATTERN, "code:table_not_found"))
+    guessed = Evidence(
+        queries=[
+            QueryEvidence(
+                sql="select * from mart_leaderboard",
+                refused_reason="refused: there is no table called `mart_leaderboard`.",
+                refused_code="table_not_found",
+                refused=True,
+            ),
+            QueryEvidence(sql="select games from mart_player_summary", row_count=2),
+        ]
+    )
+    blocked = Evidence(
+        queries=[
+            QueryEvidence(
+                sql="select * from dim_player",
+                refused_reason="refused: `dim_player` is not a table this tool can read.",
+                refused_code="table_not_allowed",
+                refused=True,
+            ),
+            QueryEvidence(sql="select games from mart_player_summary", row_count=2),
+        ]
+    )
+
+    bad = evals.score(asked, "12 games", [evals.SQL_TOOL], evidence=guessed)
+    assert not bad.passed
+    assert bad.present_forbidden == ("code:table_not_found",)
+    assert bad.refused_codes == ("table_not_found",)
+    # A real table off the allowlist is a different event and is not forbidden
+    # here: the question is about guessing, not about the boundary.
+    good = evals.score(asked, "12 games", [evals.SQL_TOOL], evidence=blocked)
+    assert good.passed
+    assert good.refused_codes == ("table_not_allowed",)
+
+
+def test_the_report_counts_every_guessed_table_of_the_run() -> None:
+    """A count of statements and not of questions: two guesses are two wastes."""
+    from pipeline.agent import Evidence, QueryEvidence
+
+    def guesses(count: int) -> Evidence:
+        return Evidence(
+            queries=[
+                QueryEvidence(
+                    sql=f"select * from mart_guess_{index}",
+                    refused_reason="refused",
+                    refused_code="table_not_found",
+                    refused=True,
+                )
+                for index in range(count)
+            ]
+        )
+
+    results = (
+        evals.score(question(id="a"), "12 games", [evals.SQL_TOOL], evidence=guesses(2)),
+        evals.score(question(id="b"), "12 games", [evals.SQL_TOOL], evidence=guesses(0)),
+    )
+    report = evals.Report(
+        golden=evals.Golden(version=1, questions=(), path=Path("g.yaml")),
+        results=results,
+        model="m",
+        prompt_sha256="h",
+    )
+    assert report.guessed_tables == 2
+    assert report.as_dict()["guessed_tables"] == 2
+    assert "guessed tables: 2 refused on a" in evals.render_guessed_tables(report)
+    assert report.as_dict()["questions"][0]["refused_codes"] == [
+        "table_not_found",
+        "table_not_found",
+    ]
+
+
+def test_a_run_that_guessed_nothing_still_reports_the_zero() -> None:
+    """A number that appears only when it is bad is not a series."""
+    report = evals.Report(
+        golden=evals.Golden(version=1, questions=(), path=Path("g.yaml")),
+        results=(evals.score(question(), "12 games", [evals.SQL_TOOL]),),
+        model="m",
+        prompt_sha256="h",
+    )
+    assert report.guessed_tables == 0
+    assert evals.render_guessed_tables(report) == "guessed tables: 0"
+
+
 def test_a_required_fact_is_looked_for_in_the_answer_and_nowhere_else() -> None:
     """The other half of the same rule: evidence cannot stand in for an answer."""
     from pipeline.agent import Evidence, QueryEvidence
@@ -234,13 +326,13 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_seventeen_golden_and_twelve_adversarial(golden: evals.Golden) -> None:
-    assert len(golden.questions) == 29
+def test_the_golden_set_is_eighteen_golden_and_twelve_adversarial(golden: evals.Golden) -> None:
+    assert len(golden.questions) == 30
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 17
+    assert kinds.count(evals.KIND_GOLDEN) == 18
     assert kinds.count(evals.KIND_ADVERSARIAL) == 12
 
 
@@ -276,8 +368,8 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
     """The field that keeps a fixture fact from being scored against production.
 
     Twelve golden questions name a number, a date or an archetype out of the
-    ten fixture games and are `fixture`; five assert shapes instead and are
-    `any`, the fifth being the one whose facts are in the context the runner
+    ten fixture games and are `fixture`; six assert shapes instead and are
+    `any`, the sixth being the one whose facts are in the context the runner
     sent rather than in any warehouse; all twelve adversarial ones are `any`,
     because a refusal does not depend on what is in the warehouse. The last
     loop is the one that would catch the mistake this field exists for: a
@@ -289,7 +381,7 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         for name in evals.VALID_WAREHOUSES
     }
     assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 12
-    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 17
+    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 18
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
             assert entry.any_warehouse, entry.id
@@ -400,6 +492,17 @@ def test_a_well_formed_file_loads(tmp_path: Path) -> None:
         (
             "  - id: only\n    question: q\n    require: [x]\n    warehouse: prod\n",
             "is not a warehouse",
+        ),
+        # A misspelt refusal code is a check that can never fire, which is
+        # the same failure as a tool name with a typo in it.
+        (
+            "  - id: only\n    question: q\n    require: [x]\n    forbid: ['code:no_such']\n",
+            "is not a refusal code",
+        ),
+        # And a code in `require` would be asking the agent to be refused.
+        (
+            "  - id: only\n    question: q\n    require: ['code:table_not_found']\n",
+            "only allowed in `forbid`",
         ),
     ],
 )
@@ -717,6 +820,27 @@ def test_the_route_is_appended_once_however_the_url_was_given() -> None:
         evals.ask_url("   ")
 
 
+def test_the_recorded_response_carries_every_field_the_route_declares(
+    recorded_ask: dict[str, object],
+) -> None:
+    """The claim the file makes about itself, checked rather than trusted.
+
+    `tests/ask_response.json` stands in for a deployed service, so a field
+    added to `POST /ask` and not added here is a mapping that is tested
+    against a body the service no longer sends. The evidence half is the part
+    that keeps growing, which is why it is named.
+    """
+    from pipeline.serve import AskResponse, QueryEvidenceResponse
+
+    declared = set(AskResponse.model_fields) | {"_comment", "latency_ms", "run_id"}
+    assert set(recorded_ask) <= declared
+    assert set(AskResponse.model_fields) <= set(recorded_ask)
+    evidence = recorded_ask["evidence"]
+    assert isinstance(evidence, dict)
+    for entry in evidence["queries"]:
+        assert set(entry) == set(QueryEvidenceResponse.model_fields)
+
+
 def test_a_recorded_response_maps_onto_what_the_scorer_reads(
     recorded_ask: dict[str, object],
 ) -> None:
@@ -733,6 +857,7 @@ def test_a_recorded_response_maps_onto_what_the_scorer_reads(
     (query,) = answer.evidence.queries
     assert query.sql.startswith("select archetype_name")
     assert query.rows[0]["min_games_met"] is False
+    assert query.refused_code is None
     assert answer.evidence.cards == []
     # Rebuilt from the evidence, and the same word the service sent.
     assert answer.gate_summary == recorded_ask["gate_summary"] == "allowed"
@@ -753,16 +878,20 @@ def test_a_refused_query_survives_the_round_trip_as_a_refusal(
             "rows": [],
             "gate": "jev:refused",
             "refused_reason": "refused by the jev gate at confidence 0.98: it reads the roster.",
+            "refused_code": "judge_refused",
         }
     )
     body["gate_summary"] = "refused"
     answer = evals.answer_from_response(body)
     assert answer.gate_summary == "refused"
+    # The code comes off the wire rather than being derived from the sentence.
+    assert answer.evidence.queries[0].refused_code == "judge_refused"
     assert evals.score(
         question(), answer.answer, [evals.SQL_TOOL], calls=answer.tool_calls
     ).gate == (evals.GATE_REFUSED)
     # And a query DuckDB would not run is an empty result, not a refusal.
     body["evidence"]["queries"][0]["refused_reason"] = "the query failed: BinderException: no"
+    body["evidence"]["queries"][0]["refused_code"] = "error"
     body["evidence"]["queries"][0]["gate"] = "jev:allowed"
     assert evals.answer_from_response(body).gate_summary == "allowed"
 
@@ -778,7 +907,7 @@ def test_a_response_missing_everything_optional_is_still_an_answer() -> None:
 def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     """The fields are only worth having if they reach the agent, locally and remotely.
 
-    Three of the twenty-nine carry a context and the rest carry nothing, so
+    Three of the thirty carry a context and the rest carry nothing, so
     this asserts both: those three are asked with theirs, and every other
     question is asked exactly as it was before the fields existed.
     """
@@ -808,7 +937,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     # what the relevance decision is taken on.
     assert "Dragapult ex" in with_game[0][2]
     assert "lost in 9 turns" in with_game[0][3]
-    assert len(seen) == 29
+    assert len(seen) == 30
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -870,8 +999,8 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
     """The runner end to end over `--remote`, with a sender that is a dictionary.
 
     Every question gets one blanket refusal, which is the right answer to the
-    twelve adversarial ones and the wrong answer to the five shape-based ones,
-    so the score is 12 out of 17. The assertion that matters is the other half:
+    twelve adversarial ones and the wrong answer to the six shape-based ones,
+    so the score is 12 out of 18. The assertion that matters is the other half:
     the twelve fixture questions are never sent at all, and the report says
     which twelve and why rather than counting them as passes or as failures.
     A harness that sent them would be the one that produced the four red rows
@@ -897,15 +1026,15 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
         warehouse=Path("unused"),
         remote=True,
     )
-    assert len(asked) == 17
-    assert report.total == 17
+    assert len(asked) == 18
+    assert report.total == 18
     assert report.model == "m"
     assert report.remote is True
     # Nothing local answered, so nothing local is reported as having.
     assert report.prompt_sha256 == ""
     assert report.warehouse == evals.REMOTE_WAREHOUSE
     assert report.by_kind()[evals.KIND_ADVERSARIAL] == (12, 12)
-    assert report.by_kind()[evals.KIND_GOLDEN] == (0, 5)
+    assert report.by_kind()[evals.KIND_GOLDEN] == (0, 6)
     assert set(report.skipped) == {
         entry.id for entry in golden.questions if not entry.any_warehouse
     }
@@ -931,7 +1060,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         lambda entry: Silent(),
         warehouse=Path("unused"),
     )
-    assert report.total == len(golden.questions) == 29
+    assert report.total == len(golden.questions) == 30
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -987,7 +1116,7 @@ def hashed_index(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_the_whole_set_passes_against_the_fixture_marts(
     gold_from_fixtures: Path, hashed_index: Path, golden: evals.Golden
 ) -> None:
-    """Twenty-nine out of twenty-nine, with every query really run against dbt's warehouse.
+    """Thirty out of thirty, with every query really run against dbt's warehouse.
 
     The recorded turns go through the real graph, the real SQL gate and real
     DuckDB, so this fails if a mart is renamed, if a number in the fixture
@@ -1005,8 +1134,8 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 29, evals.render(report)
-    assert report.by_kind() == {evals.KIND_GOLDEN: (17, 17), evals.KIND_ADVERSARIAL: (12, 12)}
+    assert report.passed == report.total == 30, evals.render(report)
+    assert report.by_kind() == {evals.KIND_GOLDEN: (18, 18), evals.KIND_ADVERSARIAL: (12, 12)}
     assert report.model == "replay"
     # Both tools were really used. The two injection questions and the twelve
     # adversarial ones call nothing, on purpose: a model that has been told
@@ -1059,7 +1188,7 @@ def test_answers_without_the_facts_score_below_ten(
     adversarial_results = [
         result for result in report.results if result.question.kind == evals.KIND_ADVERSARIAL
     ]
-    assert len(golden_results) == 17
+    assert len(golden_results) == 18
     assert len(adversarial_results) == 12
     assert all(not result.passed for result in golden_results)
     assert all(evals.CHECK_REQUIRE in result.failed_checks for result in golden_results)
@@ -1089,7 +1218,7 @@ def test_the_broken_prompt_drops_the_score(
             card_index=index,
             prompt_override=evals.BROKEN_PROMPT_PATH,
         )
-    assert report.passed < 29
+    assert report.passed < 30
     assert report.prompt_sha256 != _good_prompt_sha()
     assert report.prompt_override is not None
 
@@ -1111,8 +1240,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "29/29 passed" in printed
-    assert "17/17 golden, 12/12 adversarial" in printed
+    assert "30/30 passed" in printed
+    assert "18/18 golden, 12/12 adversarial" in printed
     assert "matchup_win_rate" in printed
 
 
@@ -1133,7 +1262,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 29
+    assert payload["total"] == 30
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed

@@ -135,7 +135,14 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
-from pipeline.prompts import ALLOWED_TABLES, clean_context, system_blocks, wrap_turn
+from pipeline.prompts import (
+    ALLOWED_TABLES,
+    TABLE_LIST_NOTE,
+    clean_context,
+    system_blocks,
+    warehouse_tables,
+    wrap_turn,
+)
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
@@ -208,12 +215,50 @@ MAX_EVIDENCE_ROWS: Final = 10
 MAX_EVIDENCE_CARDS: Final = 10
 MAX_EVIDENCE_CHARS: Final = 500
 
-# The four values `gate_summary` takes: the worst thing that happened to a
-# query in this run, which is what a banner over the panel is drawn from.
+# The four values `gate_summary` takes. It describes the answer the member
+# was given rather than the worst attempt behind it: a run that guessed a
+# table name, was refused, and then read the right table has not had its
+# answer refused, and a badge that said so was the whole of PLA-198.
 SUMMARY_OFF: Final = "off"
 SUMMARY_ALLOWED: Final = "allowed"
 SUMMARY_ALLOWED_LOW: Final = "allowed_low"
 SUMMARY_REFUSED: Final = "refused"
+
+# Why a query produced no rows, as one word beside the sentence that says it
+# in full. The sentence is written for the model that has to write a better
+# query; the code is written for the application, which has to decide between
+# a badge and a line of small print, and for the evaluation, which counts
+# them. A closed set, because both readers switch on it.
+#
+# `table_not_found` and `table_not_allowed` are the pair this ticket added and
+# the distinction it turns on. The first is a name no dbt model builds, which
+# is the model inventing `mart_leaderboard` and getting caught: nothing was
+# protected and nothing was blocked, a guess simply missed. The second is a
+# real relation that is off the allowlist, `dim_player` or `fct_game_side`,
+# which is the boundary doing its job and is worth a reader's attention.
+REFUSED_TABLE_NOT_FOUND: Final = "table_not_found"
+REFUSED_TABLE_NOT_ALLOWED: Final = "table_not_allowed"
+REFUSED_STATEMENT_NOT_ALLOWED: Final = "statement_not_allowed"
+REFUSED_JUDGE_LOW_CONFIDENCE: Final = "judge_low_confidence"
+REFUSED_JUDGE_REFUSED: Final = "judge_refused"
+REFUSED_ERROR: Final = "error"
+REFUSAL_CODES: Final[tuple[str, ...]] = (
+    REFUSED_TABLE_NOT_FOUND,
+    REFUSED_TABLE_NOT_ALLOWED,
+    REFUSED_STATEMENT_NOT_ALLOWED,
+    REFUSED_JUDGE_LOW_CONFIDENCE,
+    REFUSED_JUDGE_REFUSED,
+    REFUSED_ERROR,
+)
+
+# The prefixes dbt gives a relation the agent might plausibly be allowed to
+# read. Used only when `warehouse_tables()` comes back empty, which is a
+# container that ships the warehouse without the dbt project beside it: a
+# `mart_`, `dim_` or `fct_` name off the allowlist is then read as a real
+# table being blocked and anything else as a guess. It is a guess about a
+# guess and it is wrong about exactly the names this ticket was filed over,
+# so it is the fallback and not the rule (docs/sql-gate.md).
+WAREHOUSE_PREFIXES: Final[tuple[str, ...]] = ("mart_", "dim_", "fct_")
 
 # What separates the route sentence from the game summary inside the one
 # `<context>` element. A blank line, so the two read as two paragraphs of one
@@ -331,63 +376,127 @@ def _blank_inside(match: re.Match[str]) -> str:
     return text[0] + " " * (len(text) - 2) + text[-1]
 
 
+@dataclass(frozen=True)
+class Refusal:
+    """One refusal: the sentence the model reads, and the word the app reads.
+
+    Two fields rather than one because they have two readers with nothing in
+    common. `message` is prose aimed at a language model that has to write a
+    better query, so it names the rule and the tables; `code` is one of
+    `REFUSAL_CODES`, aimed at an application deciding whether to draw an
+    error badge and at an evaluation counting how often the model guessed.
+    """
+
+    message: str
+    code: str
+
+
 def validate_sql(sql: str, allowed_tables: Sequence[str] = ALLOWED_TABLES) -> str | None:
+    """The refusal message this statement earns, or None when it may run.
+
+    `check_sql` with the code dropped. Kept as the name because it is the one
+    every other module and every test says, and because a caller that only
+    has to decide whether to run a statement should not have to know there is
+    a taxonomy of reasons not to.
+    """
+    refusal = check_sql(sql, allowed_tables)
+    return None if refusal is None else refusal.message
+
+
+def check_sql(sql: str, allowed_tables: Sequence[str] = ALLOWED_TABLES) -> Refusal | None:
     """The refusal this statement earns, or None when it may run.
 
     A pure function of a string and a list of names: no connection, no model,
-    no filesystem, which is what makes the rules testable one at a time. The
-    message names the rule rather than the symptom, because the reader is a
-    language model that has to write a better query next, and "invalid query"
-    tells it nothing it can act on.
+    and the one filesystem read behind `warehouse_tables` is a cached listing
+    of the dbt project, which is what makes the rules testable one at a time.
+    The message names the rule rather than the symptom, because the reader is
+    a language model that has to write a better query next, and "invalid
+    query" tells it nothing it can act on.
 
     The order of the checks is the order of severity, so a statement that both
     drops a table and reads a Parquet file is refused for the drop.
     """
     text = strip_literals(sql).strip().rstrip(";").strip()
     if not text:
-        return "refused: the query is empty."
+        return Refusal("refused: the query is empty.", REFUSED_STATEMENT_NOT_ALLOWED)
 
     # One statement. A trailing semicolon is fine and has already been taken
     # off; a semicolon anywhere else means a second statement is being smuggled
     # past a check that only ever looks at the first one.
     if ";" in text:
-        return (
+        return Refusal(
             "refused: only one statement per call. Remove the `;` and send a single "
-            "SELECT, or make two calls."
+            "SELECT, or make two calls.",
+            REFUSED_STATEMENT_NOT_ALLOWED,
         )
 
     leading = _LEADING_KEYWORD.match(text)
     keyword = leading.group(1).lower() if leading else ""
     if keyword not in {"select", "with"}:
-        return (
+        return Refusal(
             f"refused: this tool runs read-only queries, and the statement starts with "
-            f"`{keyword.upper() or text[:12]}`. It has to start with SELECT or WITH."
+            f"`{keyword.upper() or text[:12]}`. It has to start with SELECT or WITH.",
+            REFUSED_STATEMENT_NOT_ALLOWED,
         )
 
     lowered = text.lower()
     for forbidden in FORBIDDEN_KEYWORDS:
         if re.search(rf"\b{forbidden}\b", lowered):
-            return (
+            return Refusal(
                 f"refused: `{forbidden.upper()}` is not allowed here. This tool answers "
-                f"questions with a single read-only SELECT and changes nothing."
+                f"questions with a single read-only SELECT and changes nothing.",
+                REFUSED_STATEMENT_NOT_ALLOWED,
             )
 
     for name in {match.group(1).lower() for match in _FUNCTION_CALL.finditer(text)}:
         if name in FORBIDDEN_FUNCTIONS:
-            return (
+            return Refusal(
                 f"refused: `{name}(...)` reads outside the warehouse. Query the tables by "
-                f"name instead: {', '.join(allowed_tables)}."
+                f"name instead: {', '.join(allowed_tables)}.",
+                REFUSED_STATEMENT_NOT_ALLOWED,
             )
 
     allowed = {name.lower() for name in allowed_tables}
     for table in referenced_tables(sql):
         if table in allowed:
             continue
-        return (
-            f"refused: `{table}` is not a table this tool can read. The tables are: "
-            f"{', '.join(allowed_tables)}."
+        if table_exists(table):
+            return Refusal(
+                f"refused: `{table}` is not a table this tool can read. The tables are: "
+                f"{', '.join(allowed_tables)}.",
+                REFUSED_TABLE_NOT_ALLOWED,
+            )
+        return Refusal(
+            f"refused: there is no table called `{table}` in this warehouse. Pick one of the "
+            f"tables the system prompt lists rather than a name that sounds right: "
+            f"{', '.join(allowed_tables)}.",
+            REFUSED_TABLE_NOT_FOUND,
         )
     return None
+
+
+def table_exists(table: str) -> bool:
+    """Whether this name is a relation the warehouse really holds.
+
+    The authority is the dbt project, through `pipeline.prompts.warehouse_tables`:
+    every model dbt builds is a file in it, and the question being asked is
+    "did the model name something real", which the catalog of a warehouse that
+    may not even be built cannot answer any better. The DuckDB catalog was the
+    other candidate and is the worse one: it needs a connection on a path the
+    validator has never been given, it is empty before the gold stage runs, and
+    a validator that opened a file would stop being the pure function the
+    whole of `docs/agent-safety.md` rests on.
+
+    With no dbt project to read, the naming rule in `WAREHOUSE_PREFIXES`
+    stands in: a `mart_`, `dim_` or `fct_` name is treated as real and
+    therefore as blocked, and everything else as a guess. That is the
+    conservative way round, because calling a real block a guess is the error
+    that loses a reader a refusal worth seeing.
+    """
+    known = warehouse_tables()
+    if known:
+        return table in known
+    return table.startswith(WAREHOUSE_PREFIXES)
 
 
 def referenced_tables(sql: str) -> list[str]:
@@ -539,6 +648,13 @@ class QueryEvidence:
     it, or DuckDB itself would not run it. Only the first two are refusals,
     which is what `refused` is for; `gate_summary` counts those and leaves a
     broken query to be read as the empty result it is.
+
+    `refused_code` is the same thing in one word from `REFUSAL_CODES`, and it
+    is here because the sentence is written for a model and the application
+    has to switch on it. The two that matter most to a reader are
+    `table_not_found`, a name no model builds, and `table_not_allowed`, a real
+    table off the allowlist: the first is the agent guessing and the second is
+    the boundary holding, and until PLA-198 they arrived as the same event.
     """
 
     sql: str
@@ -546,8 +662,9 @@ class QueryEvidence:
     rows: list[dict[str, Any]] = field(default_factory=list)
     gate: str = GATE_OFF
     refused_reason: str | None = None
-    # Not serialised: the body already carries the reason, and this only
-    # decides whether the run's `gate_summary` is `refused`.
+    refused_code: str | None = None
+    # Not serialised: the body already carries the reason and the code, and
+    # this only decides whether the run's `gate_summary` is `refused`.
     refused: bool = False
 
     def as_dict(self) -> dict[str, Any]:
@@ -557,6 +674,7 @@ class QueryEvidence:
             "rows": [dict(row) for row in self.rows],
             "gate": self.gate,
             "refused_reason": self.refused_reason,
+            "refused_code": self.refused_code,
         }
 
 
@@ -584,21 +702,33 @@ class CardEvidence:
 
 
 def summarize_gate(queries: Sequence[QueryEvidence]) -> str:
-    """The worst thing that happened to a query in this run, as one word.
+    """What happened to the answer this run gave, as one word.
 
-    A ladder rather than a count, because the question it answers is whether
-    anything in the answer needs a second look. A refusal, from the validator
-    or from the gate, is the worst and ends the walk. A gate that allowed a
-    statement it was not sure about, and a gate that errored and let the
-    statement through under `PRA_SQL_GATE_ON_ERROR`, are both "allowed, with
-    a caveat". `off` is a run that asked the warehouse nothing, and a run
-    whose queries ran with no gate in front of them: in neither case did a
-    gate have an opinion to report.
+    The rule, since PLA-198: if anything was allowed to run, this describes
+    those runs and not the attempts before them. `refused` is reserved for a
+    run that got nothing, which is every query refused, or no query at all
+    because the one that was tried was refused. The application draws an
+    error-tone badge on `refused`, and a correct answer behind a guessed
+    table name was earning one: the model wrote `mart_leaderboard`, read the
+    refusal, queried `mart_player_summary` and answered, and the member was
+    told the data query was refused.
+
+    Among the queries that did run it is still a ladder, worst first, because
+    the question that half answers is whether the answer needs a second look.
+    A gate that allowed a statement it was not sure about, and a gate that
+    errored and let the statement through under `PRA_SQL_GATE_ON_ERROR`, are
+    both "allowed, with a caveat". `off` is a run that asked the warehouse
+    nothing, and a run whose queries ran with no gate in front of them: in
+    neither case did a gate have an opinion to report.
+
+    The refused attempt stays in `evidence.queries` with its reason and its
+    code either way. Nothing is hidden; it is read as the detour it was.
     """
+    ran = [query for query in queries if not query.refused]
+    if not ran:
+        return SUMMARY_REFUSED if queries else SUMMARY_OFF
     worst = SUMMARY_OFF
-    for query in queries:
-        if query.refused:
-            return SUMMARY_REFUSED
+    for query in ran:
         outcome = query.gate.partition(":")[2]
         if outcome in {"allowed_low", "error"}:
             worst = SUMMARY_ALLOWED_LOW
@@ -644,7 +774,7 @@ class Evidence:
 
     @property
     def gate_summary(self) -> str:
-        """The worst gate outcome over this run's queries."""
+        """What happened to the answer, over this run's queries."""
         return summarize_gate(self.queries)
 
     def as_dict(self) -> dict[str, Any]:
@@ -772,6 +902,24 @@ def gate_refusal(decision: GateDecision) -> str:
     )
 
 
+def gate_refusal_code(decision: GateDecision) -> str:
+    """A gate verdict as one of `REFUSAL_CODES`.
+
+    Three outcomes and not one, because they ask different things of whoever
+    reads them. `error` is the gate itself being unreachable or unreadable,
+    which is an operational problem and not a judgement about the SQL.
+    `judge_low_confidence` is the model choosing `allow` under the threshold
+    with `PRA_SQL_GATE_LOW_CONFIDENCE=refuse` set, which is a threshold to
+    tune. `judge_refused` is the model really saying no, which is the only
+    one of the three that is the gate working as advertised.
+    """
+    if decision.errored:
+        return REFUSED_ERROR
+    if decision.low_confidence:
+        return REFUSED_JUDGE_LOW_CONFIDENCE
+    return REFUSED_JUDGE_REFUSED
+
+
 @dataclass(frozen=True)
 class QueryResult:
     """What one statement produced: the model's text, the count, and the rows.
@@ -828,18 +976,33 @@ def guarded_query(
     ends the agent's turn, and the useful outcome of a bad query is the model
     reading why and writing a better one.
     """
-    refusal = validate_sql(sql, allowed_tables)
+    refusal = check_sql(sql, allowed_tables)
     if refusal is not None:
-        logger.info("tool call refused", extra={"tool": SQL_TOOL, "reason": refusal})
-        record_query(
-            QueryEvidence(sql=sql, gate=NO_GATE.label, refused_reason=refusal, refused=True)
+        logger.info(
+            "tool call refused",
+            extra={"tool": SQL_TOOL, "reason": refusal.message, "refused_code": refusal.code},
         )
-        return refusal, 0, NO_GATE
+        record_query(
+            QueryEvidence(
+                sql=sql,
+                gate=NO_GATE.label,
+                refused_reason=refusal.message,
+                refused_code=refusal.code,
+                refused=True,
+            )
+        )
+        return refusal.message, 0, NO_GATE
     decision = NO_GATE if gate is None else gate.judge(question, sql, schema_summary())
     if not decision.allowed:
         refused = gate_refusal(decision)
         record_query(
-            QueryEvidence(sql=sql, gate=decision.label, refused_reason=refused, refused=True)
+            QueryEvidence(
+                sql=sql,
+                gate=decision.label,
+                refused_reason=refused,
+                refused_code=gate_refusal_code(decision),
+                refused=True,
+            )
         )
         return refused, 0, decision
     result = execute_marts_query(sql, warehouse=warehouse)
@@ -850,6 +1013,10 @@ def guarded_query(
             rows=result.rows,
             gate=decision.label,
             refused_reason=result.failure,
+            # Not a refusal: the statement was allowed and DuckDB would not
+            # run it. It gets the code anyway, so that "there is a reason" and
+            # "there is a code for it" are one fact rather than two.
+            refused_code=None if result.failure is None else REFUSED_ERROR,
         )
     )
     return result.text, result.row_count, decision
@@ -953,8 +1120,9 @@ def make_query_marts_tool(
         description=(
             "Run one read-only SQL SELECT against the gold marts and get the rows back "
             "as a markdown table. DuckDB dialect. One statement, no semicolons, only "
-            f"the tables described in the system prompt. A LIMIT of {DEFAULT_LIMIT} is "
-            f"added when you leave one out and any LIMIT above {MAX_LIMIT} is reduced."
+            f"the tables described in the system prompt. {TABLE_LIST_NOTE} A LIMIT of "
+            f"{DEFAULT_LIMIT} is added when you leave one out and any LIMIT above "
+            f"{MAX_LIMIT} is reduced."
         ),
     )
 
@@ -1075,7 +1243,7 @@ class Answer:
 
     @property
     def gate_summary(self) -> str:
-        """The worst gate outcome over this run's queries, as one word."""
+        """What happened to the answer, over this run's queries, as one word."""
         return self.evidence.gate_summary
 
     def as_dict(self) -> dict[str, Any]:

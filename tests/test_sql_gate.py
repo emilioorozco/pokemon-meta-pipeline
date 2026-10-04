@@ -22,7 +22,7 @@ from typing import Any, Final
 
 import pytest
 
-from pipeline import sql_gate
+from pipeline import agent, sql_gate
 from pipeline.sql_gate import (
     GateCallError,
     GateConfigError,
@@ -209,8 +209,27 @@ def test_the_strict_policy_refuses_an_allow_under_the_threshold() -> None:
     assert not decision.uncertain
     assert decision.label == "jev:refused"
     assert "not sure enough" in decision.reason
+    # A threshold to tune rather than a model that said no, which is what the
+    # evidence's `refused_code` has to tell apart.
+    assert decision.low_confidence
+    assert agent.gate_refusal_code(decision) == agent.REFUSED_JUDGE_LOW_CONFIDENCE
     with pytest.raises(sql_gate.GateConfigError, match="LOW_CONFIDENCE"):
         gate(low_confidence="maybe")
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        (HttpReply(200, answered("refuse", 0.99)), agent.REFUSED_JUDGE_REFUSED),
+        (HttpReply(500, {}), agent.REFUSED_ERROR),
+    ],
+)
+def test_a_gate_refusal_carries_the_reason_it_was_refused_for(
+    reply: HttpReply, expected: str
+) -> None:
+    """Three ways to be refused by the gate, and three words for them."""
+    judge, _ = gate(reply)
+    assert agent.gate_refusal_code(judge.judge(QUESTION, SQL, SCHEMA)) == expected
 
 
 def test_the_cost_falls_back_to_the_published_rate_when_nothing_prices_the_call() -> None:

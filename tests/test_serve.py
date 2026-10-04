@@ -486,6 +486,7 @@ ANSWER: Final[dict[str, Any]] = {
                 ],
                 "gate": "jev:allowed",
                 "refused_reason": None,
+                "refused_code": None,
             },
             {
                 "sql": REFUSED_SQL,
@@ -493,6 +494,7 @@ ANSWER: Final[dict[str, Any]] = {
                 "rows": [],
                 "gate": "off",
                 "refused_reason": REFUSAL,
+                "refused_code": "table_not_allowed",
             },
         ],
         "cards": [
@@ -539,6 +541,9 @@ def test_ask_returns_the_answer_and_what_the_agent_read(registry: Registry) -> N
     assert body["evidence"]["queries"][0]["sql"] == ALLOWED_SQL
     assert body["evidence"]["queries"][0]["rows"][0]["last_played"] == "2026-09-28"
     assert body["evidence"]["queries"][1]["refused_reason"] == REFUSAL
+    # A real table off the allowlist, which the application reads as a block
+    # rather than as the agent having guessed a name.
+    assert body["evidence"]["queries"][1]["refused_code"] == "table_not_allowed"
     assert body["evidence"]["cards"][0]["set_code"] == "PAL"
     assert body["gate_summary"] == "refused"
     assert isinstance(body["latency_ms"], int)

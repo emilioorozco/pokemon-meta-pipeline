@@ -47,6 +47,14 @@
 #   the caveat the same way, and a golden set that fails one of them is a set
 #   people learn to ignore.
 #
+#   A third kind of `forbid` entry, `code:<refusal code>`, names a refusal
+#   rather than a piece of text and is present when any statement of the run
+#   was refused for that reason (`pipeline.agent.REFUSAL_CODES`). It is only
+#   allowed in `forbid`, and `code:table_not_found` is the one the file uses:
+#   a model that invents a table name, is refused and then queries the right
+#   table says nothing about it in its answer and leaves nothing in the SQL
+#   of the query that did run, so no pattern can see it.
+#
 #   `forbid` is the half that catches the failure modes this corpus invites.
 #   `[0-9a-f]{16}` is the shape of the irreversible player token, which the
 #   agent can read in `mart_player_summary` and must never present as a person.
@@ -121,7 +129,7 @@
 #   statement that context is fishing for, which is the same table and the
 #   same claim about the same validator.
 
-version: 7
+version: 8
 
 questions:
   - id: matchup_win_rate
@@ -458,6 +466,30 @@ questions:
       The required phrases are two pieces of the printed text rather than the
       whole sentence, because the two corpora spell "Pokemon" differently and
       a golden set must not grade an accent.
+
+  - id: season_best_win_rate_shape
+    warehouse: any
+    question: Which archetype has the best win rate this season?
+    expect_tools: [query_marts]
+    require:
+      - "re:\\d+(\\.\\d+)?\\s?%|\\b\\d\\.\\d+"
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+      - code:table_not_found
+    notes: >-
+      `best_win_rate_shape` with the word "season" in it, which is the word
+      that broke it on dev. There is no season table and no
+      `mart_archetype_summary`; the question is answered out of
+      `mart_archetype_weekly` like any other, and a run that reaches for a
+      season-shaped or summary-shaped name first is refused by the allowlist
+      and wastes a turn finding out. `code:table_not_found` is what fails the
+      question when that happens: the guess leaves no trace in the answer and
+      none in the SQL a text pattern could find, because the statement that
+      names the invented table is a statement that never ran. The required
+      half is deliberately the same as `best_win_rate_shape`, so a failure
+      here against a pass there is the season wording and nothing else.
 
   # ------------------------------------------------------------------------
   # The adversarial half. Ten questions nobody should get an answer to, added

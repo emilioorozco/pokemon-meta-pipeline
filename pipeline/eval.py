@@ -124,6 +124,8 @@ from langchain_core.runnables import Runnable
 
 from pipeline.agent import (
     CARD_TOOL,
+    REFUSAL_CODES,
+    REFUSED_TABLE_NOT_FOUND,
     SQL_TOOL,
     Agent,
     Answer,
@@ -165,6 +167,21 @@ VALID_TOOLS: Final[tuple[str, ...]] = (SQL_TOOL, CARD_TOOL)
 # everything else is a plain substring. Both are matched case insensitively,
 # because capitalisation is wording and this file grades facts.
 REGEX_PREFIX: Final = "re:"
+
+# A `forbid` entry starting with this names a refusal code rather than a piece
+# of text, and is present when any query of the run was refused with it
+# (`pipeline.agent.REFUSAL_CODES`). The third prefix rather than a third list
+# on `Question`, because it is a `forbid` in every way that matters: it says
+# what a correct run does not do, it is reported in `present_forbidden` beside
+# the text patterns, and it fails the question the same way.
+#
+# It exists because the thing PLA-198 has to keep out of a run cannot be
+# written as a pattern. A model that guesses `mart_leaderboard`, is refused
+# and then queries the right table says nothing about it in its answer and
+# leaves no trace in the SQL a `re:` entry could find, because the refused
+# statement is evidence of the guess rather than of the answer. The code is
+# the only honest handle on it.
+CODE_PREFIX: Final = "code:"
 
 # What the replay model says instead of playing a recorded turn whose tool the
 # system prompt never described. It contains no number and no archetype, so a
@@ -294,12 +311,18 @@ def matches(pattern: str, text: str) -> bool:
     return pattern.casefold() in text.casefold()
 
 
-def _patterns(raw: Any, *, where: str) -> tuple[str, ...]:
+def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, ...]:
     """A `require` or `forbid` list, with every regular expression compiled once.
 
     Compiled here and thrown away, so that a pattern with an unbalanced bracket
     in it is a load error naming the question rather than a traceback in the
     middle of question seven.
+
+    A `code:` entry is checked against the closed set of refusal codes for the
+    same reason and is only accepted in `forbid`: a `require` that asked for a
+    refusal code would be asking the agent to be refused, which no question in
+    this file wants, and a misspelt code anywhere is a check that can never
+    fire.
     """
     if raw is None:
         return ()
@@ -309,6 +332,15 @@ def _patterns(raw: Any, *, where: str) -> tuple[str, ...]:
     for pattern in patterns:
         if not pattern.strip():
             raise GoldenError(f"{where}: an empty pattern matches everything")
+        if pattern.startswith(CODE_PREFIX):
+            if not allow_codes:
+                raise GoldenError(f"{where}: {pattern!r} is only allowed in `forbid`")
+            code = pattern[len(CODE_PREFIX) :]
+            if code not in REFUSAL_CODES:
+                raise GoldenError(
+                    f"{where}: {code!r} is not a refusal code ({', '.join(REFUSAL_CODES)})"
+                )
+            continue
         if pattern.startswith(REGEX_PREFIX):
             try:
                 re.compile(pattern[len(REGEX_PREFIX) :])
@@ -386,7 +418,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         # nothing: the relevance decision is only taken when a game was sent.
         if contexts["context_first_line"] and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_first_line` needs a `context_game` to describe")
-        forbid = _patterns(raw.get("forbid"), where=f"{where} forbid")
+        forbid = _patterns(raw.get("forbid"), where=f"{where} forbid", allow_codes=True)
         # An adversarial question is scored on what the run did as well as on
         # what it said, and the only thing that catches "it refused in prose
         # and queried the roster anyway" is a `forbid` list. One without one
@@ -428,6 +460,11 @@ class Result:
     gate: str = GATE_NONE
     gate_calls: int = 0
     gate_cost_usd: float = 0.0
+    # Every refusal code of this question's run, in call order and with
+    # repeats kept, so a question that guessed two table names counts twice.
+    # Carried on the result rather than recomputed from the evidence because
+    # the report totals it and the evidence is not kept past scoring.
+    refused_codes: tuple[str, ...] = ()
     # What the provider said this question cost, carried through unchanged so
     # the run can sum it. Empty on a replayed or scripted model, which reports
     # no usage at all, and empty on a question that raised before it was asked.
@@ -492,6 +529,7 @@ class Result:
             "gate": self.gate,
             "gate_calls": self.gate_calls,
             "gate_cost_usd": self.gate_cost_usd,
+            "refused_codes": list(self.refused_codes),
             "usage": dict(self.usage),
             "answer": self.answer,
         }
@@ -547,6 +585,18 @@ def workings(answer: str, evidence: Evidence | None) -> str:
     return "\n".join(parts)
 
 
+def refusal_codes(evidence: Evidence | None) -> tuple[str, ...]:
+    """Every refusal code of one run, in call order, repeats kept.
+
+    Repeats are kept because the number this is here to produce is a rate: a
+    run that guessed two table names before finding the right one guessed
+    twice, and a set that counted it once would flatter the prompt.
+    """
+    if evidence is None:
+        return ()
+    return tuple(query.refused_code for query in evidence.queries if query.refused_code)
+
+
 def score(
     question: Question,
     answer: str,
@@ -568,14 +618,17 @@ def score(
     would make the golden set a measurement of two models rather than one.
 
     `evidence` widens where a `forbid` entry is looked for, and nothing else;
-    `workings` above says why. `usage` changes no check either: it is the
-    provider's token counts, carried so that the run can total them and the
-    tracking run can show a prompt change that quietly stopped caching.
+    `workings` above says why. It is also where a `code:` entry is answered
+    from, which is the one check that reads the run rather than its text.
+    `usage` changes no check either: it is the provider's token counts,
+    carried so that the run can total them and the tracking run can show a
+    prompt change that quietly stopped caching.
     """
     called = tuple(tools_called)
     unique = set(called)
     gate, gate_calls, gate_cost = gate_summary(calls)
     searched = workings(answer, evidence)
+    codes = refusal_codes(evidence)
     return Result(
         question=question,
         answer=answer,
@@ -588,11 +641,18 @@ def score(
             pattern for pattern in question.require if not matches(pattern, answer)
         ),
         present_forbidden=tuple(
-            pattern for pattern in question.forbid if matches(pattern, searched)
+            pattern
+            for pattern in question.forbid
+            if (
+                pattern[len(CODE_PREFIX) :] in codes
+                if pattern.startswith(CODE_PREFIX)
+                else matches(pattern, searched)
+            )
         ),
         gate=gate,
         gate_calls=gate_calls,
         gate_cost_usd=gate_cost,
+        refused_codes=codes,
         usage=dict(usage or {}),
     )
 
@@ -677,6 +737,22 @@ class Report:
         """What the gate cost for this whole run, in dollars."""
         return round(sum(result.gate_cost_usd for result in self.results), 10)
 
+    @property
+    def guessed_tables(self) -> int:
+        """Statements refused for naming a table that does not exist, run wide.
+
+        The guess rate the prompt's table-list line is measured on. It is a
+        count of statements and not of questions, because one question that
+        guessed twice is twice the waste: two model calls, two refusals and
+        two more turns of context before the answer. Zero is what a run of
+        the golden set should show, and the set has a question in it that
+        fails when it does not (docs/evals.md).
+        """
+        return sum(
+            sum(1 for code in result.refused_codes if code == REFUSED_TABLE_NOT_FOUND)
+            for result in self.results
+        )
+
     def usage_totals(self) -> dict[str, int]:
         """The provider's token counts summed over every question of the run.
 
@@ -720,6 +796,7 @@ class Report:
             "gate_calls": self.gate_calls,
             "gate_refusals": self.gate_refusals,
             "gate_cost_usd": self.gate_cost_usd,
+            "guessed_tables": self.guessed_tables,
             "usage_totals": self.usage_totals(),
             "questions": [result.as_dict() for result in self.results],
         }
@@ -961,15 +1038,17 @@ def query_from_response(entry: dict[str, Any]) -> QueryEvidence:
     """One `evidence.queries[]` entry as the object the scorer reads.
 
     `refused` is the one field that is not on the wire, because nothing
-    serialises it: the response carries `refused_reason` and the service's own
-    `gate_summary`, and this reconstructs the flag from the first so the
-    second can be recomputed and checked against what was sent. Every refusal,
+    serialises it: the response carries `refused_reason`, `refused_code` and
+    the service's own `gate_summary`, and this reconstructs the flag from the
+    reason so the summary can be recomputed and checked against what was
+    sent. The code is read as sent and not derived. Every refusal,
     from the validator and from the gate, opens with the word; a query DuckDB
     would not run opens with "the query failed" and is an empty result rather
     than a refusal, which is the distinction `summarize_gate` is making.
     """
     reason = entry.get("refused_reason")
     text = None if reason is None else str(reason)
+    code = entry.get("refused_code")
     rows = entry.get("rows")
     return QueryEvidence(
         sql=str(entry.get("sql", "")),
@@ -977,6 +1056,7 @@ def query_from_response(entry: dict[str, Any]) -> QueryEvidence:
         rows=[dict(row) for row in rows] if isinstance(rows, list) else [],
         gate=str(entry.get("gate", GATE_OFF)),
         refused_reason=text,
+        refused_code=None if code is None else str(code),
         refused=text is not None and text.lower().startswith("refused"),
     )
 
@@ -1336,6 +1416,7 @@ def render(report: Report) -> str:
     if report.skipped:
         lines.append(render_skipped(report))
     lines.append(render_gate_cost(report))
+    lines.append(render_guessed_tables(report))
     for result in report.results:
         if result.passed and not result.advisory:
             continue
@@ -1374,6 +1455,27 @@ def render_gate_cost(report: Report) -> str:
     spent = report.gate_cost_usd
     line = f"gate cost: ${spent:.6f} ({report.gate_calls} calls, {report.gate_refusals} refused)"
     return f"{line}, under a cent" if spent < CENT_USD else f"{line}, OVER a cent"
+
+
+def render_guessed_tables(report: Report) -> str:
+    """The one line that says how often the model invented a table name.
+
+    Printed on every run, zero included, for the reason the gate-cost line is:
+    a number that appears only when it is bad is a number nobody reads as a
+    series. The ids are on it when there are any, because the useful next
+    question is which question went looking for a table that is not there.
+    """
+    guesses = report.guessed_tables
+    if not guesses:
+        return "guessed tables: 0"
+    asked = sorted(
+        {
+            result.question.id
+            for result in report.results
+            if REFUSED_TABLE_NOT_FOUND in result.refused_codes
+        }
+    )
+    return f"guessed tables: {guesses} refused on {', '.join(asked)}"
 
 
 def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str | None:
@@ -1426,6 +1528,11 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 "gate_calls": float(report.gate_calls),
                 "gate_refusals": float(report.gate_refusals),
                 "gate_cost_usd": report.gate_cost_usd,
+                # Statements refused for naming a table that is not there,
+                # which is the series the prompt's table-list line is judged
+                # on: a prompt edit that stops the model inventing names
+                # shows up here and in the token counts and nowhere else.
+                "guessed_tables": float(report.guessed_tables),
                 # The input side split by how it was paid for. A prompt edit
                 # that moves a byte into the cached prefix, or breaks it, is a
                 # step in these two columns of the run table and nowhere else.
