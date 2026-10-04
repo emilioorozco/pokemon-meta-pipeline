@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 6
+version: 7
 
 runs:
   matchup_win_rate:
@@ -242,6 +242,29 @@ runs:
       during your turn, and this one puts a Pokemon or a Basic Energy card
       from your discard pile into your hand. That is printed card text; it
       says nothing about how often the card is played.
+
+  # The competent run for a question with "this season" in it, which is the
+  # one query the dev runs did not write: there is no season table and no
+  # summary table, so the weekly mart answers it the way it answers
+  # `best_win_rate_shape`. No refused turn is recorded in front of it,
+  # because a recording of a competent model is what this file holds and a
+  # competent model does not reach for a table it was never told about.
+  season_best_win_rate_shape:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, sum(wins) as wins, sum(games) as games,
+            sum(wins) * 1.0 / sum(games) as win_rate from
+            mart_archetype_weekly group by archetype_name order by win_rate
+            desc, games desc, archetype_name
+    answer: >-
+      There is no season column in this warehouse, so this is the whole corpus
+      rather than one season of it. Six archetypes share the top at 100%
+      (1.0): Dragapult / Dusknoir and Dragapult control over 2 games each, and
+      Crustle / Mega Kangaskhan ex, Cynthia's Garchomp, Festival Lead and Mega
+      Starmie ex / Mega Froslass ex over 1 game each. None of them clears the
+      project's minimum sample, so those are records rather than rates.
 
   # The two injection questions have no turns on purpose, and the reason is the
   # fake's one rule rather than a shortcut. A recorded turn is only replayed
