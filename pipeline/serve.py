@@ -89,6 +89,7 @@ all of it.
 
 import argparse
 import contextlib
+import hashlib
 import json
 import logging
 import math
@@ -122,6 +123,8 @@ from pipeline.prompts import (
     MAX_HISTORY_TURNS,
     HistoryError,
     Turn,
+    generated_prompt,
+    schema_table_count,
     validate_history,
 )
 from pipeline.sql_gate import GateConfigError, gate_from_env
@@ -749,6 +752,19 @@ class HealthResponse(BaseModel):
         default=None,
         description="Why there is no card tool, naming what to rebuild; null when there is",
     )
+    prompt_sha256: str = Field(
+        default="",
+        description="sha256 of the generated system prompt this container would send, "
+        "with the card-tool note included exactly when `card_tool` is true. Compare it "
+        "with the same hash taken in a checkout to see whether the image is serving the "
+        "prompt the repository holds",
+    )
+    schema_tables: int = Field(
+        default=0,
+        description="How many of the allowlisted tables the prompt's schema listing really "
+        "describes. Anything below the length of the allowlist is an image shipped without "
+        "the descriptions, and zero is a prompt with no table listing at all",
+    )
 
 
 class WarmResponse(BaseModel):
@@ -917,6 +933,26 @@ def missing_keys() -> list[str]:
     placeholder when the container started can be filled while it is running.
     """
     return [name for name in AGENT_KEY_VARS if not os.environ.get(name, "").strip()]
+
+
+def prompt_digest(with_card_tool: bool) -> str:
+    """sha256 of the generated system prompt this process would send.
+
+    The remote half of a check nobody could make before: take the same hash
+    in a checkout and compare, and a container serving a prompt the
+    repository does not hold stops being invisible. It caught the thing it
+    was written for on the first run, which was an image whose schema
+    listing was empty because `Dockerfile.agent` copies `pipeline/` and the
+    dbt tree the listing used to be parsed from is not in it
+    (docs/agent-service.md).
+
+    Cheap enough for `/health`, which builds nothing: the prompt is a cached
+    string after the first call and this is a hash of twenty thousand
+    characters. The override file is deliberately not consulted, because what
+    this answers is which build is deployed and not which experiment is
+    running; `pipeline.eval` already reports the override's own hash.
+    """
+    return hashlib.sha256(generated_prompt(with_card_tool).encode("utf-8")).hexdigest()
 
 
 def agent_readiness() -> AgentReadiness:
@@ -1525,6 +1561,8 @@ def create_app(
             agent_reason=state.reason,
             card_tool=card_ok,
             card_tool_reason=card_reason,
+            prompt_sha256=prompt_digest(card_ok),
+            schema_tables=schema_table_count(),
         )
 
     @app.get("/warm", response_model=WarmResponse, summary="Pay a first question's costs early")

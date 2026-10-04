@@ -548,19 +548,25 @@ uv run dbt test  --project-dir dbt --profiles-dir dbt           # test only
 uv run dbt docs generate --project-dir dbt --profiles-dir dbt   # lineage + catalog
 ```
 
-One command goes with adding, renaming or deleting a model rather than with
-building:
+Two commands go with editing the models rather than with building:
 
 ```bash
 uv run python scripts/generate_warehouse_tables.py              # after a model changes
+uv run python scripts/generate_marts_schema.py                  # after a marts description changes
 ```
 
-It writes `pipeline/warehouse_tables.py`, the list of relation names the
-agent's SQL validator uses to tell a table the model invented from a real one
-it may not read. The list is committed because the serving image ships
-without the dbt project, so globbing it at run time answered nothing there
-(`docs/sql-gate.md`). A test re-runs the glob and fails when the two have
-drifted, so forgetting this command is a red test rather than a wrong refusal.
+The first writes `pipeline/warehouse_tables.py`, the list of relation names
+the agent's SQL validator uses to tell a table the model invented from a real
+one it may not read. The second writes `pipeline/marts_schema.py`, the
+descriptions the agent's prompt renders its table listing from.
+
+Both are committed because the serving image ships without the dbt project,
+so reading it at run time answered nothing there: an empty relation list made
+the validator call real tables invented (`docs/sql-gate.md`), and an empty
+schema sent the model a prompt with no table listing in it at all
+(`docs/agent-service.md`). A test re-runs each parse and fails when the
+committed file has drifted, so forgetting either command is a red test rather
+than a wrong answer in production.
 
 The profile is committed at `dbt/profiles.yml` rather than left in `~/.dbt`, so
 a fresh clone builds with no setup. It writes one DuckDB file,

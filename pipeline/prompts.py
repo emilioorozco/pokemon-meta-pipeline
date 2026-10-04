@@ -2,10 +2,22 @@
 
 A prompt that lists table and column names is documentation, and documentation
 that is typed twice goes stale on the first rename. So the schema section is
-rendered at import time from `dbt/models/marts/schema.yml`, the same file dbt
-builds and tests the models from: a column renamed in the model is renamed in
-the prompt on the next import, and a column that never existed cannot be
-described here at all.
+rendered from `dbt/models/marts/schema.yml`, the same file dbt builds and
+tests the models from: a column renamed in the model is renamed in the prompt,
+and a column that never existed cannot be described here at all.
+
+Rendered from the committed parse of that file and not from the file, which
+is PLA-205's other half. The parse used to happen at import, which works in a
+checkout and finds nothing on the deployed image, because `Dockerfile.agent`
+copies `pipeline/` and not `dbt/`. Every allowlisted table was skipped as
+undescribed there and the prompt went out with no table listing at all, so the
+model wrote SQL against columns it had never been shown. `pipeline.marts_schema`
+is the committed answer, written by `scripts/generate_marts_schema.py` and
+held to the file by a drift test, exactly as `pipeline.warehouse_tables` is
+(docs/agent-service.md). A listing that would come out empty raises
+`SchemaListingError` rather than shipping, and `/health` reports
+`prompt_sha256` and `schema_tables` so the deployed prompt can be compared
+with the one in the repository.
 
 Only the allowed tables are rendered. The prompt and the SQL tool's allowlist
 read the same constant, so a table the tool would refuse is never advertised,
@@ -109,13 +121,13 @@ behind it in this run. Rule 11 says so, and the numeric check backs it the
 way it backs rule 10, by reporting such a number separately as `from_history`
 rather than counting it as an invention (`pipeline.facts`).
 
-The prompt leaves here in three parts rather than one string, and
+The prompt leaves here in four parts rather than one string, and
 `system_blocks` turns them into the provider's content blocks with a cache
 breakpoint on the last. The seams are the ones the prompt already had: the
-hand written rules, then the per-job playbooks, then the generated schema
-listing. Nothing that varies per request is in any part, which is the whole
-property a cached prefix depends on: the question, the page context, the
-thread memory and the job label are in the human turn.
+hand written rules, then the per-job playbooks, then the facts glossary, then
+the generated schema listing. Nothing that varies per request is in any part,
+which is the whole property a cached prefix depends on: the question, the page
+context, the thread memory and the job label are in the human turn.
 
 The playbooks are the second block and PLA-205's half of the ticket. The
 application routes every question before it sends it, into one of six jobs
@@ -136,6 +148,26 @@ provider under its minimum declines without an error. The playbooks carry the
 prefix over the line with text that earns its own place rather than with
 padding, and `MIN_PREFIX_TOKENS` is the floor a later cut has to stay above
 (docs/agent-service.md).
+
+They did carry it over, and that is now measured rather than estimated. A
+`count_tokens` run on 2026-10-04 against the deployed prompt put the system
+blocks with the card-tool note at 4,299 tokens over 16,676 characters, which
+is 3.9 characters per token for this text, and the `query_marts` schema at
+about 645 tokens on top. `CHARS_PER_TOKEN` stays at 4 and
+`PREFIX_TOOL_CHARS` moved to the measured figure, which it had been
+understating by a factor of three (docs/agent-service.md).
+
+`FACTS_GLOSSARY` is the third hand written block, between the playbooks and
+the schema listing, and it is there because the model needs it rather than
+because the prefix needs the length. The application sends per-game facts in
+the `<facts>` list as plain numbered sentences, and `mart_archetype_pace`
+holds the same ten measurements averaged per archetype, and until this
+ticket the model met both with no definition in front of it: what a counted
+turn is, which seat a knockout is credited to, that turn 1 of the player who
+went first is out of the attack counts and the conceded turn is out of
+everything. One line per fact id and per pace column, in the voice of the
+rules, so the definitions are read before the numbers are
+(docs/agent-service.md, and the application's own docs/game-analysis.md).
 
 The whole prompt can be replaced from outside, by pointing
 `PRA_AGENT_SYSTEM_PROMPT_FILE` at a file. That hook exists for one purpose: the
@@ -158,6 +190,7 @@ from typing import Any, Final
 import yaml
 
 from pipeline.config import REPO_ROOT
+from pipeline.marts_schema import MARTS_MODELS, MartsModel
 from pipeline.warehouse_tables import WAREHOUSE_TABLES
 
 MARTS_SCHEMA: Final = REPO_ROOT / "dbt" / "models" / "marts" / "schema.yml"
@@ -262,10 +295,30 @@ MAX_COLUMN_CHARS: Final = 46
 # a second schema. The floor underneath it is the new constraint and the one
 # that matters: `MIN_PREFIX_TOKENS` below, which a cut cannot drop under
 # without turning a test red (docs/agent-service.md).
-MAX_PROMPT_CHARS: Final = 17_000
+# 20,000 from 17,000 for the facts glossary, which is 3,031 characters of
+# definitions the model was otherwise being asked to infer: what a counted
+# turn is, which seat a knockout belongs to, what each pace column averages.
+# This raise is not about the cache. The prefix was measured on 2026-10-04
+# and is comfortably over the provider's minimum without it
+# (`CHARS_PER_TOKEN`), so the glossary is paid for by what it tells the model
+# and by nothing else, which is why it is as short as it is. 20,000 is a
+# ceiling over a prompt of 19,709 with the card-tool note: room for a rule or
+# a column rename, not for a second schema, which is what every number on
+# this line has meant.
+MAX_PROMPT_CHARS: Final = 20_000
 
-# The four characters per token rule this file has always estimated with, and
-# the two numbers it is now measured against.
+# The characters per token this file estimates with, and the two numbers it
+# is measured against. Both were weighed on 2026-10-04 with a real
+# `messages.count_tokens` call against `claude-haiku-4-5-20251001`, which is
+# the first time any of these figures was anything but a rule of thumb.
+#
+# Four survives the measurement: the system blocks with the card-tool note
+# are 16,676 characters and came back at 4,299 tokens, which is 3.88
+# characters per token. Four is the conservative round number on the right
+# side of that, so an estimate from it reads a little low rather than a
+# little high, which is the direction a floor wants to be wrong in. The
+# `count_tokens` snippet in docs/agent-service.md is the authority; this
+# constant is what a test can use with no network and no key.
 #
 # `MIN_CACHEABLE_PREFIX_TOKENS` is the provider's, not ours: Claude Haiku 4.5
 # caches nothing below a 4,096 token prefix, marked or not, and returns no
@@ -273,14 +326,19 @@ MAX_PROMPT_CHARS: Final = 17_000
 # of zero for ever. `MIN_PREFIX_TOKENS` is the floor the prompt test holds the
 # rendered prefix to, 204 tokens over the provider's line, because a prefix
 # sitting exactly on a minimum is a prefix one tokenizer revision away from
-# caching nothing. `PREFIX_TOOL_CHARS` is the tool schemas, which are inside
-# the prefix and are not this module's text: the figure is the one
-# docs/agent-service.md already uses, and the measurement that replaces both
-# estimates is the `count_tokens` call written out there.
+# caching nothing. The measurement clears it with room to spare, which is
+# what a floor passing looks like; it is not a target to trim towards.
+#
+# `PREFIX_TOOL_CHARS` is the tool schemas, which are inside the prefix and are
+# not this module's text. 2,600 and not the 900 this file guessed: the
+# `query_marts` schema measured at about 645 tokens in the same run, and 900
+# characters called that 225, so the old figure understated the tool side of
+# the prefix by a factor of three. It is written as characters rather than
+# tokens only so that `prefix_chars` stays one unit throughout.
 CHARS_PER_TOKEN: Final = 4
 MIN_CACHEABLE_PREFIX_TOKENS: Final = 4_096
 MIN_PREFIX_TOKENS: Final = 4_300
-PREFIX_TOOL_CHARS: Final = 900
+PREFIX_TOOL_CHARS: Final = 2_600
 
 # What separates the parts of the prompt when they are joined back into one
 # string. The two parts were one f-string with this between them, so joining
@@ -479,8 +537,27 @@ def dbt_model_names(root: Path = DBT_MODELS_DIR) -> frozenset[str]:
     return frozenset(path.stem.lower() for path in root.glob("**/*.sql"))
 
 
+class SchemaListingError(RuntimeError):
+    """The prompt would go out with no table listing in it.
+
+    A failure and not a warning. The listing is what tells the model which
+    relations exist and what their columns are called, and a prompt without
+    it still answers: the model writes SQL from the question's own words,
+    invents `games_played` and `mart_leaderboard`, and the validator refuses
+    a statement nobody can read the reason for. That failure is silent on the
+    deployed image and loud nowhere, which is exactly the shape of bug worth
+    a raise (docs/agent-service.md).
+    """
+
+
 def read_models(paths: tuple[Path, ...] = SCHEMA_FILES) -> dict[str, dict[str, object]]:
-    """Every model in the given dbt schema files, keyed by model name."""
+    """Every model in the given dbt schema files, keyed by model name.
+
+    Build time only, like `dbt_model_names`: the committed
+    `pipeline.marts_schema` is what the prompt renders from, and on the
+    deployed image there is no schema file here to read. The generator and
+    the test that keeps the two in step are the callers that matter.
+    """
     models: dict[str, dict[str, object]] = {}
     for path in paths:
         if not path.is_file():
@@ -493,39 +570,86 @@ def read_models(paths: tuple[Path, ...] = SCHEMA_FILES) -> dict[str, dict[str, o
     return models
 
 
+def marts_models_from_files(paths: tuple[Path, ...] = SCHEMA_FILES) -> tuple[MartsModel, ...]:
+    """The dbt schema files as the shape `pipeline.marts_schema` commits.
+
+    Build time only. Whitespace is collapsed here rather than at render time,
+    so the generated file holds one line per description and a description
+    rewrapped in the yml is not a diff; the sentence split and the character
+    budgets still happen in `render_schema`, which is what lets the budgets
+    change without a regeneration.
+    """
+    models: list[MartsModel] = []
+    for name, model in read_models(paths).items():
+        raw = model.get("columns") or []
+        columns = raw if isinstance(raw, list) else []
+        models.append(
+            (
+                name,
+                _WHITESPACE.sub(" ", str(model.get("description", ""))).strip(),
+                tuple(
+                    (
+                        str(column.get("name")),
+                        _WHITESPACE.sub(" ", str(column.get("description", ""))).strip(),
+                    )
+                    for column in columns
+                    if column.get("name")
+                ),
+            )
+        )
+    return tuple(models)
+
+
 def render_schema(
     tables: tuple[str, ...] = ALLOWED_TABLES,
-    paths: tuple[Path, ...] = SCHEMA_FILES,
+    models: tuple[MartsModel, ...] = MARTS_MODELS,
 ) -> str:
     """The allowed tables as a compact schema listing, in the allowlist's order.
 
-    A table named in the allowlist but missing from the schema files is skipped
-    rather than raised on: the prompt has to render in a checkout where a model
-    was renamed but the allowlist has not caught up yet, and a broken import
-    would take the whole serving process down with it.
+    From the committed `pipeline.marts_schema` and no filesystem at all, for
+    the reason `warehouse_tables` gives: the serving image copies `pipeline/`
+    and not `dbt/`, so the parse that used to happen here found no file,
+    skipped every table as undescribed and sent the model a prompt with an
+    empty listing in it.
+
+    A table named in the allowlist but missing from the committed schema is
+    still skipped rather than raised on: the prompt has to render in a
+    checkout where a model was renamed but the allowlist has not caught up
+    yet. All of them missing is the other thing, and that raises.
     """
-    models = read_models(paths)
+    described = {model[0]: model for model in models}
     blocks: list[str] = []
     for table in tables:
-        model = models.get(table)
+        model = described.get(table)
         if model is None:
             continue
-        summary = first_sentences(
-            str(model.get("description", "")), TABLE_SENTENCES, MAX_TABLE_CHARS
-        )
+        _, description, columns = model
+        summary = first_sentences(description, TABLE_SENTENCES, MAX_TABLE_CHARS)
         lines = [f"{table}: {summary}" if summary else f"{table}:"]
-        columns = model.get("columns") or []
-        assert isinstance(columns, list)
-        for column in columns:
-            name = column.get("name")
-            if not name:
-                continue
-            note = first_sentences(
-                str(column.get("description", "")), COLUMN_SENTENCES, MAX_COLUMN_CHARS
-            )
-            lines.append(f"  {name} - {note}" if note else f"  {name}")
+        for name, note in columns:
+            trimmed = first_sentences(note, COLUMN_SENTENCES, MAX_COLUMN_CHARS)
+            lines.append(f"  {name} - {trimmed}" if trimmed else f"  {name}")
         blocks.append("\n".join(lines))
+    if not blocks:
+        raise SchemaListingError(
+            "the prompt's table listing is empty: none of "
+            f"{', '.join(tables)} is described in pipeline.marts_schema. "
+            "Run `uv run python scripts/generate_marts_schema.py` in a checkout "
+            "that has dbt/models/marts/schema.yml in it."
+        )
     return "\n\n".join(blocks)
+
+
+def schema_table_count(tables: tuple[str, ...] = ALLOWED_TABLES) -> int:
+    """How many tables the listing really describes, for `/health` to report.
+
+    The number a remote check compares against a local one. An allowlist of
+    eight and a listing of eight is a prompt that shipped whole; an allowlist
+    of eight and a listing of nothing is the failure above, and anything in
+    between is a rename that has not been regenerated.
+    """
+    described = {model[0] for model in MARTS_MODELS}
+    return sum(1 for table in tables if table in described)
 
 
 RULES: Final = """\
@@ -723,6 +847,85 @@ so say in one sentence what this agent does cover and stop there. Do not
 answer it from general knowledge, do not run a query to look willing, and do
 not apologise at length.""",
 }
+
+# The third cached block, between the playbooks and the schema listing: what
+# the per-game facts and the ten pace columns actually mean.
+#
+# Two sources send the model numbers with no definition on them. The
+# application computes a short catalogue of facts from the member's own log
+# and places them in the `<facts>` list as numbered sentences, and
+# `mart_archetype_pace` is the same ten measurements averaged per archetype.
+# A sentence reading "you made no attack on 5 of your turns" does not say
+# which turns were counted, and an average first attack turn does not say
+# that the seats with no attack at all were skipped rather than counted as
+# zero. A model that has to infer a definition will infer one, and the
+# inference is invisible in the answer.
+#
+# So one line per fact id and one per pace column, in the voice of the rules,
+# plus the three exclusions the application applies and the three things the
+# log does not hold at all. The lines are the application's own definitions:
+# the fact ids are the ones in `evals/fixtures/facts/`, the pace columns are
+# the ones in `dbt/models/marts/schema.yml`, and a test holds this block
+# against both, so a fact or a column added without a line here fails rather
+# than arriving undefined.
+#
+# It goes after the playbooks and before the schema for the reason the
+# playbooks go before the schema: a playbook sends the model at
+# `mart_archetype_pace`, and a listing read after the definitions is a
+# listing read in the light of them.
+FACTS_GLOSSARY: Final = """\
+What the per-game numbers mean. Two sets of them arrive with no definition on
+them: the facts the application computes from the member's own log and places
+in the `<facts>` list, and the ten pace columns of `mart_archetype_pace`,
+which are those same measurements averaged over the seats that played an
+archetype.
+
+A fact reaches you as one numbered sentence. The names below are the
+application's own, and each carries the seat after a colon: `:me` is the
+member, `:opponent` is who they played, `:both` covers the pair. A fact with
+no value is not sent, so a missing one is something that did not happen. Turn
+numbers are the game's own clock, which both seats share, and turn 0 is the
+setup. Counted turns leave out the turn a side conceded during, and the
+attack counts leave out turn 1 of the side that went first as well, because
+the rules forbid the attack on it and allow the energy. The log holds no
+hand, no deck list and no draws, so no fact is reconstructed from them.
+
+turn_count - turns the whole game ran.
+prizes_taken - prizes each side had taken when it ended.
+knockouts - knockouts each side was credited with, which go to the side that
+  does not own the Pokemon that went down, not to the side whose turn it was.
+concession_turn - the turn a concession ended the game, when one did.
+first_attack_turn - the first turn this side attacked.
+turns_without_attack - its counted turns with no attack, and which they were.
+turns_without_energy_attach - its counted turns with no energy attached, and
+  which they were.
+energy_per_turn - energy cards it attached over its counted turns.
+first_prize_turn - the first turn it took a prize.
+first_knockout_turn - the first turn it was credited with a knockout.
+biggest_attack - its largest single attack, with the damage and the turn.
+prizes_by_turn - prizes it had taken by the end of turns 4, 6, 8 and 10, as
+  far as the game reached.
+
+Each pace column averages one of those over an archetype's seats, skipping
+the seats whose own number is absent, which is not the same set in every
+column. `archetype_key` and `archetype_name` are the deck, `games` is the
+seats behind the row rather than the denominator of any one column, and
+`min_games_met` is false under the project's threshold, which rule 2 says to
+report in words.
+
+first_attack_turn - average turn of its first attack.
+turns_without_attack_share - average share of its counted turns with no attack.
+energy_per_turn - average energy cards attached per counted turn.
+prizes_by_turn_4 - average prizes taken by the end of turn 4.
+prizes_by_turn_6 - average prizes taken by the end of turn 6.
+prizes_by_turn_8 - average prizes taken by the end of turn 8.
+prizes_by_turn_10 - average prizes taken by the end of turn 10.
+first_prize_turn - average turn of its first prize.
+first_knockout_turn - average turn of its first knockout.
+concession_turn - average turn a concession ended one of its games.
+
+A pace column is what a deck usually does and a fact is what one game did:
+say which of the two a number came from."""
 
 # Added only when the retriever's index has been built and the tool is really
 # registered. A prompt that advertises a tool the agent does not have is how a
@@ -936,23 +1139,24 @@ def render_playbooks() -> str:
 
 @lru_cache(maxsize=2)
 def generated_parts(with_card_tool: bool = False) -> tuple[str, ...]:
-    """The prompt in three parts, split where it was already divided.
+    """The prompt in four parts, split where it was already divided.
 
     Part one is what the agent is, the rules and the card note; part two is the
-    per-job playbooks; part three is the schema listing. Joined with
-    `PART_SEPARATOR` they are one string, which is what `generated_prompt`
-    returns and what the evaluation hashes.
+    per-job playbooks; part three is the facts and pace glossary; part four is
+    the schema listing. Joined with `PART_SEPARATOR` they are one string, which
+    is what `generated_prompt` returns and what the evaluation hashes.
 
     The seams are there so the parts can be sent as separate content blocks
-    with a cache breakpoint on the last one (`system_blocks`). All three change
+    with a cache breakpoint on the last one (`system_blocks`). All four change
     only on a deploy or a `schema.yml` edit, which is what makes them a prefix
     worth marking; nothing per request belongs in any of them, the job label
     included, which travels in the human turn (`wrap_turn`).
 
-    The playbooks go between the rules and the schema rather than after it for
-    one reason that is not taste: a playbook names the tables it sends the
-    model to, and a listing that comes after the naming is a listing read in
-    the light of it.
+    The playbooks and the glossary go between the rules and the schema rather
+    than after it for one reason that is not taste: a playbook names the tables
+    it sends the model to and the glossary defines the columns it will read
+    there, and a listing that comes after both is a listing read in the light
+    of them.
 
     Cached because it reads a file and a process builds more than one agent: the
     schema cannot change inside a run, and re-reading it per request would put a
@@ -969,7 +1173,7 @@ def generated_parts(with_card_tool: bool = False) -> tuple[str, ...]:
         "Tables you can query with `query_marts` (DuckDB SQL, read only). "
         f"{TABLE_LIST_NOTE}\n\n{render_schema()}\n"
     )
-    return (role_and_rules, render_playbooks(), schema)
+    return (role_and_rules, render_playbooks(), FACTS_GLOSSARY, schema)
 
 
 def prefix_chars(with_card_tool: bool = True) -> int:
@@ -984,13 +1188,16 @@ def prefix_chars(with_card_tool: bool = True) -> int:
 
 
 def estimated_prefix_tokens(with_card_tool: bool = True) -> int:
-    """The cached prefix in tokens, by the four characters per token rule.
+    """The cached prefix in tokens, by the `CHARS_PER_TOKEN` rule above.
 
     An estimate from a character count and not a measurement, and the module
-    says so where it is used. The measurement is one `messages.count_tokens`
-    call and it needs a provider key, so it lives in docs/agent-service.md as
-    a snippet the coordinator runs; this is the number a test can hold a
-    floor under with no network and no key.
+    says so where it is used. The ratio and the tool allowance were both
+    checked against a real `count_tokens` run on 2026-10-04
+    (`CHARS_PER_TOKEN`), so the estimate is close and is still an estimate.
+    The measurement is one `messages.count_tokens` call and it needs a
+    provider key, so it lives in docs/agent-service.md as a snippet the
+    coordinator runs; this is the number a test can hold a floor under with
+    no network and no key.
     """
     return prefix_chars(with_card_tool) // CHARS_PER_TOKEN
 
@@ -1000,7 +1207,8 @@ def prompt_parts(with_card_tool: bool = False) -> tuple[str, ...]:
 
     One part when a replacement file is set, because an override is the whole
     prompt and this module has no business guessing where someone else's text
-    divides. Three otherwise: the rules, the playbooks and the schema.
+    divides. Four otherwise: the rules, the playbooks, the glossary and the
+    schema.
     """
     override = override_path()
     if override is None:
@@ -1016,7 +1224,8 @@ def system_blocks(with_card_tool: bool = False) -> list[str | dict[Any, Any]]:
     context, the thread memory and the job label travel in the human turn and
     never in these. The playbooks are in a block of their own and are still
     the same six on every call; what varies is one line of the turn saying
-    which of them to work from (`route_line`).
+    which of them to work from (`route_line`). The glossary is the same way:
+    it defines the facts a turn may carry and never holds one.
     The provider hashes the prefix in order (tools, then system, then
     messages), so a breakpoint placed before something that varies would be
     rewritten on every call, and a change at any level invalidates that level
