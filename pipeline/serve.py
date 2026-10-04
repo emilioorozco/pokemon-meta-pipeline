@@ -409,6 +409,13 @@ class QueryEvidenceResponse(BaseModel):
     """One statement the agent put to the warehouse, and the rows it got back."""
 
     sql: str = Field(description="The statement in full, as the model wrote it, not shortened")
+    description: str = Field(
+        default="",
+        description="What the lookup was for, in one plain-language line of at most 160 "
+        "characters, derived from the statement by the service and never written by the "
+        "model. It names no table and no column, so an application can show it to a "
+        "member in place of the SQL",
+    )
     row_count: int = Field(description="Rows the statement returned; zero for a refusal")
     rows: list[dict[str, Any]] = Field(
         default_factory=list,

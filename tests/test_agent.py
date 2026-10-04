@@ -1324,9 +1324,13 @@ def test_an_answer_carries_its_evidence_and_the_tally_it_always_carried() -> Non
     ]
     assert body["gate_summary"] == "allowed_low"
     assert body["evidence"]["queries"][0]["sql"] == "select 1 from mart_matchups"
+    # Derived from the statement rather than carried beside it, so the body
+    # cannot disagree with the query it describes.
+    assert body["evidence"]["queries"][0]["description"] == "A lookup over matchup results"
     # `refused` decides the summary and is not part of the body.
     assert set(body["evidence"]["queries"][0]) == {
         "sql",
+        "description",
         "row_count",
         "rows",
         "gate",
