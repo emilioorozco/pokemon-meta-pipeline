@@ -261,6 +261,7 @@ covers the allowlist:
 |---|---|
 | `mart_matchups` | matchup results |
 | `mart_archetype_weekly` | how each deck did week by week |
+| `mart_archetype_pace` | how fast each deck plays |
 | `mart_cards_seen` | which cards showed up |
 | `mart_player_summary` | per-player summaries |
 | `dim_archetype` | the deck list |
@@ -454,7 +455,9 @@ Rule 10 of the prompt is the other half:
 It cost 278 characters and `MAX_PROMPT_CHARS` went from 8,700 to 9,000 to
 hold it. The alternative was a fourth round of cuts to generated column
 descriptions that are already truncated at 46 characters, and this is the
-only one of the ten rules with a deterministic check behind it.
+only one of the ten rules with a deterministic check behind it. The ceiling
+went on to 10,000 for `mart_archetype_pace`, whose thirteen columns are 936
+characters of schema listing against the 133 that were left.
 
 ### The numeric check, and what it cannot see
 
@@ -586,10 +589,10 @@ prefix is **4,096 tokens**
 Below it the provider caches nothing, marked or not, and returns no error: the
 only way to know is the `usage` fields.
 
-Today's prefix is **below that**. The system prompt is 8,444 characters with
-the card-tool note and 8,210 without, and the tool schemas are roughly 900
+Today's prefix is **below that**. The system prompt is 9,803 characters with
+the card-tool note and 9,569 without, and the tool schemas are roughly 900
 more, so at the four-characters-per-token rule this file already uses for
-`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,300 tokens**. That is an
+`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,700 tokens**. That is an
 estimate from a character count and not a measurement. The measurement is one
 call, and it needs a provider key:
 

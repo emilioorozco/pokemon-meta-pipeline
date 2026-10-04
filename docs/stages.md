@@ -463,7 +463,19 @@ of everything downstream:
   plus `concession`. Every action line in the segment is counted, the top-level
   entries and the sub-entries under them alike, because the draw a Professor's
   Research causes is printed as a sub-entry of the line that played it. A kind
-  with no counter still lands in `n_entries`. No `fields_json` is parsed here.
+  with no counter still lands in `n_entries`.
+
+  Four of those kinds are counted a second time, by the seat the log credits
+  each line to rather than by the seat whose turn it was: `n_attack_self` and
+  `n_attack_opp`, `n_energy_attach_self` and `n_energy_attach_opp`,
+  `n_prize_self` and `n_prize_opp`, `n_knockout_self` and `n_knockout_opp`.
+  The two attributions are not the same number. A Pokemon can go down on its
+  own owner's turn from a card effect, so the knockout and the prizes taken
+  for it belong to the other seat; `n_attach` counts tools as well as energy;
+  and `n_prize_taken` counts prize lines, while a line can take two or three
+  cards. These eight are the only place the stage looks inside `fields_json`,
+  for the `energy` flag of an attachment and the `n` of a prize, and
+  `mart_archetype_pace` is what reads them.
 - `cards_seen`: one row per (game, seat, card) from `summary.observedCards`,
   left joined to the card catalog.
 
@@ -616,6 +628,18 @@ Six dimensions:
   because exactly one seat per game is the uploader. `share_of_week` divides
   the two, so it reads as the share of the week's games the archetype was one
   of the two decks in, and sums to roughly two across a week rather than one.
+- `mart_archetype_pace`: one row per archetype, ten numbers for how fast the
+  deck plays: the turn of its first attack, the share of its turns with no
+  attack, energy attached per turn, prizes taken by the end of turns 4, 6, 8
+  and 10, the turn of its first prize, the turn of its first knockout and the
+  turn a concession ended the game on, each averaged over the seats that
+  played it, with `games` and `min_games_met` beside them. The ten are the ten
+  the application already computes for a member's own game when it is
+  uploaded, written a second time in SQL so a member's number and the
+  community's number are the same measurement and can be put side by side.
+  `int_game_side_pace` is the ephemeral model that holds the definitions one
+  seat at a time; the two writings are held together by an equality test over
+  the ten fixture games rather than by a comment.
 - `mart_cards_seen`: one row per (archetype, card). `seen_rate` is the share of
   games in which the card was observed being played or revealed. It is not a
   deck inclusion rate: stock exports only reveal played cards. `inclusion_rate`
@@ -628,7 +652,7 @@ Six dimensions:
 
 ### Tests
 
-105 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+121 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
 `unique` and `not_null` on every primary key, the fact's `game_side_key`, each
 dimension's key and each mart's grain key; `relationships` from every foreign
 key on the fact to its dimension, with the `player_key` one scoped to the
@@ -1013,10 +1037,11 @@ unit tested with no database behind it. It refuses, naming the rule:
 | read only | anything not starting with `SELECT` or `WITH` |
 | no side effects | `ATTACH`, `DETACH`, `COPY`, `INSTALL`, `LOAD`, `PRAGMA`, `SET`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, and the rest of the statement keywords |
 | no file access | `read_parquet`, `read_csv`, `read_json`, `glob` and the other table functions that leave the warehouse |
-| allowlist | any table other than the seven below |
+| allowlist | any table other than the eight below |
 
-The allowlist is `mart_matchups`, `mart_archetype_weekly`, `mart_cards_seen`,
-`mart_player_summary`, `dim_archetype`, `dim_card` and `dim_date`. Two absences
+The allowlist is `mart_matchups`, `mart_archetype_weekly`,
+`mart_archetype_pace`, `mart_cards_seen`, `mart_player_summary`,
+`dim_archetype`, `dim_card` and `dim_date`. Two absences
 are deliberate. `fct_game_side` is off it because the marts aggregate it
 correctly and a model writing its own group-by over a two-rows-per-game fact is
 where double counting starts. `dim_player`, the member roster, is off it

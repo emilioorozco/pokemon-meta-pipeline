@@ -144,7 +144,7 @@ DBT_MODELS_DIR: Final = REPO_ROOT / "dbt" / "models"
 PROMPT_FILE_VAR: Final = "PRA_AGENT_SYSTEM_PROMPT_FILE"
 
 # The tables the SQL tool will run against, and therefore the only ones the
-# prompt describes: the four marts of the gold layer, and the three dimensions
+# prompt describes: the five marts of the gold layer, and the three dimensions
 # a mart's keys join to.
 #
 # `fct_game_side` is absent because the marts already aggregate it and a fact
@@ -163,6 +163,7 @@ PROMPT_FILE_VAR: Final = "PRA_AGENT_SYSTEM_PROMPT_FILE"
 ALLOWED_TABLES: Final[tuple[str, ...]] = (
     "mart_matchups",
     "mart_archetype_weekly",
+    "mart_archetype_pace",
     "mart_cards_seen",
     "mart_player_summary",
     "dim_archetype",
@@ -201,7 +202,16 @@ MAX_COLUMN_CHARS: Final = 46
 # headroom: the alternative was a fourth round of cuts to column descriptions
 # that are already at 46 characters, and the rule it would pay for is the only
 # one of the ten with a deterministic check behind it.
-MAX_PROMPT_CHARS: Final = 9_000
+# 10,000 from 9,000 for `mart_archetype_pace`, which is the first new table on
+# the allowlist since the ceiling was written and costs 936 characters against
+# 133 of headroom. A table is not a rule: its lines are a name and a sentence
+# each, and the thirteen columns are the ten pace numbers plus the two keys
+# and the thin-cell flag, so there is nothing in the block to cut that would
+# not leave the agent guessing at a column. The alternative was a cut to
+# `MAX_COLUMN_CHARS`, which is at 46 across every table and already losing
+# information a reader of the prompt cannot get back. 10,000 is ~2,500 tokens
+# and still a ceiling rather than a target.
+MAX_PROMPT_CHARS: Final = 10_000
 
 # What separates the parts of the prompt when they are joined back into one
 # string. The two parts were one f-string with this between them, so joining

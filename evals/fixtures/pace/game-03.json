@@ -1,0 +1,31 @@
+{
+  "source_fixture": "game-03-023f4ec7.json",
+  "game_id": "023f4ec7a0a10437",
+  "my_side": 0,
+  "seats": {
+    "0": {
+      "firstAttackTurn": 2,
+      "turnsWithoutAttackShare": 0,
+      "energyPerTurn": 0.5,
+      "prizesByTurn4": 0,
+      "prizesByTurn6": 0,
+      "prizesByTurn8": 3,
+      "prizesByTurn10": 3,
+      "firstPrizeTurn": 8,
+      "firstKnockoutTurn": 8,
+      "concessionTurn": 9
+    },
+    "1": {
+      "firstAttackTurn": 5,
+      "turnsWithoutAttackShare": 0.333,
+      "energyPerTurn": 1,
+      "prizesByTurn4": 0,
+      "prizesByTurn6": 1,
+      "prizesByTurn8": 1,
+      "prizesByTurn10": 1,
+      "firstPrizeTurn": 5,
+      "firstKnockoutTurn": 5,
+      "concessionTurn": 9
+    }
+  }
+}

@@ -177,7 +177,23 @@ models:
       - name: n_knockout
         description: Knockouts in this segment.
       - name: n_prize_taken
-        description: Prize cards taken in this segment.
+        description: Prize lines in this segment. A line can take more than one card, so this is not a count of prize cards.
+      - name: n_attack_self
+        description: Attacks the log credits to the seat whose turn it was.
+      - name: n_attack_opp
+        description: Attacks in this turn the log credits to the other seat.
+      - name: n_energy_attach_self
+        description: Energy cards the seat whose turn it was attached. Energy only, unlike `n_attach`, which counts tools as well.
+      - name: n_energy_attach_opp
+        description: Energy cards the other seat attached during this turn.
+      - name: n_prize_self
+        description: Prize cards taken by the seat whose turn it was, counted in cards rather than in lines.
+      - name: n_prize_opp
+        description: Prize cards the other seat took during this turn, which happens when a Pokemon goes down on its own owner's turn.
+      - name: n_knockout_self
+        description: Knockouts credited to the seat whose turn it was. A knockout is credited to the side that does not own the Pokemon that went down.
+      - name: n_knockout_opp
+        description: Knockouts in this turn credited to the other seat.
       - name: concession
         description: A concede line appears in this segment.
 

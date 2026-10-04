@@ -125,6 +125,65 @@ def turn_segment(player: str, *, concede: bool = False) -> Segment:
     )
 
 
+def credited_segment() -> Segment:
+    """One of ME's turns holding every line the two attributions disagree about.
+
+    A tool attached beside an energy, so `n_attach` and `n_energy_attach_self`
+    are different numbers. A knockout whose actor is ME, which means it was
+    ME's Pokemon that went down, so the credit goes to the other seat. And a
+    prize line the opponent took during ME's turn, worth two cards, which the
+    line-counting `n_prize_taken` cannot see either.
+    """
+    return Segment(
+        kind="turn",
+        turn_number=1,
+        player=ME,
+        title=f"{ME}'s Turn",
+        entries=[
+            Entry(
+                line=20,
+                text="",
+                kind=ActionKind.ATTACH,
+                actor=ME,
+                fields={"card": "Basic Fire Energy", "energy": True, "target": "Charmander"},
+                subs=[],
+            ),
+            Entry(
+                line=21,
+                text="",
+                kind=ActionKind.ATTACH,
+                actor=ME,
+                fields={"card": "Rescue Board", "energy": False, "target": "Charmander"},
+                subs=[],
+            ),
+            Entry(
+                line=22,
+                text="",
+                kind=ActionKind.ATTACK,
+                actor=ME,
+                fields={"move": "Blaze", "damage": 60},
+                subs=[],
+            ),
+            Entry(
+                line=23,
+                text="",
+                kind=ActionKind.KNOCKOUT,
+                actor=ME,
+                fields={"pokemon": "Charmander"},
+                subs=[],
+            ),
+            Entry(
+                line=24,
+                text="",
+                kind=ActionKind.PRIZE,
+                actor=OPPONENT,
+                fields={"n": 2},
+                subs=[],
+            ),
+        ],
+    )
+
+
 def blob(game_id: str, played_at: str, *, manual: bool = False, **fields: Any) -> ParsedBlobV2:
     """A v2 blob in the shape the real corpus has, uploaded or manual."""
     if manual:
@@ -291,6 +350,77 @@ def test_turn_counters_only_count_the_kinds_they_are_mapped_to(
         assert (row["n_draw"], row["n_play_trainer"]) == (1, 1)
         assert row["n_attack"] == row["n_knockout"] == row["n_prize_taken"] == 0
     assert [row["concession"] for row in rows] == [False, True]
+
+
+def test_the_credited_counters_follow_the_log_and_not_the_turn(
+    spark: "SparkSession", tmp_path: Path
+) -> None:
+    """The four pairs the pace mart reads, on the turn where they all disagree.
+
+    Each assertion below is one of the three reasons the plain counters cannot
+    answer "how fast does this deck play": `n_attach` counts a tool, the
+    knockout belongs to the seat that did not own the Pokemon, and a prize
+    line can be worth more than one card.
+    """
+    bronze_dir = tmp_path / "bronze"
+    game = blob("cccc000000000001", "2026-08-04T12:00:00.000Z")
+    game.segments = [credited_segment()]
+    write_bronze(bronze_dir, [game], EARLIER)
+
+    rows = silver.build_turns(bronze_of(spark, bronze_dir)).collect()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["seat"] == 0
+    assert (row["n_attach"], row["n_energy_attach_self"], row["n_energy_attach_opp"]) == (2, 1, 0)
+    assert (row["n_attack"], row["n_attack_self"], row["n_attack_opp"]) == (1, 1, 0)
+    assert (row["n_knockout"], row["n_knockout_self"], row["n_knockout_opp"]) == (1, 0, 1)
+    assert (row["n_prize_taken"], row["n_prize_self"], row["n_prize_opp"]) == (1, 0, 2)
+
+
+def test_the_credited_counters_add_up_to_the_side_counters(
+    spark: "SparkSession", bronze_from_fixtures: Path
+) -> None:
+    """Over the committed games, each seat's credited totals equal its own stats.
+
+    The producer computed `stats_energy_attached`, `stats_knockouts` and
+    `stats_prizes_taken` from the same log by its own rules, so they are an
+    oracle this stage did not write. Summing the credited pairs over a game
+    reaches them; summing the plain counters does not, which is the whole
+    reason the pairs exist.
+    """
+    bronze = bronze_of(spark, bronze_from_fixtures)
+    turns = silver.build_turns(bronze)
+    credited = {
+        (row["game_id"], row["seat"]): row
+        for row in turns.selectExpr(
+            "game_id",
+            "seat",
+            "n_energy_attach_self as energy",
+            "n_prize_self as prizes",
+            "n_knockout_self as knockouts",
+        )
+        .unionAll(
+            turns.selectExpr(
+                "game_id",
+                "1 - seat as seat",
+                "n_energy_attach_opp as energy",
+                "n_prize_opp as prizes",
+                "n_knockout_opp as knockouts",
+            )
+        )
+        .groupBy("game_id", "seat")
+        .sum("energy", "prizes", "knockouts")
+        .collect()
+    }
+    assert credited
+
+    for side in sides_of(spark, bronze_from_fixtures).collect():
+        row = credited[(side["game_id"], side["seat"])]
+        where = (side["game_id"], side["seat"])
+        assert row["sum(energy)"] == side["stats_energy_attached"], where
+        assert row["sum(prizes)"] == side["stats_prizes_taken"], where
+        assert row["sum(knockouts)"] == side["stats_knockouts"], where
 
 
 def test_cards_seen_has_one_row_per_game_seat_and_card(

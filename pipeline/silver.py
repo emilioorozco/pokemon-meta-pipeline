@@ -20,8 +20,10 @@ The four tables, all partitioned by `play_date`:
   token, archetype, per-side counters and decklist facts, plus the uploader's
   own deck record on the uploader seat. This is the grain gold's fact table is
   built on.
-- `turns`: one row per turn segment, with the action counters that need no
-  `fields_json` parsing.
+- `turns`: one row per turn segment, with the action counters by kind and the
+  four of them counted again by the seat the log credits each line to. Those
+  four are the only columns in the stage that look inside `fields_json`, for
+  an attachment's `energy` flag and a prize line's `n`.
 - `cards_seen`: one row per (game, seat, card), left joined to the card catalog.
 
 Why Spark for a corpus this small: the explodes are where the data grows. A
@@ -151,6 +153,31 @@ TURN_COUNTERS: Final = (
     "n_prize_taken",
 )
 
+# The four kinds counted a second time, by the seat the log credits the line
+# to rather than by the seat whose turn it was, and the pair of columns each
+# one produces: `_self` for the seat on this row, which is the turn's owner,
+# and `_opp` for the other seat on the same turn.
+#
+# The counters above attribute every line in a segment to the turn's owner,
+# which is wrong in three ways the pace columns cannot live with. A Pokemon
+# can be knocked out on its own owner's turn by a card effect, so the knockout
+# and the prize taken for it belong to the other seat; that happens on four
+# lines of each kind in the ten committed games. `n_attach` counts tools as
+# well as energy, and seventeen of a hundred and seven attachments in those
+# games are not energy. And `n_prize_taken` counts prize lines, while a line
+# can take two or three cards at once.
+#
+# A knockout is credited to the seat that is not the knocked-out Pokemon's
+# owner, which the log names as the line's actor. That is the producer's own
+# rule, the one `stats_knockouts` is counted by.
+CREDITED_COUNTERS: Final[dict[ActionKind, tuple[str, str]]] = {
+    ActionKind.ATTACK: ("n_attack_self", "n_attack_opp"),
+    ActionKind.ATTACH: ("n_energy_attach_self", "n_energy_attach_opp"),
+    ActionKind.PRIZE: ("n_prize_self", "n_prize_opp"),
+    ActionKind.KNOCKOUT: ("n_knockout_self", "n_knockout_opp"),
+}
+CREDITED_COLUMNS: Final = tuple(name for pair in CREDITED_COUNTERS.values() for name in pair)
+
 # The result the other seat gets when this one gets the key.
 MIRRORED_RESULT: Final = {"win": "loss", "loss": "win", "tie": "tie", "unknown": "unknown"}
 
@@ -279,6 +306,7 @@ SILVER_SCHEMAS: Final[dict[str, T.StructType]] = {
             T.StructField("seat", _INT, True),
             T.StructField("n_entries", _INT, True),
             *[T.StructField(name, _INT, True) for name in TURN_COUNTERS],
+            *[T.StructField(name, _INT, True) for name in CREDITED_COLUMNS],
             T.StructField("concession", _BOOL, True),
         ]
     ),
@@ -592,6 +620,11 @@ def build_turns(bronze: DataFrame) -> DataFrame:
     sub-entries under them alike, because the draw a Professor's Research causes
     is printed as a sub-entry of the line that played it. `n_entries` is that
     whole count, so a kind with no bucket still shows up in it.
+
+    The `n_*_self` and `n_*_opp` pairs count four of those kinds again, by the
+    seat the log credits each line to rather than by the seat whose turn it
+    was. See `CREDITED_COUNTERS` for why the two attributions are not the same
+    number.
     """
     segment = F.col("segment")
     kinds = F.flatten(
@@ -614,22 +647,99 @@ def build_turns(bronze: DataFrame) -> DataFrame:
         bronze.select("game_id", "play_date", "summary", F.explode("segments").alias("segment"))
         .where(segment["kind"] == "turn")
         .withColumn("kinds", kinds)
+        .withColumn("actions", _actions(segment))
     )
+    players = F.col("summary")["players"]
+    owner = _seat_of(players, segment["player"])
     return _conform(
         turns.select(
             F.col("game_id"),
             F.col("play_date"),
             segment["turn_number"].alias("turn_number"),
-            _seat_of(F.col("summary")["players"], segment["player"]).alias("seat"),
+            owner.alias("seat"),
             F.size("kinds").alias("n_entries"),
             *[
                 _count_kinds(F.col("kinds"), names).alias(bucket)
                 for bucket, names in buckets.items()
             ],
+            *[
+                _credited_total(
+                    F.col("actions"), players, owner, kind, other=column.endswith("_opp")
+                ).alias(column)
+                for kind, pair in CREDITED_COUNTERS.items()
+                for column in pair
+            ],
             F.array_contains("kinds", ActionKind.CONCEDE.value).alias("concession"),
         ),
         "turns",
     )
+
+
+def _actions(segment: Column) -> Column:
+    """Every action line of a segment as one array, sub-entries lifted in beside their parents.
+
+    Only the three things attribution needs are kept, so the array stays small:
+    the kind, the handle the line names as its actor, and the typed captures as
+    the JSON text bronze stores them in.
+    """
+
+    def shape(action: Column) -> Column:
+        return F.struct(
+            action["kind"].alias("kind"),
+            action["actor"].alias("actor"),
+            action["fields_json"].alias("fields_json"),
+        )
+
+    return F.flatten(
+        F.array(
+            F.transform(segment["entries"], shape),
+            F.flatten(
+                F.transform(segment["entries"], lambda entry: F.transform(entry["subs"], shape))
+            ),
+        )
+    )
+
+
+def _credited_seat(action: Column, players: Column, owner: Column, kind: ActionKind) -> Column:
+    """The seat the log credits one line to, falling back to the seat whose turn it was.
+
+    A knockout is the one inversion: the line's actor is the knocked-out
+    Pokemon's owner, so the credit goes to the other seat.
+    """
+    actor = _seat_of(players, action["actor"])
+    if kind is ActionKind.KNOCKOUT:
+        return F.coalesce(F.lit(1) - actor, owner)
+    return F.coalesce(actor, owner)
+
+
+def _credited_total(
+    actions: Column, players: Column, owner: Column, kind: ActionKind, *, other: bool
+) -> Column:
+    """How much of `kind` this segment credits to the turn's owner, or to the other seat.
+
+    A prize line is weighed by its own `n`, because one line can take two or
+    three cards; the other three kinds are worth one each. An `attach` counts
+    only when the line says it attached energy, which is the producer's own
+    `energy` capture and not a guess from the card's name.
+    """
+    wanted_seat = (F.lit(1) - owner) if other else owner
+
+    def wanted(action: Column) -> Column:
+        matches = action["kind"] == F.lit(kind.value)
+        if kind is ActionKind.ATTACH:
+            matches = matches & (
+                F.get_json_object(action["fields_json"], "$.energy") == F.lit("true")
+            )
+        return matches & (_credited_seat(action, players, owner, kind) == wanted_seat)
+
+    def weight(action: Column) -> Column:
+        if kind is not ActionKind.PRIZE:
+            return F.lit(1)
+        taken = F.get_json_object(action["fields_json"], "$.n").cast(_INT)
+        return F.when(taken > 0, taken).otherwise(F.lit(0))
+
+    totals = F.transform(F.filter(actions, wanted), weight)
+    return F.coalesce(F.aggregate(totals, F.lit(0), lambda running, n: running + n), F.lit(0))
 
 
 def build_cards_seen(bronze: DataFrame, catalog: DataFrame) -> DataFrame:

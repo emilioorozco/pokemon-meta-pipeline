@@ -85,6 +85,7 @@ MAX_VALUE_CHARS: Final = 48
 MART_PHRASES: Final[dict[str, str]] = {
     "mart_matchups": "matchup results",
     "mart_archetype_weekly": "how each deck did week by week",
+    "mart_archetype_pace": "how fast each deck plays",
     "mart_cards_seen": "which cards showed up",
     "mart_player_summary": "per-player summaries",
     "dim_archetype": "the deck list",
@@ -144,6 +145,21 @@ COLUMN_WORDS: Final[dict[str, str]] = {
     "avg_copies_seen": "copies seen on average",
     "max_copies_seen": "the most copies seen",
     "min_games_met": "enough matches to count",
+    # how fast. Every one of these is an average over the deck's matches, and
+    # the word for it is the thing itself rather than "average turn of": a
+    # receipt line reads "for the turn of the first attack", not "for the
+    # average turn of the first attack", because the averaging is what the
+    # whole lookup is and saying it on every filter would be noise.
+    "first_attack_turn": "the turn of the first attack",
+    "turns_without_attack_share": "the share of turns with no attack",
+    "energy_per_turn": "energy attached per turn",
+    "prizes_by_turn_4": "prizes taken by turn 4",
+    "prizes_by_turn_6": "prizes taken by turn 6",
+    "prizes_by_turn_8": "prizes taken by turn 8",
+    "prizes_by_turn_10": "prizes taken by turn 10",
+    "first_prize_turn": "the turn of the first prize",
+    "first_knockout_turn": "the turn of the first knockout",
+    "concession_turn": "the turn a game was conceded on",
     # when
     "week_start": "the week beginning",
     "play_date": "the day played",
