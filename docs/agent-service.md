@@ -122,7 +122,7 @@ trust. Four fields were added for that panel and none of the old ones changed.
 | `tool_calls` | the tally, as before: tool, a one-line `input_summary`, a row count. The evaluation scripts read this and it is not going to change shape |
 | `model`, `usage` | the provider's model and token counts, as before, with `cache_read_input_tokens` and `cache_creation_input_tokens` added by the section below |
 | `evidence` | `queries` and `cards`, below |
-| `gate_summary` | the worst thing that happened to a query in this run |
+| `gate_summary` | what happened to the answer, over this run's queries |
 | `latency_ms` | wall time of the whole call measured inside the service, so a question that had to build the agent reports what the caller waited for |
 | `run_id` | which run's data answered |
 | `context_used` | whether a page context was really placed in front of the question, for the `about this page` chip; see **Page context** below |
@@ -139,6 +139,7 @@ them:
 | `rows` | the **first 10** rows as JSON values, every string cut to **500** characters |
 | `gate` | `off`, `jev:allowed`, `jev:allowed_low`, `jev:refused` or `jev:error` |
 | `refused_reason` | why there are no rows, or null |
+| `refused_code` | the same reason in one word, or null |
 
 A refused query is still in the list, with no rows and its reason, because
 "the agent tried to read the member roster and was not allowed to" is
@@ -147,15 +148,74 @@ produces nothing all fill `refused_reason`: the validator refused it, the gate
 refused it, or DuckDB would not run it. Only the first two are refusals as far
 as `gate_summary` is concerned.
 
+`refused_code` is the same thing from a closed set, for an application that
+has to switch on it rather than read it. The sentence is written for the model
+that has to write a better query; the word is written for the badge.
+
+| code | what happened |
+|---|---|
+| `table_not_found` | the model named a table that dbt has never built, such as `mart_leaderboard`. Nothing was blocked: a guess missed, and the run almost always goes on to read the right table |
+| `table_not_allowed` | a real relation of this warehouse that is off the allowlist, such as `dim_player` or `fct_game_side`. This is the boundary holding, and it is the one a reader should look at |
+| `statement_not_allowed` | not a single read-only SELECT: two statements, a write keyword, or a file-reading function |
+| `judge_low_confidence` | the Jev gate chose `allow` under its threshold and `PRA_SQL_GATE_LOW_CONFIDENCE=refuse` is set. A threshold to tune rather than a verdict |
+| `judge_refused` | the Jev gate really said no |
+| `error` | the gate could not be reached or read, or DuckDB would not run an allowed statement. The second of those is not a refusal and does not affect `gate_summary` |
+
+The two table codes are the distinction PLA-198 was filed over. The same
+validator catches both, which is why they arrived as one event for so long,
+but they are not one event: a guessed name is the agent being imprecise and
+correcting itself, and a blocked name is a privacy or correctness boundary
+doing what it is there for. An application that draws the same error badge on
+both tells a member that a correct answer was refused.
+
+How the validator tells them apart: it lists the dbt project's models, which
+are the `.sql` files under `dbt/models/`, and a name that is not one of them
+is a name nothing builds. An image that ships the warehouse without the dbt
+project has no list to read, and there the rule is the naming convention
+instead, `mart_`, `dim_` and `fct_` prefixes counting as real and everything
+else as a guess. That fallback is wrong about exactly the names this ticket
+was filed over, which is why it is the fallback and not the rule.
+
+The cheaper half of the fix is upstream of all of it. The prompt's schema
+listing now closes with one line, carried in the `query_marts` tool
+description too, so the model reads it as it writes a FROM clause:
+
+> This list is complete. There is no leaderboard, rankings, season or summary
+> table beyond it, so choose a name from it rather than inferring one.
+
+Those four words are the ones the invented names were built out of. The
+application's leaderboard is its rankings system and the warehouse does not
+hold it; the nearest readable thing is `mart_player_summary`. A question with
+"this season" in it is answered out of `mart_archetype_weekly` like any other,
+because there is no season column to filter on. The eval set measures whether
+the line works: `guessed_tables` counts the `table_not_found` refusals of a
+run ([evals.md](evals.md)).
+
 `evidence.cards` is one object per card the card tool matched, deduplicated by
 name, set and number in first-seen order and capped at **10**: `name`,
 `set_code`, `number` and `text`, where the text is the card's printed text
 without the name and set over it, cut to 500 characters.
 
-`gate_summary` is one word over the whole run: `refused` if any query was
-refused, `allowed_low` if the gate let one through under its threshold or
-errored and let it through, `allowed` if they ran under the gate, and `off` if
-there were no queries or the gate is not on.
+`gate_summary` is one word over the whole run, and it describes the answer the
+member was given rather than the worst attempt behind it:
+
+- if at least one query was allowed to run, it is the lowest-confidence
+  allowed gate among those: `allowed_low` when the gate let one through under
+  its threshold or errored and let it through, `allowed` when they ran under
+  the gate, `off` when no gate judged them;
+- `refused` only when every query that ran was refused, or when no query ran
+  because the one that was tried was refused;
+- `off` when the run asked the warehouse nothing at all.
+
+So a `table_not_found` refusal followed by a query that ran is never
+`refused`. The refused attempt stays in `evidence.queries` with its reason and
+its code, so a receipt can still show the detour; what changes is the one word
+the application draws a badge from. **This is a contract change for the
+application.** A client that treated `gate_summary == "refused"` as "the data
+query was refused" was right before and is still right: it now fires only when
+the member really got no data. A client that wants to show "the agent tried a
+table that does not exist" should read `evidence.queries[].refused_code` for
+`table_not_found`, which is information rather than an error.
 
 `run_id` is read from the warehouse: `mart_pipeline_health` carries the gold
 stage's last run, which is the run that built these marts, and every stage of

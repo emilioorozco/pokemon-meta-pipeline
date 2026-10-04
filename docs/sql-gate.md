@@ -19,6 +19,54 @@ The gate is the second of three layers and the only optional one.
 reach, what the always-on validator refuses whatever this gate thinks, what
 the application caps, and what is kept about a question.
 
+## Two kinds of refusal, from one validator
+
+The denylist refuses a table name for two reasons that look identical from
+inside it and are nothing alike from outside.
+
+**The name is not a table.** The model wrote `mart_leaderboard`, or
+`mart_archetype_summary`, or any other plausible name dbt has never built. It
+read the schema listing as a sample rather than as the whole list, reached for
+something the application has and the warehouse does not, and was caught by a
+check that was looking for something else. Nothing was protected. The run
+reads the refusal, picks a real table and usually answers correctly on the
+next turn, so the member sees a right answer and the receipt shows one wasted
+model call. The evidence calls this `table_not_found`.
+
+**The name is a table and is off the allowlist.** `dim_player` is the member
+roster, `fct_game_side` is a fact at a grain a model will double count, and
+staging and the ops models are not the metagame. These are real relations in
+the warehouse and the allowlist is a boundary across them, a privacy boundary
+in the first case ([data-handling.md](data-handling.md)) and a correctness one
+in the second. A refusal here is the layer working as designed, and it is the
+one worth a reader's attention: it is what an injection that got the model to
+reach for the roster looks like from the outside. The evidence calls this
+`table_not_allowed`.
+
+Both were `refused` and nothing else until PLA-198, so a run that invented a
+name and then answered correctly carried the same error-tone badge as a run
+that tried to read the roster. The validator now reports which, in
+`evidence.queries[].refused_code`, beside the sentence it already wrote for
+the model ([agent-service.md](agent-service.md) lists the six codes).
+
+**How it knows.** The dbt project is the authority: every model dbt builds is
+a `.sql` file under `dbt/models/`, so one cached directory listing answers
+"is this a real relation" for the whole warehouse, including models that have
+no `schema.yml` entry. The DuckDB catalog was the other candidate and is the
+worse one. It would need a connection on a path the validator has never been
+given, it is empty before the gold stage has run, and a validator that opened
+a file would stop being the pure function of a string that the rest of
+[agent-safety.md](agent-safety.md) rests on.
+
+Where the dbt project is not there to read, which is an image that ships the
+warehouse without it, the rule is the naming convention instead: a `mart_`,
+`dim_` or `fct_` name off the allowlist is read as a real table being blocked
+and everything else as a guess. That is deliberately the conservative way
+round, because calling a real block a guess is the error that loses a reader
+a refusal worth seeing. It is also wrong about `mart_leaderboard` and
+`mart_archetype_summary`, which is the honest cost of a fallback and the
+reason it is not the rule.
+
 ## What Jev is, and what it is not
 
 Jev is TypeSafe AI's first "System One" model. It takes a state (text) and a
