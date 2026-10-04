@@ -1037,10 +1037,11 @@ unit tested with no database behind it. It refuses, naming the rule:
 | read only | anything not starting with `SELECT` or `WITH` |
 | no side effects | `ATTACH`, `DETACH`, `COPY`, `INSTALL`, `LOAD`, `PRAGMA`, `SET`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, and the rest of the statement keywords |
 | no file access | `read_parquet`, `read_csv`, `read_json`, `glob` and the other table functions that leave the warehouse |
-| allowlist | any table other than the seven below |
+| allowlist | any table other than the eight below |
 
-The allowlist is `mart_matchups`, `mart_archetype_weekly`, `mart_cards_seen`,
-`mart_player_summary`, `dim_archetype`, `dim_card` and `dim_date`. Two absences
+The allowlist is `mart_matchups`, `mart_archetype_weekly`,
+`mart_archetype_pace`, `mart_cards_seen`, `mart_player_summary`,
+`dim_archetype`, `dim_card` and `dim_date`. Two absences
 are deliberate. `fct_game_side` is off it because the marts aggregate it
 correctly and a model writing its own group-by over a two-rows-per-game fact is
 where double counting starts. `dim_player`, the member roster, is off it
