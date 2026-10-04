@@ -54,6 +54,19 @@ injected statement safe is `validate_sql` underneath them, and the twelve
 adversarial questions in the golden set are scored on the SQL as well as the
 prose for exactly that reason (docs/agent-safety.md).
 
+**The conversation travels with the question, and is still not kept.** A
+follow-up carries the last few turns of the thread back with it: the drawer
+holds the transcript in the browser and this service holds none, which is the
+property the privacy note has always claimed and the reason a member's second
+question used to arrive with no idea what the first one was. The turns go in
+between the cached prefix and the current turn, a member's earlier question
+wrapped exactly as the live one is and an earlier answer placed as the
+assistant message it was, so nothing about the breakpoint or the current
+turn's own layout moves. Rule 11 says what an earlier answer is worth, which
+is the agent's own words and not evidence, and the numeric check backs it:
+a number only an earlier answer accounts for comes back as `from_history`
+rather than as an invention (docs/agent-service.md).
+
 **The game on screen is decided about before it is placed.** When the member
 is looking at one of their own games the application sends a redacted summary
 of it beside the route sentence, and one more sentence describing it. A single
@@ -143,10 +156,17 @@ from pipeline.facts import Fact, FactEvidence, check_numbers, cite_facts, clean_
 from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import (
     ALLOWED_TABLES,
+    CACHE_CONTROL,
+    ROLE_ASSISTANT,
+    ROLE_USER,
     TABLE_LIST_NOTE,
+    Turn,
     clean_context,
+    clean_history,
+    history_chars,
     system_blocks,
     warehouse_tables,
+    wrap_question,
     wrap_turn,
 )
 from pipeline.sql_gate import (
@@ -1191,6 +1211,54 @@ def marts_tools(
 # ----------------------------------------------------------------- agent --
 
 
+def prior_messages(turns: Sequence[Turn]) -> list[BaseMessage]:
+    """The conversation so far, as the alternating messages it is sent back as.
+
+    After the cached system prefix and before the current turn, which is the
+    only place they can go without moving anything: the breakpoint is on the
+    last system block and the live turn keeps the `<context>` and `<question>`
+    layout it has always had, byte for byte, whether or not a conversation
+    came with it.
+
+    A member's earlier question is wrapped exactly as the live one is, by
+    `wrap_question`, so the same rule 8 covers it and a member who typed
+    `</question>` two turns ago cannot reach out of the element they typed it
+    into. An earlier answer is placed as an `AIMessage` and as it stands, with
+    our own delimiters taken out of it and nothing added: it is a turn of the
+    conversation in the position the provider has for one, so there is no
+    element to put it in and no label of ours to put beside it. What tells
+    the model what such a turn is worth is rule 11, not a wrapper.
+
+    The last of them carries the second cache breakpoint, for the reason the
+    last system block carries the first: everything above it is identical
+    from one call to the next within a question, and within a thread the
+    whole of it repeats on the next question too. `clean_history` guarantees
+    the last turn is an assistant one and never empty, so the mark always has
+    a text block of its own to sit on, and it is the only one marked: a
+    breakpoint per turn would be four entries written to serve one read. With
+    no history there is no message here and nothing is marked, which is the
+    arrangement every request had before this existed
+    (docs/agent-service.md).
+    """
+    messages: list[BaseMessage] = []
+    for turn in turns:
+        if turn.role == ROLE_USER:
+            messages.append(HumanMessage(content=wrap_question(turn.text)))
+        else:
+            messages.append(AIMessage(content=turn.text))
+    if messages:
+        # A list of content blocks rather than a string, because that is the
+        # only shape `cache_control` has anywhere to go; langchain-anthropic
+        # forwards the key on a text block to the provider untouched.
+        last = messages[-1]
+        messages[-1] = AIMessage(
+            content=[
+                {"type": "text", "text": str(last.content), "cache_control": dict(CACHE_CONTROL)}
+            ]
+        )
+    return messages
+
+
 @dataclass(frozen=True)
 class Answer:
     """What one run produced: the text, what it called, what it read, and the cost.
@@ -1226,6 +1294,12 @@ class Answer:
     # whatever is in this list, and an empty list is the ordinary case
     # (`pipeline.facts.check_numbers`, docs/agent-safety.md).
     unverified_numbers: list[str] = field(default_factory=list)
+    # Numbers in the prose that only an earlier answer of this conversation
+    # accounts for. Apart from `unverified_numbers` and never inside it: a
+    # number this agent wrote two turns ago out of rows nobody has read
+    # again is not an invention and is not a finding either, and rule 11 of
+    # the prompt is what the two lists are reporting on.
+    from_history: list[str] = field(default_factory=list)
 
     @property
     def gate_summary(self) -> str:
@@ -1244,6 +1318,7 @@ class Answer:
             "context_game_used": self.context_game_used,
             "context_relevance": self.context_relevance,
             "unverified_numbers": list(self.unverified_numbers),
+            "from_history": list(self.from_history),
         }
 
 
@@ -1345,6 +1420,7 @@ class Agent:
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Fact] | None = None,
+        history: Sequence[Turn] | None = None,
     ) -> Answer:
         """Run the loop on one question and collect what it did.
 
@@ -1383,20 +1459,34 @@ class Agent:
         same `<context>` element, after the game text, as the `<facts>` list
         rule 10 describes.
 
+        `history` is the last few turns of the conversation, which the
+        application kept in the browser and sends back with a follow-up
+        because this service keeps none. They are placed as alternating
+        messages between the cached system prefix and the current turn, so
+        nothing about the breakpoint or about the current turn's own layout
+        moves: with no history the messages are the one message they have
+        always been (`prior_messages`, docs/agent-service.md). A history this
+        cannot place, which is one that does not alternate or holds an empty
+        turn, is placed as nothing; the service refuses such a request with a
+        422 before it reaches here.
+
         After the answer comes back, every number in its prose is looked up
         in the rows, the cards and those fact values, and whatever is found
-        nowhere is reported on the answer as `unverified_numbers`. A report
+        nowhere is reported on the answer as `unverified_numbers`. A number
+        that only an earlier answer of the conversation accounts for is
+        reported apart, as `from_history`, because it is this agent quoting
+        itself rather than inventing or reading (rule 11). Both are a report
         and not a refusal: the answer returns either way, and what is written
-        down is the count (`pipeline.facts`).
+        down is the two counts (`pipeline.facts`).
 
         `job` is the application's own router label for the question, carried
         so that the log line and the span can be read by job. It changes
         nothing about the answer today; the playbooks are a later ticket.
 
-        Neither the context, the game summary, the first line nor the question
-        is logged or put on a span, here or anywhere below. What is recorded
-        of them is three lengths, a label, a verdict and a duration
-        (docs/agent-safety.md).
+        Neither the context, the game summary, the first line, the question
+        nor a word of the conversation is logged or put on a span, here or
+        anywhere below. What is recorded of them is four lengths, a turn
+        count, a label, a verdict and a duration (docs/agent-safety.md).
 
         This is the one place either surface wraps anything. `POST /ask` and
         the command line both arrive here with bare strings, so there is no
@@ -1416,6 +1506,11 @@ class Agent:
         # two: the judge already said whether what the member is looking at
         # belongs in front of the question.
         facts = clean_facts(context_facts) if attached else ()
+        # Cleaned here and never rejected here: the service has already
+        # refused a malformed conversation with a 422, and the floor under
+        # the other callers is a history that is placed as nothing rather
+        # than placed in pieces.
+        prior = clean_history(history)
         try:
             with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
@@ -1429,10 +1524,16 @@ class Agent:
                 span.set_attribute("agent.relevance_ms", decision.latency_ms if decision else 0)
                 span.set_attribute("agent.job", job or "")
                 span.set_attribute("agent.facts", len(facts))
+                # The conversation as two numbers and never as text: how many
+                # turns came back with the question and how long they were.
+                span.set_attribute("agent.history_turns", len(prior))
+                span.set_attribute("agent.history_chars", history_chars(prior))
+                if self.metrics is not None:
+                    self.metrics.count_history_turns(len(prior))
                 turn = HumanMessage(
                     content=wrap_turn(question, placed, [fact.text for fact in facts])
                 )
-                state = self.graph.invoke({"messages": [turn]})
+                state = self.graph.invoke({"messages": [*prior_messages(prior), turn]})
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
                 span.set_attribute("agent.tool_calls", len(collected))
@@ -1454,8 +1555,12 @@ class Agent:
                     rows=[row for query in evidence.queries for row in query.rows],
                     cards=[f"{card.number} {card.text}" for card in evidence.cards],
                     facts=facts,
+                    history=[
+                        prior_turn.text for prior_turn in prior if prior_turn.role == ROLE_ASSISTANT
+                    ],
                 )
                 span.set_attribute("agent.unverified_numbers", len(check.unverified))
+                span.set_attribute("agent.from_history", len(check.from_history))
                 if self.metrics is not None:
                     self.metrics.count_unverified_numbers(len(check.unverified))
         finally:
@@ -1471,6 +1576,7 @@ class Agent:
             context_game_used=bool(attached),
             context_relevance=decision.verdict if decision else None,
             unverified_numbers=list(check.unverified),
+            from_history=list(check.from_history),
         )
         logger.info(
             "agent answered",
@@ -1492,6 +1598,11 @@ class Agent:
                 # is the answer, and this line has never carried any of it.
                 "facts": len(facts),
                 "unverified_numbers": len(check.unverified),
+                # Two counts and a length, and not a word of what was said
+                # in any of those turns.
+                "history_turns": len(prior),
+                "history_chars": history_chars(prior),
+                "from_history": len(check.from_history),
             },
         )
         return answer

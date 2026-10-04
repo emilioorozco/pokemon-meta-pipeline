@@ -421,6 +421,7 @@ class StubAgent:
         self.games: list[str | None] = []
         self.first_lines: list[str | None] = []
         self.facts: list[tuple[Any, ...]] = []
+        self.histories: list[tuple[Any, ...]] = []
 
     def ask(
         self,
@@ -430,6 +431,7 @@ class StubAgent:
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Any] | None = None,
+        history: Sequence[Any] | None = None,
     ) -> "StubAgent":
         self.asked.append(question)
         self.contexts.append(context)
@@ -437,6 +439,7 @@ class StubAgent:
         self.games.append(context_game)
         self.first_lines.append(context_first_line)
         self.facts.append(tuple(context_facts or ()))
+        self.histories.append(tuple(history or ()))
         return self
 
     def as_dict(self) -> dict[str, Any]:
@@ -525,6 +528,7 @@ ANSWER: Final[dict[str, Any]] = {
     "context_game_used": False,
     "context_relevance": None,
     "unverified_numbers": [],
+    "from_history": [],
 }
 
 
@@ -749,6 +753,108 @@ def test_a_facts_list_the_service_will_not_place_is_a_422(
 
     assert response.status_code == 422
     assert agent.facts == []
+
+
+EXCHANGE: Final[list[dict[str, str]]] = [
+    {"role": "user", "text": "How does Dragapult control do against Alakazam / Toucannon?"},
+    {"role": "assistant", "text": "It has won its only game against them, 1 win over 1 game."},
+]
+
+
+def test_a_conversation_is_carried_through_to_the_agent(registry: Registry) -> None:
+    """The memory the drawer kept, turned into the two plain fields `ask` takes."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask",
+            json={"question": "and against the deck I lost to most?", "history": EXCHANGE},
+        )
+
+    assert response.status_code == 200
+    (sent,) = agent.histories
+    assert [(turn.role, turn.text) for turn in sent] == [
+        (entry["role"], entry["text"]) for entry in EXCHANGE
+    ]
+
+
+def test_a_request_with_no_history_sends_no_turns(registry: Registry) -> None:
+    """The first question of a thread is the request it has always been."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        assert started.post("/ask", json={"question": "anything"}).status_code == 200
+
+    assert agent.histories == [()]
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [{"role": "assistant", "text": "I said something."}],
+        [{"role": "user", "text": "only half of an exchange"}],
+        [{"role": "user", "text": "one"}, {"role": "user", "text": "two"}],
+        [{"role": "nobody", "text": "a turn"}],
+        [{"role": "user", "text": ""}, {"role": "assistant", "text": "a"}],
+        [
+            {"role": "user", "text": "x" * (serve.MAX_HISTORY_QUESTION_CHARS + 1)},
+            {"role": "assistant", "text": "a"},
+        ],
+        [
+            {"role": "user", "text": "q"},
+            {"role": "assistant", "text": "x" * (serve.MAX_HISTORY_ANSWER_CHARS + 1)},
+        ],
+        [{"role": "user", "text": "q"}, {"role": "assistant", "text": "a"}]
+        * (serve.MAX_HISTORY_TURNS // 2 + 1),
+    ],
+)
+def test_a_history_that_is_not_a_conversation_is_a_422(
+    registry: Registry, history: list[dict[str, str]]
+) -> None:
+    """A malformed conversation is a bug on one side or the other, not a member's doing.
+
+    The application validates its own transcript and drops a bad one rather
+    than sending it, so this is refused rather than repaired: half a thread
+    placed in front of a question would pair somebody's question with
+    somebody else's answer.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post("/ask", json={"question": "anything", "history": history})
+
+    assert response.status_code == 422
+    assert agent.histories == []
+
+
+def test_the_biggest_conversation_the_contract_allows_is_accepted(registry: Registry) -> None:
+    """Six turns at the per-turn ceilings, which is exactly the total ceiling."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    biggest = [
+        {"role": "user", "text": "x" * serve.MAX_HISTORY_QUESTION_CHARS},
+        {"role": "assistant", "text": "y" * serve.MAX_HISTORY_ANSWER_CHARS},
+    ] * (serve.MAX_HISTORY_TURNS // 2)
+    with TestClient(app) as started:
+        response = started.post("/ask", json={"question": "anything", "history": biggest})
+
+    assert response.status_code == 200
+    assert sum(len(turn.text) for turn in agent.histories[0]) == serve.MAX_HISTORY_CHARS
+
+
+def test_the_numbers_an_earlier_answer_accounts_for_are_on_the_body(
+    registry: Registry,
+) -> None:
+    """`from_history`, apart from `unverified_numbers` and never inside it."""
+    payload = dict(ANSWER)
+    payload["from_history"] = ["47"]
+    payload["unverified_numbers"] = ["13"]
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(payload))
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "anything"}).json()
+
+    assert body["from_history"] == ["47"]
+    assert body["unverified_numbers"] == ["13"]
 
 
 def test_the_unverified_numbers_and_the_cited_facts_are_on_the_body(registry: Registry) -> None:
