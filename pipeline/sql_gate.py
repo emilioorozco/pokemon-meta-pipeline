@@ -241,6 +241,12 @@ class GateDecision:
     # Kept apart from `allowed` because it is the series a panel watches when
     # deciding whether the threshold is set right.
     uncertain: bool = False
+    # An `allow` the model gave under the threshold, whatever the gate then
+    # did with it. `uncertain` is the half of this that was let through; this
+    # one is also true of the half `PRA_SQL_GATE_LOW_CONFIDENCE=refuse`
+    # refuses, which is how `pipeline.agent.gate_refusal_code` tells a
+    # threshold to tune from a model that really said no.
+    low_confidence: bool = False
 
     @property
     def label(self) -> str:
@@ -503,6 +509,7 @@ class JevGate:
         tokens = _input_tokens(reply.body)
         confident = confidence >= self.threshold
         uncertain = False
+        low_confidence = choice == CHOICE_ALLOW and not confident
         if choice == CHOICE_ALLOW and confident:
             allowed = True
             reason = "the gate read this as a read-only query that answers the question"
@@ -548,6 +555,7 @@ class JevGate:
             input_tokens=tokens,
             gate=self.name,
             uncertain=uncertain,
+            low_confidence=low_confidence,
         )
 
     def payload(self, question: str, sql: str, schema_summary: str) -> dict[str, Any]:

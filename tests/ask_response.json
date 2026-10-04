@@ -40,7 +40,8 @@
           }
         ],
         "gate": "jev:allowed",
-        "refused_reason": null
+        "refused_reason": null,
+        "refused_code": null
       }
     ],
     "cards": []

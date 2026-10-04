@@ -111,6 +111,14 @@ from pipeline.config import REPO_ROOT
 MARTS_SCHEMA: Final = REPO_ROOT / "dbt" / "models" / "marts" / "schema.yml"
 SCHEMA_FILES: Final[tuple[Path, ...]] = (MARTS_SCHEMA,)
 
+# Every model dbt builds, which is a wider set than the agent may read. The
+# validator needs it to tell a name it is not allowed to read from a name that
+# is not a table at all, and one directory listing answers that for the whole
+# warehouse: a dbt model is a `.sql` file and the file's stem is the relation's
+# name. The schema files cannot stand in for it, because a model with no
+# `schema.yml` entry is still a model dbt builds (`ml_labeled_side` today).
+DBT_MODELS_DIR: Final = REPO_ROOT / "dbt" / "models"
+
 # A file whose contents replace the whole prompt, schema and rules included.
 # Read on every call rather than at import, because the evaluation sets it and
 # then builds an agent inside the same process.
@@ -221,6 +229,26 @@ def first_sentences(text: str, count: int, limit: int) -> str:
     if len(taken) <= limit:
         return taken
     return taken[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+
+
+@lru_cache(maxsize=4)
+def warehouse_tables(root: Path = DBT_MODELS_DIR) -> frozenset[str]:
+    """Every relation dbt builds in this project, by name, allowlisted or not.
+
+    One glob over the models directory, cached, because the caller is
+    `pipeline.agent.check_sql`, which runs on every statement the model writes
+    and is otherwise a pure function of a string. A directory listing on the
+    first call and a dictionary lookup afterwards is the whole cost, and the
+    set cannot change inside a process: the models are files in the image.
+
+    Empty when the directory is not there, which is a container that ships the
+    warehouse without the dbt project. The caller falls back to a naming rule
+    in that case rather than calling every unknown name a guess; what it must
+    not do is claim to know a warehouse it cannot see.
+    """
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(path.stem.lower() for path in root.glob("**/*.sql"))
 
 
 def read_models(paths: tuple[Path, ...] = SCHEMA_FILES) -> dict[str, dict[str, object]]:
