@@ -251,9 +251,9 @@ than a word of the conversation, `agent.sql.length` rather than the
 statement, `agent.job`, and the gate's name, verdict, confidence and cost.
 
 The one place a question and an answer are written in full is the golden
-evaluation, in `evals/` and in its MLflow runs. Those forty-five questions
+evaluation, in `evals/` and in its MLflow runs. Those fifty questions
 are written by this project and answered against the fixture warehouse or, for
-the thirty whose checks hold of any warehouse, against the deployed service;
+the thirty-one whose checks hold of any warehouse, against the deployed service;
 none of them is a member's, and the page contexts, the synthetic game
 summaries and the four written-out conversations among them are written by
 this project as well.

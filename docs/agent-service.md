@@ -360,7 +360,7 @@ without allowing for two renderings; `--json` always carries it.
 | `context_first_line` | one sentence describing the same game, such as `Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns`. At most **300** characters. It is the only part of the game the relevance decision is shown |
 | `context_facts` | the analysis facts the application computed from the same game, at most **60**, each `{id, text, values}`: a stable key of at most 64 characters, one plain sentence of at most 200 holding that fact's numbers, and those numbers as the application computed them. Sent only beside a `context_game`, and placed only when that summary is placed. Over any of the three ceilings is a 422 |
 | `history` | the conversation so far, oldest first, at most **6** turns of `{role, text}` with `role` one of `user` and `assistant`. See **Conversation** below |
-| `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It changes nothing about the answer today; the per-job playbooks are a later ticket |
+| `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It picks the playbook the agent answers from. See **The playbooks, and the `Routed as` line** below |
 
 **The relevance decision.** A game summary is only worth its place in the
 context window when the question is about that game, and "which deck is best
@@ -444,19 +444,21 @@ prefix and before the current turn. With two prior turns the model is sent:
 
 ```
 system block 1        the role and the rules          (cached)
-system block 2        the schema listing              (cached, breakpoint 1)
+system block 2        the six per-job playbooks       (cached)
+system block 3        the schema listing              (cached, breakpoint 1)
 HumanMessage          <question>the earlier question</question>
 AIMessage             the earlier answer, as it stands  (breakpoint 2)
-HumanMessage          <context>...</context>
+HumanMessage          Routed as: my_game
+                      <context>...</context>
                       <question>the new question</question>
 ```
 
 That is the only placement that moves nothing. The breakpoint is on the last
 system block and the turns come after it, so the prefix is the same bytes from
 one request to the next and the cache still reads rather than writes. And the
-current turn is untouched: the `<context>` element, the `<facts>` list inside
-it and the `<question>` after it are byte for byte what they were, whether or
-not a conversation came with them. A question that sends no history produces
+current turn is untouched: the `Routed as` line, the `<context>` element, the
+`<facts>` list inside it and the `<question>` after it are byte for byte what
+they were, whether or not a conversation came with them. A question that sends no history produces
 the one message it always produced, so every recorded evaluation and the
 command line are unaffected.
 
@@ -481,15 +483,15 @@ rather than a plain string, because that is the only shape `cache_control`
 has anywhere to go. With no history there is no message to mark and the
 request is exactly the one it was before this existed.
 
-This is also the change that should make PLA-189's counters stop reading
-zero. Haiku 4.5 caches nothing below a 4,096 token prefix and the system
-prefix alone is an estimated ~2,700, so every read has been zero and
-correctly so (**What a question costs** below). Six turns of conversation is
-up to 6,000 characters, which is ~1,500 tokens on the same rule of thumb, so
-a follow-up with a few turns behind it is the first request this service has
-sent with a cacheable prefix over the line. The first non-zero
-`cache_read_input_tokens` should be a second question in a thread, and it is
-a measurement to take rather than a claim to make here.
+This was expected to be the change that made PLA-189's counters stop reading
+zero, because the system prefix alone was an estimated ~2,700 tokens against
+Haiku 4.5's 4,096 minimum and six turns of conversation is up to 6,000
+characters, or ~1,500 more on the same rule of thumb. It was overtaken: the
+per-job playbooks carry the system prefix over the line on its own, so a
+first question caches too and a follow-up is no longer the only request that
+could (**What a question costs** below). What a conversation still buys is a
+longer cached prefix on the second question of a thread, and it is a
+measurement to take rather than a claim to make here.
 
 **Rule 11 of the prompt:**
 
@@ -534,6 +536,66 @@ and a second place for them to leak from, in exchange for saving the
 application a few kilobytes per request. The transcript lives where the member
 can see it and close it; this service reads it for the length of one call and
 forgets it with the process stack.
+
+### The playbooks, and the `Routed as` line
+
+The application routes every question before it sends it, into one of six
+jobs, and for a long time the service only logged the label. So every answer
+had the same shape: a post-loss review of one game came back reading like a
+summary of the week, because the prompt had no way of knowing the two were
+different questions.
+
+The prompt has six playbooks now, one per job, in a system block of their own
+between the rules and the schema listing (`pipeline.prompts.PLAYBOOKS`). Each
+is 150 to 250 words, except `out_of_scope` which is two sentences, and each
+says four things: what the member is really asking at that moment, which
+tables and which context blocks to reach for first, what a good answer looks
+like, and what to say when the data is thin. Each closes on the same four
+prohibitions in its own job's words: do not invent a turn, do not write a
+number without a source, do not speculate about the opponent's hidden cards,
+do not look a member up by name.
+
+| job | reads first | the answer |
+|---|---|---|
+| `my_mistake` | the game summary and the `<facts>` list, then `mart_matchups` and `mart_archetype_pace` | the two or three facts that mattered, one line the member could have taken, how the matchup usually goes, in that order, under 180 words |
+| `my_game` | the same two, then the same two marts | the game in the order it happened, ending on one sentence placing it against the community |
+| `my_record` | `mart_player_summary`, then `mart_matchups` | the record as a record, wins and losses before any percentage, with the games count and the favourite archetype |
+| `card_rules` | the card tool and `dim_card`, and no mart unless the member asked which decks play it | the printed text first, then at most one sentence of context |
+| `meta` | `mart_archetype_weekly`, `mart_matchups`, `mart_archetype_pace`, `mart_cards_seen` | the number, the sample size, and the caveat when `min_games_met` is false |
+| `out_of_scope` | nothing | one sentence saying what the agent does cover |
+
+**How the label gets there.** The playbooks are in the cached prefix, because
+they are the same six on every request. What varies is one line at the top of
+the human turn:
+
+```
+Routed as: my_mistake
+<context>
+The member is on their own game page, reviewing one game.
+...
+</context>
+<question>
+what should I have done differently
+</question>
+```
+
+With no `<context>` the line sits directly above the `<question>` element,
+and with no job there is no line and the turn is byte for byte what it was
+before this existed, which is the property every recorded evaluation depends
+on.
+
+The line is plain text with no element around it, and that is the safety
+story rather than a shortcut. `pipeline.prompts.route_line` compares the
+value against the six and writes the line only on a match, so what reaches
+the model is one of six strings this repository wrote. A label the
+application invented, a label with a sentence appended to it, a label with
+markup in it: each is no line at all. There is nothing here for a page
+context or a question to forge, because there is no syntax to imitate and no
+free text to fill.
+
+Where a playbook and a rule disagree, the rule wins, and the playbook block
+says so in its own first paragraph. The eleven rules are what is true of
+every answer; a playbook is what is true of one kind.
 
 ### The facts block, and rule 10
 
@@ -697,11 +759,12 @@ and the breakpoint goes on the last of it:
 |---|---|---|
 | tools | `query_marts`, and `lookup_cards` when the index is there | a deploy |
 | system, block 1 | the role sentence, the eleven rules, the card-tool note | a deploy |
-| system, block 2 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
-| **breakpoint 1** | `cache_control: {"type": "ephemeral"}` on block 2 | |
+| system, block 2 | the six per-job playbooks | a deploy |
+| system, block 3 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
+| **breakpoint 1** | `cache_control: {"type": "ephemeral"}` on block 3 | |
 | prior turns | the conversation the application sent back, when it sent one | every request, and not at all on the first question of a thread |
 | **breakpoint 2** | the same mark on the last prior turn, when there is one | |
-| human turn | the `<context>` element when there is one, route sentence and game summary inside it, then the `<question>` element, and nothing of ours | every request |
+| human turn | the `Routed as: <job>` line when a job was sent, then the `<context>` element when there is one, route sentence and game summary inside it, then the `<question>` element, and nothing else of ours | every request |
 
 The breakpoint goes on the last **stable** block, not on the last block.
 Marking something that varies would rewrite the entry on every call and bill a
@@ -722,12 +785,27 @@ prefix is **4,096 tokens**
 Below it the provider caches nothing, marked or not, and returns no error: the
 only way to know is the `usage` fields.
 
-Today's prefix is **below that**. The system prompt is 10,077 characters with
-the card-tool note and 9,843 without, and the tool schemas are roughly 900
-more, so at the four-characters-per-token rule this file already uses for
-`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,700 tokens**. That is an
-estimate from a character count and not a measurement. The measurement is one
-call, and it needs a provider key:
+**It was below that until PLA-205.** The system prompt was 10,077 characters
+with the card-tool note and the tool schemas roughly 900 more, which at the
+four-characters-per-token rule this file already uses for `MAX_PROMPT_CHARS`
+is an estimated ~2,700 tokens: about 1,200 short, confirmed live on
+2026-10-04 by a `cache_creation_input_tokens` of 0 on every call of a real
+question.
+
+**Today's prefix is over it.** The playbooks added a third system block of
+about 6,600 characters, so the prompt is **16,676 characters** with the
+card-tool note and 16,442 without, and the prefix with the tool schemas is
+**17,576 characters, an estimated 4,394 tokens**. That is 298 tokens over the
+provider's line rather than a comfortable margin, which is why the floor is a
+test and not a note: `pipeline.prompts.MIN_PREFIX_TOKENS` is 4,300 and
+`test_the_cached_prefix_stays_over_the_providers_minimum` fails on a cut that
+would drop the prefix back under it. `MAX_PROMPT_CHARS` went from 10,400 to
+**17,000** in the same change, which is a ceiling about 320 characters over
+what is rendered: room for a rule or a column rename, not for another table.
+
+Both numbers are estimates from a character count and not measurements. The
+measurement is one call, and it needs a provider key, so it is the
+coordinator's to run rather than this file's to assume:
 
 ```bash
 op run --env-file=.env.dev.op -- uv run python -c '
@@ -758,31 +836,34 @@ print(chat_model().get_num_tokens_from_messages(messages, tools=tools))
 behind a LangChain name. The tools go in because they are inside the prefix.
 The question goes in so the call is shaped like a real one; what is compared
 against the 4,096 is the prefix up to the breakpoint, so run it a second time
-with the `HumanMessage` dropped and take that number. Write it here, replace
-the estimate, and say it is a measurement.
+with the `HumanMessage` dropped and take that number. The snippet stays here
+because the estimate above is still an estimate: the coordinator runs it with
+a key, replaces the 4,394 with what comes back, and says it is a measurement.
+A real tokenizer and four characters per token will not agree exactly, and
+the margin over the minimum is 298 tokens, so this is the one number in this
+file whose sign could change when somebody measures it.
 
-**The honest expectation, until that number is 4,096 or more.** On the first
-question of a thread, nothing caches. `cache_read_input_tokens` is zero on
-every call and `cache_creation_input_tokens` is zero too, and that is the
-correct reading rather than a bug in the wiring.
+**What to expect now.** The first question of a thread should write the
+prefix once, at 1.25 times the input price, and every call of that question
+after it should read it at a tenth. One question is two to four model calls,
+so a question that used to pay full price two to four times now pays 1.25
+once and 0.1 for the rest. A follow-up inside five minutes reads rather than
+writes, because the entry's lifetime restarts on each read (**Conversation**
+above, and the second breakpoint on the last prior turn).
 
-**A follow-up is the exception, and the one to measure.** Since PLA-204 the
-conversation is placed after the system blocks with a second breakpoint on
-its last turn (**Conversation** above), so the prefix a follow-up marks is
-the system blocks plus up to 6,000 characters of memory: ~2,700 tokens plus
-~1,500 on the same four-characters-per-token rule, which is over the 4,096
-line for the first time. So the first non-zero `cache_read_input_tokens` this
-service reports should be a second question in a thread rather than a first
-one, and a thread of six turns should read more than a thread of two. That is
-a prediction from two estimates and not a measurement; the measurement is the
-`usage` object of the `agent answered` line on a real follow-up, and this
-section gets the number when somebody takes it. **Do not pad the prompt to reach the
-minimum**: paying for 1,800 tokens of filler on every call to make 2,300
-tokens cheaper is a loss, and a prompt written to hit a number is a prompt
-nobody can edit. The text that will carry the prefix over the line is text
-that earns its own place, the per-job playbooks and the facts glossary of the
-router work, and when that lands this section gets the new measurement and the
-first non-zero reads.
+So the honest expectation has flipped: `cache_creation_input_tokens` should
+be non-zero on the first call of a question and `cache_read_input_tokens`
+non-zero on the ones after it, and a day of zeros in both is now news rather
+than the status quo. Nobody has watched a real question since the playbooks
+landed; the first reading comes off the `usage` object of an `agent answered`
+line, and this section gets the numbers when somebody takes them.
+
+**Do not pad the prompt to reach the minimum.** The playbooks are over the
+line because they are text that earns its own place, not because anything was
+written to hit a number: paying for filler on every call to make the rest
+cheaper is a loss, and a prompt written to a character count is a prompt
+nobody can edit. The floor is a test so that a future cut has to be
+deliberate, not so that the prompt has to grow.
 
 **Reading the counters.** `pipeline.agent.token_usage` takes the two counts off
 LangChain's `usage_metadata["input_token_details"]` and reports them under the
@@ -809,9 +890,11 @@ fields @timestamp, usage.cache_read_input_tokens as cache_read,
   by bin(1d)
 ```
 
-A day of zeros in `read_tokens` with a non-zero `uncached_tokens` is the
-prefix being under the minimum, which is today's expected answer. Zeros in all
-three is a day with no questions.
+A day of zeros in `read_tokens` with a non-zero `uncached_tokens` used to be
+the expected answer, because the prefix was under the minimum. Since the
+playbooks it is a thing to look into: the prefix should be over the line, so
+zero reads against non-zero writes means something in the blocks is moving
+between requests. Zeros in all three is a day with no questions.
 
 The weekly evaluation reports the same two numbers over a whole run:
 `Report.as_dict` carries `usage_totals` and the MLflow run logs

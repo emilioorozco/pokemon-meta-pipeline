@@ -6,10 +6,11 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds forty-five questions in three kinds. Twenty-one are
+`evals/golden.yaml` holds fifty questions in three kinds. Twenty-six are
 `golden`: questions a warehouse with games in it really answers, or, in a few
 cases, a question the page context answers, graded on whether the right fact
-came back. Fourteen are `adversarial`: questions nobody should get an answer
+came back. Five of those twenty-six carry a `job` and grade the shape of the
+answer the prompt's playbook for that job asks for. Fourteen are `adversarial`: questions nobody should get an answer
 to, added when the agent was opened to members, graded on whether the refusal
 held. Ten are `mistake`: questions about the game on the member's screen,
 answered out of the analysis facts the application sent and graded on the
@@ -105,6 +106,16 @@ reason the context fields do: a field the harness cannot send is a field the
 harness cannot grade, and an instruction planted in an earlier assistant
 turn is a question-shaped test that nothing else in the file reaches.
 
+**`job`** is not a check either. It is the application's router label, one
+of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules` and
+`out_of_scope`, and sending it is what puts the `Routed as: <job>` line at
+the top of the turn and sends the model at one of the prompt's six playbooks
+([agent-service.md](agent-service.md)). Five questions carry one, which is
+the five job cases of version 13; everything written before them sends none
+and produces the turn it always did. A label that is not one of the six is a
+load error naming the question, for the reason a bad fact is: a label the
+service would ignore is a question that silently grades the wrong thing.
+
 **`warehouse`** is not a check. It is the one field that says which warehouse
 a question's checks are true of, and it is `fixture` or `any`, defaulting to
 `fixture`. A `fixture` question asserts a fact of the ten committed games:
@@ -114,7 +125,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the twenty-one golden questions cover
+## What the twenty-six golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -139,8 +150,13 @@ with it.
 | `game_on_screen_loss` | a question about the game in the page context, answered out of the summary rather than out of a query |
 | `history_followup_matchup` | a follow-up with no subject in it: only the conversation says the question is about Dragapult control, and the warehouse says it has lost nothing to name |
 | `history_followup_my_game` | a `my_game` follow-up, "what about my energy attachments", over the context and facts of `mistake_game_01` |
+| `job_my_mistake_review` | the post-loss review: the facts that mattered, a line the member could have taken, then the matchup |
+| `job_my_game_walkthrough` | one game out of the facts, then one mart sentence placing it against the community |
+| `job_my_record_season` | the member's own row of `mart_player_summary`, reported as a record rather than as a rate |
+| `job_card_rules_ability` | printed card text and no mart read at all |
+| `job_meta_week` | a week of the field: the number, the sample size and the caveat |
 
-Six of them are marked `warehouse: any`, and they are what the deployed
+Seven of them are marked `warehouse: any`, and they are what the deployed
 check scores; the section below says why.
 
 ## What the fourteen adversarial questions cover
@@ -671,9 +687,69 @@ assistant turn does, comes back as `from_history` rather than inside
 at two, because no recorded answer repeats a number out of its own
 conversation, which is the behaviour rule 11 asks for.
 
-`version` in the golden file is 12 and the transcript is 10; the replay
-asserts 45 out of 45 and the line under the table reads
-`45/45 passed (21/21 golden, 14/14 adversarial, 10/10 mistake)`.
+`version` in the golden file was 12 and the transcript 10; the replay
+asserted 45 out of 45.
+
+## Version 13, and one question per job
+
+The application routes every question into one of six jobs before it sends
+it, and until PLA-205 the service only logged the label, so every answer had
+the same shape. The prompt carries a playbook per job now, in a cached block
+of its own ([agent-service.md](agent-service.md)), and the set had no way to
+see whether they were working: no question could send a `job`, so no
+question was ever routed at a playbook.
+
+`Question` carries one now, `RemoteAgent` sends it in the request body, and
+five questions use it, one per job that has an answer to grade.
+`out_of_scope` has none, because there is no answer to assert the shape of:
+its playbook is two sentences saying to decline, and the adversarial half of
+the set already grades declining.
+
+| id | job | what it grades |
+| --- | --- | --- |
+| `job_my_mistake_review` | `my_mistake` | the three parts, in order: the facts that decided the game, one line the member could have taken, then how the matchup usually goes, which here is the honest "the warehouse holds no row for this pairing" |
+| `job_my_game_walkthrough` | `my_game` | the facts first and the mart second, with the matchup row's 1 game as the sentence that places the game against the community |
+| `job_my_record_season` | `my_record` | the member's own summary row, given as 8 games and a 4 and 4 record rather than as a percentage, with the archetype they play most |
+| `job_card_rules_ability` | `card_rules` | printed text only: `re:from mart_` is in `forbid`, which is searched in the statements, so a mart read fails it whatever the prose says |
+| `job_meta_week` | `meta` | the number, the sample size and the caveat, over the week starting 2026-09-14, where six archetypes won their only game |
+
+Three of the five require a turn of phrase, which the rest of this file warns
+against, and they do it on purpose and with a wide alternation. The structure
+of an answer is what is under test, and no number says that a line the member
+could have taken was offered. The alternations are long enough that two right
+answers worded differently both pass.
+
+**Which row is the member's.** `job_my_record_season` is the only question
+that needs the agent to know who is asking, and nothing in a request carries
+identity. Its page context says "theirs is the row of the player summary with
+the most uploaded games" rather than naming the player key, and that is not a
+convenience: the key is an HMAC of a handle under a secret this repository
+does not hold, so it is a different string in every build of the fixture
+warehouse. A question with one written into it would pass on one machine and
+nowhere else. The token shape stays in `forbid` as it is on every other
+question.
+
+**One more line on a run.** The report prints a per-job pass count beside the
+kind split, so a playbook that is not working is one line rather than a scan
+of the table:
+
+```
+50/50 passed (26/26 golden, 14/14 adversarial, 10/10 mistake)
+by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 1/1 my_record, 1/1 card_rules
+gate cost: $0.000000 (0 calls, 0 refused), under a cent
+guessed tables: 0
+unverified numbers: 2 in busiest_archetype, busiest_archetype_shape
+```
+
+`guessed_tables` and `unverified_numbers` were already printed on every run,
+zero included; `by_job` joins them and goes into the JSON report beside
+`by_kind`. Questions with no label are left out of it rather than counted as
+a job of their own, because what the line measures is the playbooks.
+
+`version` in the golden file is 13 and the transcript is 11; the replay
+asserts 50 out of 50 and the line under the table reads
+`50/50 passed (26/26 golden, 14/14 adversarial, 10/10 mistake)`. The count of
+unverified numbers is unchanged at two.
 
 ## The broken-prompt check
 
@@ -743,5 +819,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts forty-one out of forty-one, and the fast suite
+fixture marts and asserts fifty out of fifty, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.
