@@ -129,6 +129,40 @@ the numbers come from the game on screen and are to be cited that way rather
 than as something the agent queried, because nothing it can query would have
 produced them.
 
+**The analysis facts are application-built, and still untrusted.** Since
+PLA-188 the same request may carry `context_facts`: up to sixty small
+statements the application computed from the same log, each one a sentence
+and the numbers that sentence holds. They are no more trusted than the
+summary they belong to, for the same reason, which is that a program
+assembled them from data somebody else may have arranged. Our own delimiters
+come out of every sentence before it is placed, so a fact cannot close the
+list or the context it is inside; the sentence is collapsed onto one line, so
+it cannot become two numbered items; the list is placed inside the
+`<context>` element, where rule 9 already says an order is text on a page;
+and the three ceilings are refused rather than truncated. A fact sentence is
+never logged and never put on a span, exactly like the context around it;
+what is recorded is how many were placed.
+
+**The numeric check is a string search, not a judge.** Rule 10 of the prompt
+says every number in an answer is a row value, a card value or a fact value,
+and after the answer comes back every number in its prose is looked up in
+those three places and in an allowlist of four constants. What is found
+nowhere comes back on the response as `unverified_numbers`
+([agent-service.md](agent-service.md)).
+
+It is worth being exact about what that is and is not, because a field with
+that name invites being read as a guarantee. It does not refuse, rewrite or
+flag the answer; the answer returns as it was. It does not ask a second model
+whether the first one was right, which would be a second thing to be wrong
+and a second bill. It compares strings to numbers: a number the run can
+account for passes, and a number it cannot is reported. So it cannot see
+arithmetic, and a model that correctly adds two rows it read is reported like
+anything else; it cannot see a number that is real and irrelevant; and it
+cannot see a sentence that is wrong around figures it quotes correctly. What
+it does catch is the one failure the facts make likelier, which is a model
+with a dozen turn numbers in front of it writing an eleventh, and it catches
+that one the same way every time, offline, with no provider in the loop.
+
 One more thing speaks to a provider because of it. When `context_game` is
 present, a single typed Choice call decides whether the game bears on the
 question, and what it is shown is the question and `context_first_line` and
@@ -146,6 +180,8 @@ they carry the method and route, the status, the duration in milliseconds, the
 model that answered, the number of tool calls, the length of the question, the
 length of the page context, the length of the game summary inside it, the
 relevance verdict and how long reaching it took, the application's job label,
+how many analysis facts were placed, how many numbers of the answer nothing
+could account for,
 the length of the answer, the length of each statement, the row counts, and
 the gate's verdict and cost per call. They also carry what the question cost the
 provider: `input_tokens`, `output_tokens`, and `cache_read_input_tokens` and
