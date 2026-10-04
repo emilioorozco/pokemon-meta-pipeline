@@ -20,6 +20,7 @@ request leaves it out, and that an archetype the model never saw arrives as the
 missing-category code rather than as a string.
 """
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -412,9 +413,16 @@ class StubAgent:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
         self.asked: list[str] = []
+        # What the route passed on beside the question, so a test can assert
+        # that `context` and `job` reached the agent rather than being read
+        # and dropped in the handler.
+        self.contexts: list[str | None] = []
+        self.jobs: list[str | None] = []
 
-    def ask(self, question: str) -> "StubAgent":
+    def ask(self, question: str, context: str | None = None, job: str | None = None) -> "StubAgent":
         self.asked.append(question)
+        self.contexts.append(context)
+        self.jobs.append(job)
         return self
 
     def as_dict(self) -> dict[str, Any]:
@@ -476,6 +484,7 @@ ANSWER: Final[dict[str, Any]] = {
         ],
     },
     "gate_summary": "refused",
+    "context_used": False,
 }
 
 
@@ -530,6 +539,104 @@ def test_ask_refuses_an_empty_question(registry: Registry) -> None:
     with TestClient(app) as started:
         assert started.post("/ask", json={"question": ""}).status_code == 422
         assert started.post("/ask", json={}).status_code == 422
+
+
+def test_the_page_context_and_the_job_reach_the_agent(registry: Registry) -> None:
+    """Both optional fields are carried through rather than read and dropped."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask",
+            json={
+                "question": "what went wrong",
+                "context": "The member is reviewing their last game.",
+                "job": "my_game",
+            },
+        )
+
+    assert response.status_code == 200
+    assert agent.contexts == ["The member is reviewing their last game."]
+    # The enum member's value, not its Python name: the agent logs it as it
+    # arrived, and `AskJob.MY_GAME` is not a string anyone sent.
+    assert agent.jobs == ["my_game"]
+
+
+def test_a_request_with_neither_field_sends_neither(registry: Registry) -> None:
+    """The old body is still the old call, which is what keeps the old bytes."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        assert started.post("/ask", json={"question": "anything"}).status_code == 200
+
+    assert agent.contexts == [None]
+    assert agent.jobs == [None]
+
+
+def test_a_context_over_the_ceiling_is_a_422_rather_than_a_truncation(
+    registry: Registry,
+) -> None:
+    """A summary cut in half is a summary that says something else."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        at_the_line = started.post(
+            "/ask", json={"question": "anything", "context": "x" * serve.MAX_CONTEXT_CHARS}
+        )
+        over = started.post(
+            "/ask", json={"question": "anything", "context": "x" * (serve.MAX_CONTEXT_CHARS + 1)}
+        )
+
+    assert at_the_line.status_code == 200
+    assert over.status_code == 422
+    # The route never saw the long one, so the agent was never asked it.
+    assert len(agent.contexts) == 1
+
+
+def test_a_job_that_is_not_one_of_the_six_is_a_422(registry: Registry) -> None:
+    """An enum rather than a free string, so a typo cannot become a category."""
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))
+    with TestClient(app) as started:
+        for job in ("meta", "my_game", "my_mistake", "my_record", "card_rules", "out_of_scope"):
+            accepted = started.post("/ask", json={"question": "anything", "job": job})
+            assert accepted.status_code == 200, job
+        assert started.post("/ask", json={"question": "a", "job": "mygame"}).status_code == 422
+
+
+def test_context_used_is_the_agents_answer_and_the_context_is_not_echoed(
+    registry: Registry,
+) -> None:
+    """The chip the application draws, and the text it is not given back."""
+    secret = "The member is reviewing their loss on the Matchups page."
+    payload = dict(ANSWER) | {"context_used": True}
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(payload))
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "why", "context": secret}).json()
+
+    assert body["context_used"] is True
+    assert secret not in json.dumps(body)
+
+
+def test_the_context_is_not_in_any_line_the_service_logs(
+    registry: Registry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The request log line carries the route and the duration, never the body.
+
+    The agent's own line is asserted in `tests/test_agent.py`; this is the
+    other one, which is written by the middleware and has never been shown a
+    request body. It is here because "nothing logs the context" is a claim
+    about the whole service rather than about one function
+    (docs/agent-safety.md).
+    """
+    secret = "The member is reviewing their loss to Dragapult control on 2026-09-14."
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))
+    with TestClient(app) as started, caplog.at_level(logging.DEBUG):
+        started.post("/ask", json={"question": "why", "context": secret, "job": "my_game"})
+
+    assert any(entry.message == "request" for entry in caplog.records)
+    assert secret not in caplog.text
+    for entry in caplog.records:
+        assert secret not in json.dumps(entry.__dict__, default=str)
 
 
 def test_an_agent_that_cannot_be_built_is_a_503_that_says_why(registry: Registry) -> None:
