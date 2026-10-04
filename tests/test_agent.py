@@ -21,6 +21,7 @@ from typing import Any, Final
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -33,6 +34,7 @@ from pipeline.prompts import (
     PART_SEPARATOR,
     QUESTION_CLOSE,
     QUESTION_OPEN,
+    TABLE_LIST_NOTE,
     render_schema,
     system_blocks,
     system_prompt,
@@ -761,6 +763,37 @@ def test_the_prompt_carries_the_three_rules_that_keep_it_honest() -> None:
     assert "not a deck inclusion rate" in prompt
     assert "min_games_met" in prompt
     assert "sample size" in prompt
+
+
+def test_the_prompt_says_the_table_list_is_the_whole_list() -> None:
+    """The cheapest half of PLA-198: the listing was read as a sample.
+
+    Three dev runs invented `mart_leaderboard` and `mart_archetype_summary`
+    out of four words the application uses and the warehouse does not, so the
+    line names those four and says the list is closed. It is in the schema
+    block, which is the prompt's own description of `query_marts`, and in the
+    tool description, which is what the model reads as it writes a FROM
+    clause.
+    """
+    prompt = system_prompt()
+    assert TABLE_LIST_NOTE in prompt
+    for word in ("leaderboard", "rankings", "season", "summary"):
+        assert word in TABLE_LIST_NOTE
+    # The schema block and not the rules block, so the sentence sits on the
+    # list it is about.
+    _, schema = (block["text"] for block in text_blocks())
+    assert TABLE_LIST_NOTE in schema
+    assert "Rules you follow" not in schema
+
+
+def test_the_sql_tool_carries_the_same_sentence(tmp_path: Path, metrics: ServiceMetrics) -> None:
+    """One constant in two places, so the two cannot drift apart."""
+    tool = agent.make_query_marts_tool(
+        warehouse=tmp_path / "none.duckdb",
+        tracer=trace.get_tracer(__name__),
+        metrics=metrics,
+    )
+    assert TABLE_LIST_NOTE in tool.description
 
 
 def test_the_prompt_fits_its_budget() -> None:

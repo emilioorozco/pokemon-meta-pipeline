@@ -135,7 +135,13 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
-from pipeline.prompts import ALLOWED_TABLES, clean_context, system_blocks, wrap_turn
+from pipeline.prompts import (
+    ALLOWED_TABLES,
+    TABLE_LIST_NOTE,
+    clean_context,
+    system_blocks,
+    wrap_turn,
+)
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
@@ -953,8 +959,9 @@ def make_query_marts_tool(
         description=(
             "Run one read-only SQL SELECT against the gold marts and get the rows back "
             "as a markdown table. DuckDB dialect. One statement, no semicolons, only "
-            f"the tables described in the system prompt. A LIMIT of {DEFAULT_LIMIT} is "
-            f"added when you leave one out and any LIMIT above {MAX_LIMIT} is reduced."
+            f"the tables described in the system prompt. {TABLE_LIST_NOTE} A LIMIT of "
+            f"{DEFAULT_LIMIT} is added when you leave one out and any LIMIT above "
+            f"{MAX_LIMIT} is reduced."
         ),
     )
 
