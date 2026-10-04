@@ -25,6 +25,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+import pipeline.warehouse_tables
 from pipeline import agent
 from pipeline.prompts import (
     ALLOWED_TABLES,
@@ -35,14 +36,17 @@ from pipeline.prompts import (
     QUESTION_CLOSE,
     QUESTION_OPEN,
     TABLE_LIST_NOTE,
+    dbt_model_names,
     render_schema,
     system_blocks,
     system_prompt,
+    warehouse_tables,
     wrap_question,
     wrap_turn,
 )
 from pipeline.sql_gate import VERDICT_SKIPPED
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
+from scripts import generate_warehouse_tables
 from tests.agent_fakes import (
     FakeGate,
     FakeRelevance,
@@ -135,10 +139,15 @@ def test_the_fact_and_the_player_dimension_are_not_readable() -> None:
 @pytest.mark.parametrize(
     ("table", "code"),
     [
-        # The two dev runs this ticket was filed over. Neither name is a dbt
-        # model, so neither is a table anybody blocked.
+        # The dev runs this ticket was filed over, including the three the
+        # deployed image got wrong when the known-table list was a glob over
+        # a directory that image does not carry. None of them is a dbt model,
+        # so none of them is a table anybody blocked, and `mart_` in front of
+        # a name is not evidence of anything: `mart_weekly_archetype` is
+        # `mart_archetype_weekly` with its two words swapped.
         ("mart_leaderboard", agent.REFUSED_TABLE_NOT_FOUND),
         ("mart_archetype_summary", agent.REFUSED_TABLE_NOT_FOUND),
+        ("mart_weekly_archetype", agent.REFUSED_TABLE_NOT_FOUND),
         ("dim_rankings", agent.REFUSED_TABLE_NOT_FOUND),
         # Real relations dbt builds and the allowlist keeps off: a privacy
         # boundary, a fact at the wrong grain, a staging model and the
@@ -171,22 +180,47 @@ def test_a_guessed_table_and_a_blocked_table_are_two_different_refusals(
     assert agent.validate_sql(f"select * from {table}") == refusal.message
 
 
-def test_a_guessed_name_is_only_a_guess_when_the_warehouse_can_be_seen(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """With no dbt project to read, the prefix rule stands in and says so.
+def test_the_known_tables_are_the_dbt_models_and_the_file_says_so() -> None:
+    """The committed list is the glob's answer, or this fails until it is again.
 
-    A container that ships the warehouse without the models cannot tell the
-    two apart, so it falls back to the naming convention: a `mart_`, `dim_` or
-    `fct_` name is read as a real table being blocked, and everything else as
-    a guess. That is wrong about `mart_leaderboard`, which is the honest cost
-    of the fallback and the reason it is not the rule (docs/sql-gate.md).
+    The glob is the oracle and `pipeline/warehouse_tables.py` is the answer
+    carried to production, so the one thing that must not happen is the two
+    drifting apart: a model added or renamed with no regeneration would be a
+    name the validator calls invented. Comparing the rendered text rather
+    than the names alone also catches a hand edit of the generated file,
+    which is the other way the two come apart.
     """
-    monkeypatch.setattr(agent, "warehouse_tables", lambda: frozenset())
-    assert agent.table_exists("mart_leaderboard") is True
+    names = dbt_model_names()
+    assert names, "no dbt models found; this test needs the dbt project in the checkout"
+    assert warehouse_tables() == names
+    target = generate_warehouse_tables.TARGET
+    assert target.read_text(encoding="utf-8") == generate_warehouse_tables.render(sorted(names)), (
+        "pipeline/warehouse_tables.py is out of date: "
+        "run `uv run python scripts/generate_warehouse_tables.py`"
+    )
+
+
+def test_the_known_tables_are_answered_with_no_dbt_project_to_read(tmp_path: Path) -> None:
+    """What the deployed image is: `pipeline` installed and no `dbt/` beside it.
+
+    PLA-198 twice over. The glob came back empty there, the validator fell
+    through to a `mart_`/`dim_`/`fct_` naming rule, and `mart_archetype_summary`
+    and `mart_weekly_archetype` were reported as real tables being blocked.
+    The list is a module of the package now: the answers below come out of an
+    import and a set lookup, with nothing on disk to find and no naming rule
+    left to reach (docs/sql-gate.md).
+    """
+    assert dbt_model_names(tmp_path / "gone") == frozenset()
+    assert not hasattr(agent, "WAREHOUSE_PREFIXES")
+    # Data and not a loader: the generated module imports `typing` and nothing
+    # that could go looking for a file.
+    assert not hasattr(pipeline.warehouse_tables, "Path")
+    assert agent.table_exists("mart_archetype_summary") is False
+    assert agent.table_exists("mart_weekly_archetype") is False
+    assert agent.table_exists("mart_leaderboard") is False
     assert agent.table_exists("dim_player") is True
-    assert agent.table_exists("leaderboard") is False
-    assert agent.table_exists("ml_labeled_side") is False
+    assert agent.table_exists("fct_game_side") is True
+    assert agent.table_exists("ml_labeled_side") is True
 
 
 def test_two_statements_are_refused_even_when_both_would_be_allowed() -> None:

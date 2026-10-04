@@ -256,15 +256,6 @@ REFUSAL_CODES: Final[tuple[str, ...]] = (
     REFUSED_ERROR,
 )
 
-# The prefixes dbt gives a relation the agent might plausibly be allowed to
-# read. Used only when `warehouse_tables()` comes back empty, which is a
-# container that ships the warehouse without the dbt project beside it: a
-# `mart_`, `dim_` or `fct_` name off the allowlist is then read as a real
-# table being blocked and anything else as a guess. It is a guess about a
-# guess and it is wrong about exactly the names this ticket was filed over,
-# so it is the fallback and not the rule (docs/sql-gate.md).
-WAREHOUSE_PREFIXES: Final[tuple[str, ...]] = ("mart_", "dim_", "fct_")
-
 # What separates the route sentence from the game summary inside the one
 # `<context>` element. A blank line, so the two read as two paragraphs of one
 # description rather than as one run-on sentence, and no label: a heading
@@ -386,9 +377,10 @@ def validate_sql(sql: str, allowed_tables: Sequence[str] = ALLOWED_TABLES) -> st
 def check_sql(sql: str, allowed_tables: Sequence[str] = ALLOWED_TABLES) -> Refusal | None:
     """The refusal this statement earns, or None when it may run.
 
-    A pure function of a string and a list of names: no connection, no model,
-    and the one filesystem read behind `warehouse_tables` is a cached listing
-    of the dbt project, which is what makes the rules testable one at a time.
+    A pure function of a string and a list of names: no connection, no model
+    and, since PLA-198, no filesystem either, because `warehouse_tables` is a
+    committed list rather than a glob. That is what makes the rules testable
+    one at a time and what makes them answer the same in every container.
     The message names the rule rather than the symptom, because the reader is
     a language model that has to write a better query next, and "invalid
     query" tells it nothing it can act on.
@@ -467,16 +459,16 @@ def table_exists(table: str) -> bool:
     a validator that opened a file would stop being the pure function the
     whole of `docs/agent-safety.md` rests on.
 
-    With no dbt project to read, the naming rule in `WAREHOUSE_PREFIXES`
-    stands in: a `mart_`, `dim_` or `fct_` name is treated as real and
-    therefore as blocked, and everything else as a guess. That is the
-    conservative way round, because calling a real block a guess is the error
-    that loses a reader a refusal worth seeing.
+    The list is read from the dbt project when somebody edits it and committed
+    as `pipeline.warehouse_tables`, rather than globbed here. This function
+    had a naming-convention fallback for the container that ships without the
+    dbt project, and that container is the deployed one: the fallback was not
+    the rare case, it was the only case, and it called
+    `mart_archetype_summary` and `mart_weekly_archetype` real tables being
+    blocked. A committed list travels with the package, so there is nothing
+    left to fall back to and no second answer to be wrong (docs/sql-gate.md).
     """
-    known = warehouse_tables()
-    if known:
-        return table in known
-    return table.startswith(WAREHOUSE_PREFIXES)
+    return table in warehouse_tables()
 
 
 def with_limit(sql: str, *, default: int = DEFAULT_LIMIT, cap: int = MAX_LIMIT) -> str:
