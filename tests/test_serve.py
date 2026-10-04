@@ -445,6 +445,14 @@ ALLOWED_SQL: Final = (
     "where archetype_name ilike 'Alpha' and opponent_archetype_name ilike 'Beta'"
 )
 REFUSED_SQL: Final = "select * from dim_player"
+# The plain-language line the service derives from each of those, which is
+# what the application renders in place of the SQL. Written out here rather
+# than computed, so that a change in `pipeline.describe` that puts a column
+# name back on a receipt is a red test in the route's own suite.
+ALLOWED_DESCRIPTION: Final = (
+    "Win rate over matchup results, for the deck = Alpha and the opposing deck = Beta"
+)
+REFUSED_DESCRIPTION: Final = "A lookup over data this tool cannot read"
 # The game on a member's screen, as the application would send it: a first
 # line the relevance decision is taken on, and the summary that decision
 # decides about.
@@ -475,6 +483,7 @@ ANSWER: Final[dict[str, Any]] = {
         "queries": [
             {
                 "sql": ALLOWED_SQL,
+                "description": ALLOWED_DESCRIPTION,
                 "row_count": 1,
                 "rows": [
                     {
@@ -490,6 +499,7 @@ ANSWER: Final[dict[str, Any]] = {
             },
             {
                 "sql": REFUSED_SQL,
+                "description": REFUSED_DESCRIPTION,
                 "row_count": 0,
                 "rows": [],
                 "gate": "off",
@@ -540,6 +550,14 @@ def test_ask_returns_the_answer_and_what_the_agent_read(registry: Registry) -> N
     # `tool_calls` cannot answer.
     assert body["evidence"]["queries"][0]["sql"] == ALLOWED_SQL
     assert body["evidence"]["queries"][0]["rows"][0]["last_played"] == "2026-09-28"
+    # And beside it the line the receipt draws instead of the statement. It
+    # names neither the table nor a column, so a panel can show it to a member
+    # who has never heard of a mart.
+    assert body["evidence"]["queries"][0]["description"] == ALLOWED_DESCRIPTION
+    assert "mart_matchups" not in body["evidence"]["queries"][0]["description"]
+    # A refused query gets one too: what the lookup was for, and nothing about
+    # why there are no rows, which is `refused_code` below.
+    assert body["evidence"]["queries"][1]["description"] == REFUSED_DESCRIPTION
     assert body["evidence"]["queries"][1]["refused_reason"] == REFUSAL
     # A real table off the allowlist, which the application reads as a block
     # rather than as the agent having guessed a name.

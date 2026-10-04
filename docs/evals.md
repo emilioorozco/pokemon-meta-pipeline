@@ -77,6 +77,12 @@ allowed in `forbid`. It names a refusal rather than a piece of text and is
 present when any statement of the run was refused for that reason. The
 section on version 8 below says why one check cannot be a pattern.
 
+An entry written `desc:<pattern>` is the fourth, also `forbid` only. It is
+searched in the plain-language description of each query the run wrote and
+nowhere else, and what follows the prefix is an ordinary pattern, so
+`desc:re:...` is a regular expression over those lines. The section on
+version 9 says what it is for.
+
 **`warehouse`** is not a check. It is the one field that says which warehouse
 a question's checks are true of, and it is `fixture` or `any`, defaulting to
 `fixture`. A `fixture` question asserts a fact of the ten committed games:
@@ -460,6 +466,47 @@ zero is what a healthy run shows.
 
 `version` in the golden file is 8 and the transcript is 7; the replay asserts
 30 out of 30.
+
+## Version 9, and grading the receipt rather than the answer
+
+The application stopped showing members the SQL. Each lookup is now one
+plain-language line with its rows under it, derived from the statement by
+`pipeline.describe` and never written by the model
+([agent-service.md](agent-service.md) has the whole of it). The line has one
+rule: no relation name, no column name, no SQL keyword in upper case. A rule
+like that is only worth having if something fails when it is broken, and
+nothing in the golden set could see it, because `forbid` searches the
+statements the run wrote and every good run over the matchup mart has
+`mart_matchups` in those.
+
+**A fourth kind of `forbid` entry.** `desc:<pattern>` is searched in the
+descriptions and nowhere else. The rest of the entry is an ordinary pattern,
+so both of the ones the file carries are regular expressions:
+
+| pattern | what it catches |
+| --- | --- |
+| `desc:re:\b[a-z]+_[a-z_]+\b` | anything identifier-shaped, which is any lowercase word with an underscore in it |
+| `desc:re:\b(games\|wins\|losses\|ties\|undecided\|aliases\|number\|year\|month)\b` | the nine column names that are also ordinary English, which the first pattern cannot see |
+
+No question was added, so the set is still thirty and the replay still
+asserts 30 out of 30. The two entries went on `matchup_win_rate`, whose
+statement names more columns than any other, and they travel with the set, so
+a question added later is graded on its receipt as well as on its answer. The
+exhaustive version of the same rule, over every statement in
+`evals/transcript.yaml` and every statement the replay produces, is in
+`tests/test_describe.py` and `tests/test_eval.py`: those two run the rule
+against the full list of relation and column names read out of
+`dbt/models/marts/schema.yml`, which is more than a pattern in a data file
+should be asked to carry.
+
+The eval report prints the receipt too. Under a failed or advisory question,
+before the missing tools and the missing patterns, there is one `looked up:`
+line per query, in the words the application would show rather than in the
+statement's. The statement is still in the JSON report and in the service
+log; a table name in a terminal is a table name on a screenshot.
+
+`version` in the golden file is 9 and the transcript stays at 7: no recorded
+turn changed, because nothing about what a competent run does changed.
 
 ## The broken-prompt check
 

@@ -97,11 +97,15 @@ the numbers should look like today. Zero reads is a reading, not a gap.
 **A run keeps its evidence, not only its tally.** `tool_calls` says a query ran
 and returned four rows, which is enough for a counter and not enough for a
 reader deciding whether to believe the answer. So a run also collects
-`Evidence`: the full text of every statement, the first rows it returned as
-plain JSON values, the gate's verdict on it, and the cards the card tool
-matched. That is what a "what I looked up" panel is built from, and it is the
-same object on both surfaces, in `POST /ask` and under `--evidence` on the
-command line. It is bounded on purpose, ten rows and ten cards with every
+`Evidence`: the full text of every statement, one plain-language line saying
+what that statement was for, the first rows it returned as plain JSON values,
+the gate's verdict on it, and the cards the card tool matched. That is what a
+"what I looked up" panel is built from, and it is the same object on both
+surfaces, in `POST /ask` and under `--evidence` on the command line. The
+panel renders the line and the rows and leaves the statement alone, which is
+why the line is derived from the SQL by `pipeline.describe` rather than asked
+of the model: a caption the model wrote would be the one part of the receipt
+a reader cannot check. It is bounded on purpose, ten rows and ten cards with every
 string cut to 500 characters, because an answer that carries its workings
 should still be a response rather than a page.
 
@@ -134,6 +138,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
+from pipeline.describe import LIMIT_CLAUSE, describe_sql, referenced_tables, strip_literals
 from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import (
     ALLOWED_TABLES,
@@ -328,43 +333,18 @@ FORBIDDEN_FUNCTIONS: Final[tuple[str, ...]] = (
     "pragma_database_list",
 )
 
-_LINE_COMMENT: Final = re.compile(r"--[^\n]*")
-_BLOCK_COMMENT: Final = re.compile(r"/\*.*?\*/", re.DOTALL)
-_STRING_LITERAL: Final = re.compile(r"'(?:[^']|'')*'")
-_IDENTIFIER: Final = re.compile(r'"(?:[^"]|"")*"')
-# Whatever follows FROM or JOIN: a bare name, a schema-qualified name, or an
-# opening parenthesis for a subquery, which is not a table and is skipped.
-_TABLE_REF: Final = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_.$]*)", re.IGNORECASE)
 _FUNCTION_CALL: Final = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(", re.IGNORECASE)
-_LIMIT_CLAUSE: Final = re.compile(r"\blimit\s+(\d+)\b", re.IGNORECASE)
 _LEADING_KEYWORD: Final = re.compile(r"^\s*([a-z_]+)", re.IGNORECASE)
-# Names a CTE introduces, which are legal table references even though they are
-# not on the allowlist: `with recent as (...) select * from recent`.
-_CTE_NAME: Final = re.compile(r"(?:\bwith\b|,)\s+([a-z_][a-z0-9_]*)\s+as\s*\(", re.IGNORECASE)
+
+# `strip_literals` and `referenced_tables` are imported from
+# `pipeline.describe` rather than written here. They were written here, for
+# the validator, and they moved when PLA-197 gave them a second caller: the
+# receipt's plain-language description reads the same statement for the same
+# names, and two copies of the same regular expression are two answers waiting
+# to disagree.
 
 
 # ------------------------------------------------------------ the SQL gate --
-
-
-def strip_literals(sql: str) -> str:
-    """The statement with comments, string literals and quoted identifiers blanked.
-
-    Every check below is a search for a keyword or a name, and all three of
-    these are places a keyword can appear without being one: `-- drop this`,
-    `where archetype_name = 'Drop Bear'`, and a column deliberately quoted as
-    `"drop"`. Blanking them rather than removing them keeps the offsets, so a
-    refusal can still be reasoned about against the original string.
-    """
-    blanked = _BLOCK_COMMENT.sub(lambda match: " " * len(match.group(0)), sql)
-    blanked = _LINE_COMMENT.sub(lambda match: " " * len(match.group(0)), blanked)
-    blanked = _STRING_LITERAL.sub(_blank_inside, blanked)
-    return _IDENTIFIER.sub(_blank_inside, blanked)
-
-
-def _blank_inside(match: re.Match[str]) -> str:
-    """A quoted run with its contents replaced by spaces and its quotes kept."""
-    text = match.group(0)
-    return text[0] + " " * (len(text) - 2) + text[-1]
 
 
 @dataclass(frozen=True)
@@ -491,26 +471,6 @@ def table_exists(table: str) -> bool:
     return table in warehouse_tables()
 
 
-def referenced_tables(sql: str) -> list[str]:
-    """The tables a statement reads, in the order it names them, CTEs left out.
-
-    Split out of `validate_sql` because two callers need the same answer. The
-    validator asks whether every name is on the allowlist; `pipeline.eval`'s
-    replay model asks whether the system prompt described them, since a model
-    cannot query a table it was never told exists. Names the statement
-    introduces itself with `WITH` are not tables and are dropped here rather
-    than at each call site.
-    """
-    text = strip_literals(sql)
-    ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(text)}
-    names: list[str] = []
-    for match in _TABLE_REF.finditer(text):
-        table = match.group(1).lower().split(".")[-1]
-        if table not in ctes and table not in names:
-            names.append(table)
-    return names
-
-
 def with_limit(sql: str, *, default: int = DEFAULT_LIMIT, cap: int = MAX_LIMIT) -> str:
     """The statement with a LIMIT on it, added or cut down to the cap.
 
@@ -520,7 +480,7 @@ def with_limit(sql: str, *, default: int = DEFAULT_LIMIT, cap: int = MAX_LIMIT) 
     second one on the outside, which is correct and occasionally redundant.
     """
     text = sql.strip().rstrip(";").strip()
-    found = list(_LIMIT_CLAUSE.finditer(text))
+    found = list(LIMIT_CLAUSE.finditer(text))
     if not found:
         return f"{text}\nLIMIT {default}"
     last = found[-1]
@@ -647,6 +607,12 @@ class QueryEvidence:
     `table_not_found`, a name no model builds, and `table_not_allowed`, a real
     table off the allowlist: the first is the agent guessing and the second is
     the boundary holding, and until PLA-198 they arrived as the same event.
+
+    `description` is the same statement in a member's words, and it is a
+    property rather than a field on purpose: it is derived from `sql` by a
+    pure function, so there is no slot for anybody to put a different line in,
+    least of all the model that wrote the query (`pipeline.describe`). The
+    application draws the receipt from it and keeps the SQL off the screen.
     """
 
     sql: str
@@ -659,9 +625,15 @@ class QueryEvidence:
     # this only decides whether the run's `gate_summary` is `refused`.
     refused: bool = False
 
+    @property
+    def description(self) -> str:
+        """What this lookup was for, in plain language, derived from the statement."""
+        return describe_sql(self.sql)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "sql": self.sql,
+            "description": self.description,
             "row_count": self.row_count,
             "rows": [dict(row) for row in self.rows],
             "gate": self.gate,
