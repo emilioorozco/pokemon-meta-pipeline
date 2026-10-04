@@ -33,6 +33,7 @@ from fastapi.testclient import TestClient
 
 from pipeline import serve
 from pipeline.ml_features import MODEL_FEATURES, UNSEEN_CATEGORY
+from pipeline.prompts import JOBS, PLAYBOOKS
 from pipeline.sql_gate import GATE_JEV, GATE_OFF, GATE_VAR
 
 CODES: Final[dict[str, dict[str, int]]] = {
@@ -658,6 +659,19 @@ def test_a_job_that_is_not_one_of_the_six_is_a_422(registry: Registry) -> None:
             accepted = started.post("/ask", json={"question": "anything", "job": job})
             assert accepted.status_code == 200, job
         assert started.post("/ask", json={"question": "a", "job": "mygame"}).status_code == 422
+
+
+def test_the_six_jobs_are_the_six_the_prompt_has_playbooks_for() -> None:
+    """Two lists of the same six, in two modules, held in step by this.
+
+    `AskJob` is here because the request body is validated here, and `JOBS`
+    is in `pipeline.prompts` because that module acts on the label and the
+    serving container that holds it does not install FastAPI. A value in one
+    and not the other is a question routed at a playbook that is not there,
+    or a playbook nothing can reach.
+    """
+    assert tuple(job.value for job in serve.AskJob) == JOBS
+    assert tuple(PLAYBOOKS) == JOBS
 
 
 def test_context_used_is_the_agents_answer_and_the_context_is_not_echoed(

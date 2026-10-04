@@ -147,6 +147,7 @@ from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fa
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import (
     HISTORY_ROLES,
+    JOBS,
     MAX_HISTORY_TURNS,
     PROMPT_FILE_VAR,
     HistoryError,
@@ -342,6 +343,13 @@ class Question:
     # is a field the harness cannot grade: an instruction hidden in an
     # earlier assistant turn is a question-shaped test nothing else reaches.
     history: tuple[HistoryTurn, ...] = ()
+    # The application's router label for this question, one of
+    # `pipeline.prompts.JOBS`, or empty for a question that sends none.
+    # Carried for the reason every other context field is: the label picks
+    # the playbook the agent answers from, so a set that could not send one
+    # could not grade the playbooks at all. Empty on every question written
+    # before PLA-205, which is what keeps their turns the bytes they were.
+    job: str = ""
     # How many numbers this question's answer may state that nothing the run
     # read can account for. None is the default and asserts nothing, which is
     # what every question written before the check existed wants; `0` is what
@@ -567,6 +575,9 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         # inside the context element and only when the game summary is.
         if facts and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_facts` needs a `context_game` to belong to")
+        job = str(raw.get("job", "")).strip()
+        if job and job not in JOBS:
+            raise GoldenError(f"{where}: {job!r} is not a job ({', '.join(JOBS)})")
         history = _history(raw.get("history"), where=where)
         limit = raw.get("max_unverified")
         if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
@@ -593,6 +604,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 warehouse=warehouse,
                 context_facts=facts,
                 history=history,
+                job=job,
                 max_unverified=limit if isinstance(limit, int) else None,
                 **contexts,
             )
@@ -944,6 +956,24 @@ class Report:
                 counts[kind] = (sum(1 for result in of_kind if result.passed), len(of_kind))
         return counts
 
+    def by_job(self) -> dict[str, tuple[int, int]]:
+        """Passed and total per job label, in the order `JOBS` lists them.
+
+        The playbooks are one block of prompt per job, so the question a
+        reader of a run has after the kind split is which job lost: a set
+        that is green on `meta` and red on `my_mistake` is a playbook to
+        rewrite rather than a model to change. A job with no questions in
+        the file is left out rather than reported as 0/0, and questions that
+        carry no label at all are not counted here, because the thing being
+        measured is the playbook they were routed at.
+        """
+        counts: dict[str, tuple[int, int]] = {}
+        for job in JOBS:
+            of_job = [result for result in self.results if result.question.job == job]
+            if of_job:
+                counts[job] = (sum(1 for result in of_job if result.passed), len(of_job))
+        return counts
+
     @property
     def gate_calls(self) -> int:
         """Statements the gate really judged, over the whole run."""
@@ -1034,6 +1064,10 @@ class Report:
             "by_kind": {
                 kind: {"passed": passed, "total": total}
                 for kind, (passed, total) in self.by_kind().items()
+            },
+            "by_job": {
+                job: {"passed": passed, "total": total}
+                for job, (passed, total) in self.by_job().items()
             },
             "gate_calls": self.gate_calls,
             "gate_refusals": self.gate_refusals,
@@ -1421,6 +1455,7 @@ class RemoteAgent:
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
         history: Sequence[HistoryTurn] = (),
+        job: str = "",
     ) -> Answer:
         body: dict[str, Any] = {"question": question}
         if context_facts:
@@ -1437,6 +1472,7 @@ class RemoteAgent:
             ("context", context),
             ("context_game", context_game),
             ("context_first_line", context_first_line),
+            ("job", job),
         ):
             if value:
                 body[name] = value
@@ -1459,10 +1495,10 @@ class Askable(Protocol):
 
     model_name: str
 
-    # The two game fields are keyword only here, because `Agent.ask` takes
-    # `job` in the position they would otherwise occupy and a protocol that
-    # promised them positionally would exclude the real agent from satisfying
-    # it. The runner passes every optional field by name anyway.
+    # Everything after `context` is keyword only here, because `Agent.ask`
+    # takes `job` in the position the game fields would otherwise occupy and
+    # a protocol that promised them positionally would exclude the real agent
+    # from satisfying it. The runner passes every optional field by name.
     def ask(
         self,
         question: str,
@@ -1472,6 +1508,7 @@ class Askable(Protocol):
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
         history: Sequence[HistoryTurn] = (),
+        job: str = "",
     ) -> Answer: ...
 
 
@@ -1556,6 +1593,7 @@ def run_question(question: Question, agent: Askable) -> Result:
             context_first_line=question.context_first_line,
             context_facts=question.context_facts,
             history=question.history,
+            job=question.job,
         )
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
@@ -1686,6 +1724,7 @@ def render(report: Report) -> str:
     if report.advisory_count:
         summary += f" ({report.advisory_count} advisory)"
     lines.append(summary)
+    lines.append(render_by_job(report))
     if report.skipped:
         lines.append(render_skipped(report))
     lines.append(render_gate_cost(report))
@@ -1718,6 +1757,22 @@ def render(report: Report) -> str:
             numbers = ", ".join(result.unverified_numbers)
             lines.append(f"    unverified numbers: {numbers}")
     return "\n".join(lines)
+
+
+def render_by_job(report: Report) -> str:
+    """The one line that says how each job's playbook did.
+
+    Printed on every run, including a run of a set with no labels on it, for
+    the reason the gate-cost line is: a line that appears only sometimes is a
+    line nobody notices is missing. The split is beside the kind split rather
+    than inside it, because a question's kind says how it is graded and its
+    job says which playbook it is grading.
+    """
+    counts = report.by_job()
+    if not counts:
+        return "by job: no question carries a job label"
+    split = ", ".join(f"{passed}/{total} {job}" for job, (passed, total) in counts.items())
+    return f"by job: {split}"
 
 
 def render_skipped(report: Report) -> str:

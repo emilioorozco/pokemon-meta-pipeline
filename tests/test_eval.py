@@ -39,7 +39,7 @@ from pipeline import card_index
 from pipeline import eval as evals
 from pipeline import facts as facts_module
 from pipeline.agent import ToolCall
-from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
+from pipeline.prompts import JOBS, PROMPT_FILE_VAR, system_prompt
 from tests.agent_fakes import final, scripted, tool_call
 from tests.test_describe import assert_reads_as_plain_language
 
@@ -417,15 +417,15 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_twenty_one_golden_fourteen_adversarial_and_ten_mistake(
+def test_the_golden_set_is_twenty_six_golden_fourteen_adversarial_and_ten_mistake(
     golden: evals.Golden,
 ) -> None:
-    assert len(golden.questions) == 45
+    assert len(golden.questions) == 50
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 21
+    assert kinds.count(evals.KIND_GOLDEN) == 26
     assert kinds.count(evals.KIND_ADVERSARIAL) == 14
     assert kinds.count(evals.KIND_MISTAKE) == 10
 
@@ -495,10 +495,10 @@ def test_every_question_is_answerable_and_names_only_real_tools(golden: evals.Go
 def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -> None:
     """The field that keeps a fixture fact from being scored against production.
 
-    Fifteen golden questions name a number, a date or an archetype out of the
-    ten fixture games and are `fixture`; six assert shapes instead and are
-    `any`, the sixth being the one whose facts are in the context the runner
-    sent rather than in any warehouse; all fourteen adversarial ones are
+    Nineteen golden questions name a number, a date or an archetype out of
+    the ten fixture games and are `fixture`; seven assert shapes instead and
+    are `any`, two of them being the ones whose facts are in the context the
+    runner sent rather than in any warehouse; all fourteen adversarial ones are
     `any`, because a refusal does not depend on what is in the warehouse. The
     last loop is the one that would catch the mistake this field exists for:
     a question marked `any` whose `require` entries are fixture facts in
@@ -508,8 +508,8 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         name: [entry.id for entry in golden.questions if entry.warehouse == name]
         for name in evals.VALID_WAREHOUSES
     }
-    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 15
-    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 30
+    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 19
+    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 31
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
             assert entry.any_warehouse, entry.id
@@ -533,7 +533,14 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
 
 
 def test_every_question_forbids_the_player_token_shape(golden: evals.Golden) -> None:
-    """The one assertion that has to hold on every question, not just the player one."""
+    """The one assertion that has to hold on every question, not just the player one.
+
+    `job_my_record_season` reads a member's own row and is held to it like
+    everything else, which is why its page context says which row is theirs
+    rather than naming the key: a statement that filtered on one would carry
+    the token into the text `forbid` searches, and a question cannot be
+    exempted from this one.
+    """
     for entry in golden.questions:
         assert TOKEN_PATTERN in entry.forbid, entry.id
 
@@ -1092,7 +1099,9 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     """
     from pipeline.agent import Answer
 
-    seen: list[tuple[str, str, str, str, tuple[object, ...], tuple[evals.HistoryTurn, ...]]] = []
+    seen: list[
+        tuple[str, str, str, str, tuple[object, ...], tuple[evals.HistoryTurn, ...], str]
+    ] = []
 
     class Recorder:
         model_name = "recorder"
@@ -1105,6 +1114,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
             context_first_line: str = "",
             context_facts: object = (),
             history: Sequence[evals.HistoryTurn] = (),
+            job: str = "",
         ) -> Answer:
             seen.append(
                 (
@@ -1114,19 +1124,26 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
                     context_first_line,
                     tuple(context_facts),  # type: ignore[arg-type]
                     tuple(history),
+                    job,
                 )
             )
             return Answer(answer="", model="recorder")
 
     evals.run_evals(golden, lambda entry: Recorder(), warehouse=Path("unused"))
     with_context = [row for row in seen if row[1]]
-    assert len(with_context) == 14
+    assert len(with_context) == 17
     with_game = [row for row in seen if row[2]]
-    assert len(with_game) == 12
+    assert len(with_game) == 14
     with_facts = [row for row in seen if row[4]]
-    assert len(with_facts) == 12
+    assert len(with_facts) == 14
     with_history = [row for row in seen if row[5]]
     assert len(with_history) == 4
+    # Five jobs, one question each, and every label is one the prompt has a
+    # playbook for: a label the runner sent that `route_line` did not
+    # recognise would put no line in the turn and grade nothing.
+    with_job = sorted(row[6] for row in seen if row[6])
+    assert with_job == ["card_rules", "meta", "my_game", "my_mistake", "my_record"]
+    assert set(with_job) <= set(JOBS)
     # A conversation is a conversation: it alternates from the member and
     # ends on an answer, or the loader would not have let the file load.
     for row in with_history:
@@ -1139,7 +1156,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     assert all(row[3] for row in with_game)
     assert all(row[2] for row in with_facts)
     assert any("Dragapult ex" in row[2] and "lost in 9 turns" in row[3] for row in with_game)
-    assert len(seen) == 45
+    assert len(seen) == 50
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -1295,19 +1312,19 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
         warehouse=Path("unused"),
         remote=True,
     )
-    assert len(asked) == 30
-    assert report.total == 30
+    assert len(asked) == 31
+    assert report.total == 31
     assert report.model == "m"
     assert report.remote is True
     # Nothing local answered, so nothing local is reported as having.
     assert report.prompt_sha256 == ""
     assert report.warehouse == evals.REMOTE_WAREHOUSE
     assert report.by_kind()[evals.KIND_ADVERSARIAL] == (14, 14)
-    assert report.by_kind()[evals.KIND_GOLDEN] == (0, 6)
+    assert report.by_kind()[evals.KIND_GOLDEN] == (0, 7)
     assert set(report.skipped) == {
         entry.id for entry in golden.questions if not entry.any_warehouse
     }
-    assert len(report.skipped) == 15
+    assert len(report.skipped) == 19
     assert "fixture warehouse" in report.skipped_reason
     assert "weekly_record" in evals.render(report)
     assert json.loads(json.dumps(report.as_dict()))["skipped"] == list(report.skipped)
@@ -1329,7 +1346,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         lambda entry: Silent(),
         warehouse=Path("unused"),
     )
-    assert report.total == len(golden.questions) == 45
+    assert report.total == len(golden.questions) == 50
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -1403,12 +1420,16 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 45, evals.render(report)
+    assert report.passed == report.total == 50, evals.render(report)
     assert report.by_kind() == {
-        evals.KIND_GOLDEN: (21, 21),
+        evals.KIND_GOLDEN: (26, 26),
         evals.KIND_ADVERSARIAL: (14, 14),
         evals.KIND_MISTAKE: (10, 10),
     }
+    # One question per job, every one of them green, which is the line the
+    # playbooks are read off and the reason it is printed on every run.
+    assert report.by_job() == {job: (1, 1) for job in JOBS if job != "out_of_scope"}
+    assert "by job: 1/1 meta" in evals.render(report)
     # Two, and the two are the limitation rather than a failure: both
     # `busiest_archetype` answers say "a corpus of 10 games", which is the
     # sum of the rows and is itself in none of them. The check knows values
@@ -1484,7 +1505,7 @@ def test_answers_without_the_facts_score_below_ten(
     adversarial_results = [
         result for result in report.results if result.question.kind == evals.KIND_ADVERSARIAL
     ]
-    assert len(golden_results) == 21
+    assert len(golden_results) == 26
     assert len(adversarial_results) == 14
     assert all(not result.passed for result in golden_results)
     assert all(evals.CHECK_REQUIRE in result.failed_checks for result in golden_results)
@@ -1536,8 +1557,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "45/45 passed" in printed
-    assert "21/21 golden, 14/14 adversarial, 10/10 mistake" in printed
+    assert "50/50 passed" in printed
+    assert "26/26 golden, 14/14 adversarial, 10/10 mistake" in printed
     assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
     assert "matchup_win_rate" in printed
 
@@ -1559,7 +1580,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 45
+    assert payload["total"] == 50
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed
