@@ -69,6 +69,16 @@ built. The SQL itself is on the span as a length rather than as text: a query
 is short and harmless here, but a span attribute is the wrong place to start
 putting model output.
 
+**The prompt is a cached prefix, and the counters say whether it really is.**
+The system prompt goes to the provider as content blocks with a breakpoint on
+the last (`pipeline.prompts.system_blocks`), and marking a prefix is not the
+same as caching one: below the model's minimum cacheable length the provider
+writes nothing and returns no error. So `token_usage` reports
+`cache_read_input_tokens` and `cache_creation_input_tokens` beside the plain
+counts, they go on the span as `agent.usage.*` and into
+`agent_prompt_tokens_total{kind=...}`, and `docs/agent-service.md` says what
+the numbers should look like today. Zero reads is a reading, not a gap.
+
 **A run keeps its evidence, not only its tally.** `tool_calls` says a query ran
 and returned four rows, which is enough for a counter and not enough for a
 reader deciding whether to believe the answer. So a run also collects
@@ -104,13 +114,13 @@ from typing import Any, Final
 import duckdb
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool, StructuredTool
 from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.observability import configure_logging, emit_summary
-from pipeline.prompts import ALLOWED_TABLES, system_prompt, wrap_question
+from pipeline.prompts import ALLOWED_TABLES, system_blocks, wrap_question
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
@@ -143,6 +153,15 @@ CARD_TOOL: Final = "lookup_cards"
 NO_CARD_INDEX: Final = "no card index is configured; this agent has only its SQL half"
 ANSWER_SPAN: Final = "agent.answer"
 TOOL_SPAN_PREFIX: Final = "agent.tool."
+
+# The two cache counts, by the name this project reports them under and the
+# name LangChain files them under inside `usage_metadata["input_token_details"]`.
+# The reported names are the provider's, so a log line and an invoice line use
+# the same words.
+CACHE_TOKEN_FIELDS: Final[dict[str, str]] = {
+    "cache_read_input_tokens": "cache_read",
+    "cache_creation_input_tokens": "cache_creation",
+}
 
 # Appended when the model writes no LIMIT of its own, and the ceiling any LIMIT
 # it does write is cut down to. Fifty rows is more than an answer needs and few
@@ -1059,12 +1078,18 @@ class Agent:
         model_name: str,
         tool_names: Sequence[str],
         tracer: trace.Tracer,
+        metrics: ServiceMetrics | None = None,
         warmer: Callable[[], bool] | None = None,
         card_tool_reason: str | None = None,
     ) -> None:
         self.graph = graph
         self.model_name = model_name
         self.tool_names = list(tool_names)
+        # The same instruments the tools were built with, so the prompt-token
+        # counter and the tool-call counter are in one registry and a scrape
+        # reads both. Optional because a test builds an `Agent` around a
+        # scripted graph and has nothing to scrape.
+        self.metrics = metrics
         # The same tracer the tools were built with, rather than the global
         # provider: `agent.answer` has to be the parent of the tool spans, and
         # a second provider would put them in two unrelated traces.
@@ -1118,8 +1143,13 @@ class Agent:
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
                 span.set_attribute("agent.tool_calls", len(collected))
+                # Every reported count, which since the cache breakpoint went
+                # in includes `agent.usage.cache_read_input_tokens` and
+                # `agent.usage.cache_creation_input_tokens`.
                 for name, value in usage.items():
                     span.set_attribute(f"agent.usage.{name}", value)
+                if self.metrics is not None:
+                    self.metrics.count_prompt_tokens(usage)
         finally:
             _question.reset(asked)
             _calls.reset(token)
@@ -1175,6 +1205,20 @@ def token_usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
     Empty rather than zeroed when nothing said: a fake model reports no usage,
     and a response body that claimed zero tokens would be a wrong number rather
     than a missing one.
+
+    The two cache counts come from a nested place. LangChain keeps the plain
+    counts at the top of `usage_metadata` and puts the cache ones under
+    `input_token_details` as `cache_read` and `cache_creation`; the names
+    reported here are the provider's own, `cache_read_input_tokens` and
+    `cache_creation_input_tokens`, because those are what the platform's
+    documentation and its pricing table call them and a reader comparing a log
+    line with a bill should not have to translate.
+
+    They are reported as zero whenever anything was reported at all, which is
+    the one place this function does fill a count in. A missing cache field on
+    a provider that answered is a real zero, not an absence: it means the
+    prefix was not cached, which is exactly the thing worth seeing. A run that
+    reported no usage at all still gets an empty dictionary.
     """
     totals: dict[str, int] = {}
     for message in messages:
@@ -1185,6 +1229,11 @@ def token_usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
             value = metadata.get(name)
             if isinstance(value, int):
                 totals[name] = totals.get(name, 0) + value
+        details = metadata.get("input_token_details")
+        details = details if isinstance(details, dict) else {}
+        for name, reported in CACHE_TOKEN_FIELDS.items():
+            value = details.get(reported)
+            totals[name] = totals.get(name, 0) + (value if isinstance(value, int) else 0)
     return totals
 
 
@@ -1221,14 +1270,20 @@ def build_agent(
         gate=resolved_gate,
     )
     tools = toolset.tools
+    # A `SystemMessage` of content blocks rather than a plain string, so the
+    # last block can carry the cache breakpoint; `create_agent` accepts either
+    # and langchain-anthropic forwards `cache_control` on a text block as is.
     graph = create_agent(
         model=chat,
         tools=tools,
-        system_prompt=system_prompt(with_card_tool=any(t.name == CARD_TOOL for t in tools)),
+        system_prompt=SystemMessage(
+            content=system_blocks(with_card_tool=any(t.name == CARD_TOOL for t in tools))
+        ),
     )
     return Agent(
         graph.with_config({"recursion_limit": MAX_ITERATIONS * 2}),
         tracer=resolved_tracer,
+        metrics=resolved_metrics,
         model_name=getattr(chat, "model_name", None) or getattr(chat, "model", "") or "fake",
         tool_names=[tool.name for tool in tools],
         warmer=toolset.warm,

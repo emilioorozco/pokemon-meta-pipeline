@@ -120,7 +120,7 @@ trust. Four fields were added for that panel and none of the old ones changed.
 |---|---|
 | `answer` | the prose, as before |
 | `tool_calls` | the tally, as before: tool, a one-line `input_summary`, a row count. The evaluation scripts read this and it is not going to change shape |
-| `model`, `usage` | the provider's model and token counts, as before |
+| `model`, `usage` | the provider's model and token counts, as before, with `cache_read_input_tokens` and `cache_creation_input_tokens` added by the section below |
 | `evidence` | `queries` and `cards`, below |
 | `gate_summary` | the worst thing that happened to a query in this run |
 | `latency_ms` | wall time of the whole call measured inside the service, so a question that had to build the agent reports what the caller waited for |
@@ -174,6 +174,130 @@ and 500 characters a string keep an answer a response rather than an export.
 `python -m pipeline.agent --evidence` prints the same object, so a question
 asked on a terminal and the same question asked over HTTP can be compared
 without allowing for two renderings; `--json` always carries it.
+
+## What a question costs, and the cached prefix
+
+Every model call re-sends the whole system prompt. One question is two to four
+calls, because the agent reads a tool result and asks again, so the prompt is
+paid for two to four times per question before a member has read a word. A
+cached prefix is the provider holding that text between calls: the first call
+writes it at 1.25 times the input price, every call within five minutes reads
+it at a tenth, and the five minutes restart on each read.
+
+**The layout.** The prefix is hashed in order, tools first, then the system
+blocks, then the messages, and a change at one level invalidates that level
+and everything after it. So everything identical across requests goes first
+and the breakpoint goes on the last of it:
+
+| position | content | changes when |
+|---|---|---|
+| tools | `query_marts`, and `lookup_cards` when the index is there | a deploy |
+| system, block 1 | the role sentence, the eight rules, the card-tool note | a deploy |
+| system, block 2 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
+| **breakpoint** | `cache_control: {"type": "ephemeral"}` on block 2 | |
+| human turn | the `<question>` element, and nothing of ours | every request |
+
+The breakpoint goes on the last **stable** block, not on the last block.
+Marking something that varies would rewrite the entry on every call and bill a
+write every time instead of a read. Nothing per request is in the two system
+blocks: the member's question travels in the human turn, which is why one
+cache entry serves every member.
+
+`pipeline.prompts.system_blocks` builds the blocks and
+`pipeline.agent.build_agent` hands them to `create_agent` as a `SystemMessage`
+whose content is a list of blocks. langchain-anthropic forwards
+`cache_control` on a text block to the provider untouched.
+
+**The minimum, and what it means here.** Claude Haiku 4.5's minimum cacheable
+prefix is **4,096 tokens**
+([platform.claude.com/docs/en/build-with-claude/prompt-caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)).
+Below it the provider caches nothing, marked or not, and returns no error: the
+only way to know is the `usage` fields.
+
+Today's prefix is **below that**. The system prompt is 7,904 characters with
+the card-tool note and 7,670 without, and the tool schemas are roughly 900
+more, so at the four-characters-per-token rule this file already uses for
+`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,200 tokens**. That is an
+estimate from a character count and not a measurement. The measurement is one
+call, and it needs a provider key:
+
+```bash
+op run --env-file=.env.dev.op -- uv run python -c '
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from pipeline.agent import CARD_TOOL, chat_model, marts_tools
+from pipeline.config import CARD_INDEX_DIR, WAREHOUSE_PATH
+from pipeline.prompts import system_blocks, wrap_question
+from pipeline.telemetry import build_metrics, build_tracer_provider
+
+tracer = build_tracer_provider("count-tokens").get_tracer("count-tokens")
+tools = marts_tools(
+    warehouse=WAREHOUSE_PATH,
+    card_index=CARD_INDEX_DIR,
+    tracer=tracer,
+    metrics=build_metrics(),
+).tools
+has_cards = any(tool.name == CARD_TOOL for tool in tools)
+messages = [
+    SystemMessage(content=system_blocks(with_card_tool=has_cards)),
+    HumanMessage(content=wrap_question("which decks are winning this week")),
+]
+print(chat_model().get_num_tokens_from_messages(messages, tools=tools))
+'
+```
+
+`ChatAnthropic.get_num_tokens_from_messages` is the SDK's `messages.count_tokens`
+behind a LangChain name. The tools go in because they are inside the prefix.
+The question goes in so the call is shaped like a real one; what is compared
+against the 4,096 is the prefix up to the breakpoint, so run it a second time
+with the `HumanMessage` dropped and take that number. Write it here, replace
+the estimate, and say it is a measurement.
+
+**The honest expectation, until that number is 4,096 or more.** Nothing
+caches. `cache_read_input_tokens` is zero on every call and
+`cache_creation_input_tokens` is zero too, and that is the correct reading
+rather than a bug in the wiring. **Do not pad the prompt to reach the
+minimum**: paying for 1,900 tokens of filler on every call to make 2,200
+tokens cheaper is a loss, and a prompt written to hit a number is a prompt
+nobody can edit. The text that will carry the prefix over the line is text
+that earns its own place, the per-job playbooks and the facts glossary of the
+router work, and when that lands this section gets the new measurement and the
+first non-zero reads.
+
+**Reading the counters.** `pipeline.agent.token_usage` takes the two counts off
+LangChain's `usage_metadata["input_token_details"]` and reports them under the
+provider's own names, summed over the question's calls. They land in four
+places: `usage` in the `/ask` body, `agent.usage.cache_read_input_tokens` and
+`agent.usage.cache_creation_input_tokens` on the `agent.answer` span, the
+Prometheus counter `agent_prompt_tokens_total{kind="cache_read"|"cache_creation"|"uncached"}`,
+and the `usage` object of the service's `agent answered` log line. The three
+counter kinds do not overlap: they are the provider's split of the input side,
+and `cache_read` over their sum is the hit ratio.
+
+The same ratio from the function's logs, over whatever period the console is
+set to:
+
+```
+fields @timestamp, usage.cache_read_input_tokens as cache_read,
+       usage.cache_creation_input_tokens as cache_write,
+       usage.input_tokens as uncached
+| filter msg = "agent answered"
+| stats sum(cache_read) as read_tokens,
+        sum(cache_write) as write_tokens,
+        sum(uncached) as uncached_tokens,
+        sum(cache_read) / (sum(cache_read) + sum(cache_write) + sum(uncached)) as hit_ratio
+  by bin(1d)
+```
+
+A day of zeros in `read_tokens` with a non-zero `uncached_tokens` is the
+prefix being under the minimum, which is today's expected answer. Zeros in all
+three is a day with no questions.
+
+The weekly evaluation reports the same two numbers over a whole run:
+`Report.as_dict` carries `usage_totals` and the MLflow run logs
+`cache_read_tokens` and `cache_creation_tokens`, so a prompt edit that quietly
+moved a per-request string into the cached blocks, or broke the prefix, is a
+step in the run table rather than a surprise on a bill.
 
 ## What is a failure and what is a state
 

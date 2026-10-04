@@ -97,10 +97,16 @@ The service writes one JSON line per request and one per answer. Between them
 they carry the method and route, the status, the duration in milliseconds, the
 model that answered, the number of tool calls, the length of the question, the
 length of the answer, the length of each statement, the row counts, and the
-gate's verdict and cost per call. The question itself is a number of
-characters and the answer is a number of characters. The SQL is a length, not
-a string: a mart query is short and harmless today, and a log line is still
-the wrong place to start putting model output.
+gate's verdict and cost per call. They also carry what the question cost the
+provider: `input_tokens`, `output_tokens`, and `cache_read_input_tokens` and
+`cache_creation_input_tokens`, which say how much of the input side was served
+from the cached system prompt rather than sent again
+([agent-service.md](agent-service.md)). Those are sizes of a prompt this
+project wrote, not of anything a member typed, and the same four numbers are
+on the `agent.answer` span and in `agent_prompt_tokens_total`. The question
+itself is a number of characters and the answer is a number of characters. The
+SQL is a length, not a string: a mart query is short and harmless today, and a
+log line is still the wrong place to start putting model output.
 
 The application adds the one identifier there is, which is a hashed member id,
 so that "one member asked thirty questions" is answerable and "which member"

@@ -529,6 +529,54 @@ def test_the_report_is_json_and_carries_every_question() -> None:
     assert [entry["id"] for entry in payload["questions"]] == ["good"]
 
 
+def test_the_report_totals_the_tokens_the_run_cost() -> None:
+    """Summed over the questions, cache counts included, for the tracking run.
+
+    The two cache columns are why this exists: a prompt edit that moves a
+    per-request string into the cached blocks stops the cache working, and the
+    only way that shows up before a bill does is as a step in these numbers
+    between one weekly run and the next.
+    """
+    report = report_of(
+        evals.score(
+            question(id="one"),
+            "12 games",
+            [evals.SQL_TOOL],
+            usage={
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 2_200,
+                "cache_creation_input_tokens": 0,
+            },
+        ),
+        evals.score(
+            question(id="two"),
+            "12 games",
+            [evals.SQL_TOOL],
+            usage={
+                "input_tokens": 50,
+                "output_tokens": 10,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 2_200,
+            },
+        ),
+    )
+    payload = json.loads(json.dumps(report.as_dict()))
+    assert payload["usage_totals"] == {
+        "input_tokens": 150,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 2_200,
+        "cache_creation_input_tokens": 2_200,
+    }
+    assert payload["questions"][0]["usage"]["cache_read_input_tokens"] == 2_200
+
+
+def test_the_report_totals_are_zeros_rather_than_missing_on_a_run_with_no_usage() -> None:
+    """A replay run asks no provider anything, and a hole in a chart is not a zero."""
+    report = report_of(evals.score(question(id="one"), "12 games", [evals.SQL_TOOL]))
+    assert report.usage_totals() == dict.fromkeys(evals.USAGE_TOTAL_KEYS, 0)
+
+
 def test_the_report_advisory_count_is_in_the_json_and_does_not_touch_passed() -> None:
     asked = question(
         id="adv",
@@ -606,7 +654,12 @@ def test_a_run_is_logged_to_mlflow_with_one_metric_per_question(tmp_path: Path) 
     import mlflow
 
     report = report_of(
-        evals.score(question(id="good"), "12 games", [evals.SQL_TOOL]),
+        evals.score(
+            question(id="good"),
+            "12 games",
+            [evals.SQL_TOOL],
+            usage={"cache_read_input_tokens": 2_200, "cache_creation_input_tokens": 110},
+        ),
         evals.score(question(id="bad"), "no idea", []),
     )
     uri = f"file:{tmp_path / 'mlruns'}"
@@ -619,6 +672,9 @@ def test_a_run_is_logged_to_mlflow_with_one_metric_per_question(tmp_path: Path) 
     assert logged.data.metrics["pass_rate"] == 0.5
     assert logged.data.metrics["q.good"] == 1.0
     assert logged.data.metrics["q.bad"] == 0.0
+    # The two the cache work added: a run that stopped caching is a step here.
+    assert logged.data.metrics["cache_read_tokens"] == 2_200.0
+    assert logged.data.metrics["cache_creation_tokens"] == 110.0
     assert logged.data.params["prompt_sha256"] == "0" * 64
     assert logged.data.params["golden_version"] == "1"
 

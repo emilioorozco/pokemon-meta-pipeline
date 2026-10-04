@@ -48,7 +48,7 @@ import logging
 import os
 import socket
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Final
@@ -84,6 +84,15 @@ EXCLUDED_URLS: Final = "health,metrics"
 # The route label for a request that matched no route. Without it every 404 path
 # is a new time series, which is how a metrics store is filled up by a scanner.
 UNMATCHED_ROUTE: Final = "unmatched"
+
+# The label values of `agent_prompt_tokens_total`, and the usage key each one
+# counts. A closed set of three, because the provider splits the input side
+# exactly this way and a fourth value would mean the split stopped adding up.
+PROMPT_TOKEN_KINDS: Final[dict[str, str]] = {
+    "cache_read": "cache_read_input_tokens",
+    "cache_creation": "cache_creation_input_tokens",
+    "uncached": "input_tokens",
+}
 
 # Tighter than the Prometheus defaults, which start at 5 milliseconds: one
 # LightGBM call on one row is faster than that, so the default buckets would put
@@ -248,6 +257,7 @@ class ServiceMetrics:
     inference_duration: Histogram
     predictions: Counter
     agent_tool_calls: Counter
+    agent_prompt_tokens: Counter
     model_info: Gauge
 
     def observe_request(self, method: str, route: str, status: int, duration_s: float) -> None:
@@ -285,6 +295,25 @@ class ServiceMetrics:
         provider chooses is one time series per provider mood.
         """
         self.agent_tool_calls.labels(tool=tool, gate=gate).inc()
+
+    def count_prompt_tokens(self, usage: Mapping[str, int]) -> None:
+        """One answered question's input tokens, split three ways by how they were paid for.
+
+        The three kinds are the provider's own split of the input side and they
+        do not overlap: `cache_read` was served from a written prefix at a
+        tenth of the price, `cache_creation` wrote one at a quarter over, and
+        `uncached` is `input_tokens`, which the provider reports as the
+        remainder after the other two. Summed, they are what the question cost
+        on input; divided, `cache_read` over the sum is the hit ratio.
+
+        Nothing is recorded when the run reported no usage at all, because a
+        counter that ticked by zero on every fake model would make an empty
+        dashboard look like a working one.
+        """
+        if not usage:
+            return
+        for kind, name in PROMPT_TOKEN_KINDS.items():
+            self.agent_prompt_tokens.labels(kind=kind).inc(usage.get(name, 0))
 
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
@@ -349,6 +378,12 @@ def build_metrics() -> ServiceMetrics:
             "agent_tool_calls_total",
             "Agent tool invocations, by tool name and by the SQL gate's verdict.",
             ["tool", "gate"],
+            registry=registry,
+        ),
+        agent_prompt_tokens=Counter(
+            "agent_prompt_tokens_total",
+            "Input tokens the provider billed the agent for, by how they were paid for.",
+            ["kind"],
             registry=registry,
         ),
         model_info=Gauge(

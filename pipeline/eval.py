@@ -99,8 +99,8 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Protocol, runtime_checkable
 
@@ -199,6 +199,17 @@ CHECK_TOOLS: Final = "tools"
 CHECK_REQUIRE: Final = "require"
 CHECK_FORBID: Final = "forbid"
 CHECK_ERROR: Final = "error"
+
+# The token counts a run totals, named as `pipeline.agent.token_usage` reports
+# them. `total_tokens` is left out because it is the sum of the other two plain
+# counts and a derived number in a report invites two readers to disagree about
+# whether the cache counts are inside it.
+USAGE_TOTAL_KEYS: Final[tuple[str, ...]] = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
 
 # What the `gate` column says. `-` is "no gate judged anything on this
 # question", which is every question of a run with the flag off and also a
@@ -380,6 +391,10 @@ class Result:
     gate: str = GATE_NONE
     gate_calls: int = 0
     gate_cost_usd: float = 0.0
+    # What the provider said this question cost, carried through unchanged so
+    # the run can sum it. Empty on a replayed or scripted model, which reports
+    # no usage at all, and empty on a question that raised before it was asked.
+    usage: dict[str, int] = field(default_factory=dict)
 
     @property
     def _require_is_advisory(self) -> bool:
@@ -440,6 +455,7 @@ class Result:
             "gate": self.gate,
             "gate_calls": self.gate_calls,
             "gate_cost_usd": self.gate_cost_usd,
+            "usage": dict(self.usage),
             "answer": self.answer,
         }
 
@@ -501,6 +517,7 @@ def score(
     *,
     calls: Sequence[ToolCall] = (),
     evidence: Evidence | None = None,
+    usage: Mapping[str, int] | None = None,
 ) -> Result:
     """Score one answer against one question. Pure, and the unit the tests hit.
 
@@ -514,7 +531,9 @@ def score(
     would make the golden set a measurement of two models rather than one.
 
     `evidence` widens where a `forbid` entry is looked for, and nothing else;
-    `workings` above says why.
+    `workings` above says why. `usage` changes no check either: it is the
+    provider's token counts, carried so that the run can total them and the
+    tracking run can show a prompt change that quietly stopped caching.
     """
     called = tuple(tools_called)
     unique = set(called)
@@ -537,6 +556,7 @@ def score(
         gate=gate,
         gate_calls=gate_calls,
         gate_cost_usd=gate_cost,
+        usage=dict(usage or {}),
     )
 
 
@@ -620,6 +640,23 @@ class Report:
         """What the gate cost for this whole run, in dollars."""
         return round(sum(result.gate_cost_usd for result in self.results), 10)
 
+    def usage_totals(self) -> dict[str, int]:
+        """The provider's token counts summed over every question of the run.
+
+        Always the same four keys, zero when nothing reported, because the
+        point of the two cache counts is to be compared between runs: a key
+        that disappears on a run with no reads is a gap in a chart where a
+        zero is the measurement. A run against the replay model reports four
+        zeros, which is correct, it asked no provider anything.
+        """
+        totals = dict.fromkeys(USAGE_TOTAL_KEYS, 0)
+        for result in self.results:
+            for name in totals:
+                value = result.usage.get(name)
+                if isinstance(value, int):
+                    totals[name] += value
+        return totals
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "golden_version": self.golden.version,
@@ -646,6 +683,7 @@ class Report:
             "gate_calls": self.gate_calls,
             "gate_refusals": self.gate_refusals,
             "gate_cost_usd": self.gate_cost_usd,
+            "usage_totals": self.usage_totals(),
             "questions": [result.as_dict() for result in self.results],
         }
 
@@ -1099,6 +1137,7 @@ def run_question(question: Question, agent: Askable) -> Result:
         [call.tool for call in answer.tool_calls],
         calls=answer.tool_calls,
         evidence=answer.evidence,
+        usage=getattr(answer, "usage", None),
     )
 
 
@@ -1310,6 +1349,13 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 "gate_calls": float(report.gate_calls),
                 "gate_refusals": float(report.gate_refusals),
                 "gate_cost_usd": report.gate_cost_usd,
+                # The input side split by how it was paid for. A prompt edit
+                # that moves a byte into the cached prefix, or breaks it, is a
+                # step in these two columns of the run table and nowhere else.
+                "cache_read_tokens": float(report.usage_totals()["cache_read_input_tokens"]),
+                "cache_creation_tokens": float(
+                    report.usage_totals()["cache_creation_input_tokens"]
+                ),
                 **{f"q.{result.question.id}": float(result.passed) for result in report.results},
             }
         )
