@@ -29,7 +29,7 @@ nothing when it is off" is a measurement rather than a claim.
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Final
 
@@ -417,16 +417,16 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_nineteen_golden_twelve_adversarial_and_ten_mistake(
+def test_the_golden_set_is_twenty_one_golden_fourteen_adversarial_and_ten_mistake(
     golden: evals.Golden,
 ) -> None:
-    assert len(golden.questions) == 41
+    assert len(golden.questions) == 45
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 19
-    assert kinds.count(evals.KIND_ADVERSARIAL) == 12
+    assert kinds.count(evals.KIND_GOLDEN) == 21
+    assert kinds.count(evals.KIND_ADVERSARIAL) == 14
     assert kinds.count(evals.KIND_MISTAKE) == 10
 
 
@@ -469,12 +469,12 @@ def test_every_adversarial_question_grades_the_run_and_not_only_the_prose(
 ) -> None:
     """A refusal in words over a run that read the roster is not a refusal.
 
-    So each of the twelve has to forbid something, and the ones that forbid a
+    So each of the fourteen has to forbid something, and the ones that forbid a
     table have to spell it the way SQL does: `from dim_player` is a query and
     `dim_player` on its own is a sentence an honest refusal is allowed to say.
     """
     adversarial = [entry for entry in golden.questions if entry.kind == evals.KIND_ADVERSARIAL]
-    assert len(adversarial) == 12
+    assert len(adversarial) == 14
     for entry in adversarial:
         assert entry.forbid, entry.id
         assert entry.expect_tools == (), entry.id
@@ -495,21 +495,21 @@ def test_every_question_is_answerable_and_names_only_real_tools(golden: evals.Go
 def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -> None:
     """The field that keeps a fixture fact from being scored against production.
 
-    Thirteen golden questions name a number, a date or an archetype out of the
+    Fifteen golden questions name a number, a date or an archetype out of the
     ten fixture games and are `fixture`; six assert shapes instead and are
     `any`, the sixth being the one whose facts are in the context the runner
-    sent rather than in any warehouse; all twelve adversarial ones are `any`,
-    because a refusal does not depend on what is in the warehouse. The last
-    loop is the one that would catch the mistake this field exists for: a
-    question marked `any` whose `require` entries are fixture facts in
+    sent rather than in any warehouse; all fourteen adversarial ones are
+    `any`, because a refusal does not depend on what is in the warehouse. The
+    last loop is the one that would catch the mistake this field exists for:
+    a question marked `any` whose `require` entries are fixture facts in
     disguise.
     """
     by_warehouse = {
         name: [entry.id for entry in golden.questions if entry.warehouse == name]
         for name in evals.VALID_WAREHOUSES
     }
-    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 13
-    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 28
+    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 15
+    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 30
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
             assert entry.any_warehouse, entry.id
@@ -521,7 +521,10 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         # game summary is exempt from the check below rather than a hole in
         # it; one that is not in the context it sent is not.
         placed = "\n".join(fact.text for fact in entry.context_facts)
-        sent = f"{entry.context}\n{entry.context_game}\n{entry.context_first_line}\n{placed}"
+        said = "\n".join(turn.text for turn in entry.history)
+        sent = (
+            f"{entry.context}\n{entry.context_game}\n{entry.context_first_line}\n{placed}\n{said}"
+        )
         for pattern in (*entry.require, *entry.forbid):
             if pattern in sent:
                 continue
@@ -1079,16 +1082,17 @@ def test_a_response_missing_everything_optional_is_still_an_answer() -> None:
 def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     """The fields are only worth having if they reach the agent, locally and remotely.
 
-    Thirteen of the forty carry a context and the rest carry nothing, so
-    this asserts both: those thirteen are asked with theirs, and every other
-    question is asked exactly as it was before the fields existed. Eleven of
-    the thirteen carry a game, which is the one `golden` question about the
-    game on screen and the ten `mistake` ones, and only those ten carry
-    facts.
+    Fourteen of the forty-five carry a context and the rest carry nothing,
+    so this asserts both: those fourteen are asked with theirs, and every
+    other question is asked exactly as it was before the fields existed.
+    Twelve of the fourteen carry a game, which is the two `golden` questions
+    about the game on screen and the ten `mistake` ones, and the same twelve
+    carry facts. Four carry a conversation, which is the two follow-ups and
+    the two adversarial questions whose injection is in an earlier turn.
     """
     from pipeline.agent import Answer
 
-    seen: list[tuple[str, str, str, str, tuple[object, ...]]] = []
+    seen: list[tuple[str, str, str, str, tuple[object, ...], tuple[evals.HistoryTurn, ...]]] = []
 
     class Recorder:
         model_name = "recorder"
@@ -1100,26 +1104,42 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
             context_game: str = "",
             context_first_line: str = "",
             context_facts: object = (),
+            history: Sequence[evals.HistoryTurn] = (),
         ) -> Answer:
             seen.append(
-                (question, context, context_game, context_first_line, tuple(context_facts))  # type: ignore[arg-type]
+                (
+                    question,
+                    context,
+                    context_game,
+                    context_first_line,
+                    tuple(context_facts),  # type: ignore[arg-type]
+                    tuple(history),
+                )
             )
             return Answer(answer="", model="recorder")
 
     evals.run_evals(golden, lambda entry: Recorder(), warehouse=Path("unused"))
     with_context = [row for row in seen if row[1]]
-    assert len(with_context) == 13
+    assert len(with_context) == 14
     with_game = [row for row in seen if row[2]]
-    assert len(with_game) == 11
+    assert len(with_game) == 12
     with_facts = [row for row in seen if row[4]]
-    assert len(with_facts) == 11
+    assert len(with_facts) == 12
+    with_history = [row for row in seen if row[5]]
+    assert len(with_history) == 4
+    # A conversation is a conversation: it alternates from the member and
+    # ends on an answer, or the loader would not have let the file load.
+    for row in with_history:
+        turns = row[5]
+        assert len(turns) % 2 == 0
+        assert [turn.role for turn in turns] == ["user", "assistant"] * (len(turns) // 2)
     # Every question that carries a game carries a first line for it too,
     # which is what the relevance decision is taken on, and every question
     # that carries facts carries the game they are about.
     assert all(row[3] for row in with_game)
     assert all(row[2] for row in with_facts)
     assert any("Dragapult ex" in row[2] and "lost in 9 turns" in row[3] for row in with_game)
-    assert len(seen) == 41
+    assert len(seen) == 45
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -1151,6 +1171,21 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
         "context_game": "Dragapult ex against Gardevoir ex, lost on turn 9.",
         "context_first_line": "Your Dragapult ex game against Gardevoir ex.",
     }
+    threaded = remote.ask(
+        "and against the deck I lost to most?",
+        history=(
+            evals.HistoryTurn(role="user", text="How does Dragapult control do?"),
+            evals.HistoryTurn(role="assistant", text="It has won its only game."),
+        ),
+    )
+    assert bodies[3] == {
+        "question": "and against the deck I lost to most?",
+        "history": [
+            {"role": "user", "text": "How does Dragapult control do?"},
+            {"role": "assistant", "text": "It has won its only game."},
+        ],
+    }
+    assert threaded.context_used is False
     assert plain.context_used is False
     assert carried.context_used is True
     assert carried.context_relevance is None
@@ -1164,6 +1199,57 @@ def test_a_context_that_is_not_a_string_is_a_load_error(tmp_path: Path, field: s
     path = write_golden(tmp_path / "g.yaml", ONE_QUESTION + f"    {field}: [a list]\n")
     with pytest.raises(evals.GoldenError, match=f"`{field}` has to be a string"):
         evals.load_golden(path)
+
+
+@pytest.mark.parametrize(
+    ("history", "message"),
+    [
+        ("    history: not a list\n", "`history` has to be a list"),
+        ("    history:\n      - [a list]\n", "expected a mapping"),
+        ("    history:\n      - {role: nobody, text: hi}\n", "is not a role"),
+        ("    history:\n      - {role: user, text: ''}\n", "needs a `text`"),
+        ("    history:\n      - {role: user, text: hi}\n", "end with an assistant turn"),
+        (
+            "    history:\n      - {role: assistant, text: hi}\n      - {role: user, text: hi}\n",
+            "has to be 'user'",
+        ),
+        (
+            "    history:\n"
+            + "      - {role: user, text: q}\n      - {role: assistant, text: a}\n" * 4,
+            "at most 6 prior turns",
+        ),
+    ],
+)
+def test_a_history_that_is_not_a_conversation_is_a_load_error(
+    tmp_path: Path, history: str, message: str
+) -> None:
+    """The same ceilings the service holds, checked where the file is read.
+
+    A conversation over the limits would be a 422 on a remote run and a
+    dropped history on a local one, which is two different failures for one
+    typo. The shape half is `validate_history` itself, so the golden file
+    and `POST /ask` cannot come to disagree about what a conversation is.
+    """
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION + history)
+    with pytest.raises(evals.GoldenError, match=re.escape(message)):
+        evals.load_golden(path)
+
+
+def test_a_question_with_a_conversation_carries_it_as_turns(tmp_path: Path) -> None:
+    """And one without carries nothing, which is every question but four."""
+    path = write_golden(
+        tmp_path / "g.yaml",
+        ONE_QUESTION
+        + "    history:\n      - {role: user, text: how many}\n"
+        + "      - {role: assistant, text: twelve}\n",
+    )
+    (loaded,) = evals.load_golden(path).questions
+    assert [(turn.role, turn.text) for turn in loaded.history] == [
+        ("user", "how many"),
+        ("assistant", "twelve"),
+    ]
+    bare = write_golden(tmp_path / "bare.yaml", ONE_QUESTION)
+    assert evals.load_golden(bare).questions[0].history == ()
 
 
 def test_a_first_line_with_no_game_to_describe_is_a_load_error(tmp_path: Path) -> None:
@@ -1181,10 +1267,11 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
     """The runner end to end over `--remote`, with a sender that is a dictionary.
 
     Every question gets one blanket refusal, which is the right answer to the
-    twelve adversarial ones and the wrong answer to the six shape-based ones,
-    so the score is 12 out of 19. The assertion that matters is the other half:
-    the thirteen fixture questions are never sent at all, and the report says
-    which thirteen and why rather than counting them as passes or as failures.
+    fourteen adversarial ones and the wrong answer to the six shape-based
+    ones, so the score is 14 out of 20. The assertion that matters is the
+    other half: the fifteen fixture questions are never sent at all, and the
+    report says which fifteen and why rather than counting them as passes or
+    as failures.
     A harness that sent them would be the one that produced the four red rows
     this field exists to stop.
     """
@@ -1208,19 +1295,19 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
         warehouse=Path("unused"),
         remote=True,
     )
-    assert len(asked) == 28
-    assert report.total == 28
+    assert len(asked) == 30
+    assert report.total == 30
     assert report.model == "m"
     assert report.remote is True
     # Nothing local answered, so nothing local is reported as having.
     assert report.prompt_sha256 == ""
     assert report.warehouse == evals.REMOTE_WAREHOUSE
-    assert report.by_kind()[evals.KIND_ADVERSARIAL] == (12, 12)
+    assert report.by_kind()[evals.KIND_ADVERSARIAL] == (14, 14)
     assert report.by_kind()[evals.KIND_GOLDEN] == (0, 6)
     assert set(report.skipped) == {
         entry.id for entry in golden.questions if not entry.any_warehouse
     }
-    assert len(report.skipped) == 13
+    assert len(report.skipped) == 15
     assert "fixture warehouse" in report.skipped_reason
     assert "weekly_record" in evals.render(report)
     assert json.loads(json.dumps(report.as_dict()))["skipped"] == list(report.skipped)
@@ -1242,7 +1329,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         lambda entry: Silent(),
         warehouse=Path("unused"),
     )
-    assert report.total == len(golden.questions) == 41
+    assert report.total == len(golden.questions) == 45
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -1316,10 +1403,10 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 41, evals.render(report)
+    assert report.passed == report.total == 45, evals.render(report)
     assert report.by_kind() == {
-        evals.KIND_GOLDEN: (19, 19),
-        evals.KIND_ADVERSARIAL: (12, 12),
+        evals.KIND_GOLDEN: (21, 21),
+        evals.KIND_ADVERSARIAL: (14, 14),
         evals.KIND_MISTAKE: (10, 10),
     }
     # Two, and the two are the limitation rather than a failure: both
@@ -1397,8 +1484,8 @@ def test_answers_without_the_facts_score_below_ten(
     adversarial_results = [
         result for result in report.results if result.question.kind == evals.KIND_ADVERSARIAL
     ]
-    assert len(golden_results) == 19
-    assert len(adversarial_results) == 12
+    assert len(golden_results) == 21
+    assert len(adversarial_results) == 14
     assert all(not result.passed for result in golden_results)
     assert all(evals.CHECK_REQUIRE in result.failed_checks for result in golden_results)
     assert all(result.passed for result in adversarial_results)
@@ -1449,8 +1536,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "41/41 passed" in printed
-    assert "19/19 golden, 12/12 adversarial, 10/10 mistake" in printed
+    assert "45/45 passed" in printed
+    assert "21/21 golden, 14/14 adversarial, 10/10 mistake" in printed
     assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
     assert "matchup_win_rate" in printed
 
@@ -1472,7 +1559,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 41
+    assert payload["total"] == 45
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed
