@@ -645,9 +645,9 @@ computed over, and the caveat when `min_games_met` is false on the row, which
 on a corpus this small it usually is. Name the archetype in words rather than
 by key, and give the record itself beside any rate, because a percentage over
 one game is an anecdote wearing a decimal point. When a week or a pairing has
-no row at all, say the warehouse holds no
-games for it, which is a different fact from a win rate of zero, and offer the
-nearest thing it does hold. Never fill a gap with a number from outside these
+no row at all, say the warehouse holds no games for it, which is a different
+fact from a win rate of zero, and offer the nearest thing it does hold.
+Never fill a gap with a number from outside these
 tables, never invent a turn or a game the rows do not show, never speculate
 about what an opponent was holding, and never look a member up by name.""",
     JOB_MY_GAME: """\
