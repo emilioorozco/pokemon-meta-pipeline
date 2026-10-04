@@ -403,6 +403,103 @@ models:
       - name: min_games_met
         description: The archetype has at least `min_games` seats that week.
 
+  - name: mart_archetype_pace
+    description: >
+      One row per archetype: how fast the deck plays, averaged over every seat
+      that played it. The ten columns are the ten the application computes for
+      a member's own game when it is uploaded, written a second time in SQL so
+      a member's number and the community's number are the same measurement.
+      `int_game_side_pace` holds the definitions one seat at a time; this is
+      the average. Every average skips the seats where its own number is null,
+      and that is not the same set for every column, so `games` is the seats
+      the archetype played rather than the denominator of any one column. A
+      seat whose game was never logged turn by turn is left out entirely.
+    columns:
+      - name: archetype_key
+        description: The archetype. The grain of this table.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: archetype_name
+        description: Its canonical display name.
+      - name: games
+        description: Seats this archetype held with a logged game.
+      - name: first_attack_turn
+        description: Average turn of its first attack.
+      - name: turns_without_attack_share
+        description: Average share of its turns with no attack.
+      - name: energy_per_turn
+        description: Average energy cards attached per turn.
+      - name: prizes_by_turn_4
+        description: Average prizes taken by the end of turn 4.
+      - name: prizes_by_turn_6
+        description: Average prizes taken by the end of turn 6.
+      - name: prizes_by_turn_8
+        description: Average prizes taken by the end of turn 8.
+      - name: prizes_by_turn_10
+        description: Average prizes taken by the end of turn 10.
+      - name: first_prize_turn
+        description: Average turn of its first prize.
+      - name: first_knockout_turn
+        description: Average turn of its first knockout.
+      - name: concession_turn
+        description: Average turn a concession ended the game.
+      - name: min_games_met
+        description: At least `min_games` seats are behind the row.
+
+  - name: int_game_side_pace
+    description: >
+      The ten pace numbers for one seat of one game, and the definitions the
+      pace mart averages. Ephemeral, so it is a common table expression inside
+      `mart_archetype_pace` rather than a relation anything can query. It is
+      the second writing of a definition the application already has in
+      TypeScript, and the two are held together by a test rather than by a
+      comment: the gold tests run this over the ten committed fixture games
+      and compare both seats of each against the application's own output
+      (`evals/fixtures/pace/`). Three exclusions carry it, all of them the
+      application's: a seat's counted turns leave out the turn the game was
+      conceded during, the attack share leaves out turn 1 of the player who
+      went first as well, and a line belongs to the seat the log credits it to
+      rather than to the seat whose turn it was.
+    columns:
+      - name: game_side_key
+        description: Surrogate key, the game identifier and the seat index joined by a hyphen. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: game_id
+        description: The game.
+      - name: seat
+        description: The seat within it.
+      - name: archetype_key
+        description: The archetype this seat played.
+      - name: excluded_from_stats
+        description: The uploader excluded this game from statistics.
+      - name: counted_turns
+        description: Turns this seat took, minus the one it conceded during. NULL when the game has no turn-by-turn log, which is what the mart scopes on.
+      - name: first_attack_turn
+        description: The first turn this seat attacked, NULL when it never did.
+      - name: turns_without_attack_share
+        description: Counted turns with no attack over counted turns, to three decimals, with turn 1 of the player who went first left out of both.
+      - name: energy_per_turn
+        description: Energy cards this seat attached over its counted turns, to three decimals.
+      - name: prizes_by_turn_4
+        description: Prizes this seat had taken by the end of turn 4 of the game.
+      - name: prizes_by_turn_6
+        description: Prizes this seat had taken by the end of turn 6 of the game.
+      - name: prizes_by_turn_8
+        description: Prizes this seat had taken by the end of turn 8 of the game.
+      - name: prizes_by_turn_10
+        description: Prizes this seat had taken by the end of turn 10 of the game.
+      - name: first_prize_turn
+        description: The first turn this seat took a prize, NULL when it took none.
+      - name: first_knockout_turn
+        description: The first turn this seat was credited with a knockout, NULL when it took none.
+      - name: concession_turn
+        description: The turn a concession ended the game on, NULL when it ended another way. Game level, so both seats carry it.
+
   - name: mart_cards_seen
     description: >
       One row per (archetype, card). seen_rate is the share of games in which

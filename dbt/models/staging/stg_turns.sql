@@ -1,6 +1,13 @@
--- One row per turn segment. Renames and casts only. Nothing in gold reads the
--- turn grain yet; it is staged so the win-probability model's turn-indexed
--- features have a typed view to start from rather than a raw Parquet glob.
+-- One row per turn segment. Renames and casts only.
+--
+-- Two attributions live side by side here, and reading the wrong one is the
+-- easy mistake. The plain `n_*` counters count every line printed in the
+-- segment and hang them all on the seat whose turn it was. The `n_*_self` and
+-- `n_*_opp` pairs count four of those kinds again by the seat the log credits
+-- each line to, which is not the same seat: a Pokemon can be knocked out on
+-- its own owner's turn, and the knockout and the prizes for it then belong to
+-- the other side of the table. `int_game_side_pace` reads the pairs, because
+-- the application's pace definitions are written in terms of credit.
 select
     game_id,
     cast(play_date as date) as play_date,
@@ -16,5 +23,13 @@ select
     cast(n_retreat as integer) as n_retreat,
     cast(n_knockout as integer) as n_knockout,
     cast(n_prize_taken as integer) as n_prize_taken,
+    cast(n_attack_self as integer) as n_attack_self,
+    cast(n_attack_opp as integer) as n_attack_opp,
+    cast(n_energy_attach_self as integer) as n_energy_attach_self,
+    cast(n_energy_attach_opp as integer) as n_energy_attach_opp,
+    cast(n_prize_self as integer) as n_prize_self,
+    cast(n_prize_opp as integer) as n_prize_opp,
+    cast(n_knockout_self as integer) as n_knockout_self,
+    cast(n_knockout_opp as integer) as n_knockout_opp,
     coalesce(concession, false) as concession
 from {{ source('silver', 'turns') }}

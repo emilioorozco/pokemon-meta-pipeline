@@ -628,6 +628,18 @@ Six dimensions:
   because exactly one seat per game is the uploader. `share_of_week` divides
   the two, so it reads as the share of the week's games the archetype was one
   of the two decks in, and sums to roughly two across a week rather than one.
+- `mart_archetype_pace`: one row per archetype, ten numbers for how fast the
+  deck plays: the turn of its first attack, the share of its turns with no
+  attack, energy attached per turn, prizes taken by the end of turns 4, 6, 8
+  and 10, the turn of its first prize, the turn of its first knockout and the
+  turn a concession ended the game on, each averaged over the seats that
+  played it, with `games` and `min_games_met` beside them. The ten are the ten
+  the application already computes for a member's own game when it is
+  uploaded, written a second time in SQL so a member's number and the
+  community's number are the same measurement and can be put side by side.
+  `int_game_side_pace` is the ephemeral model that holds the definitions one
+  seat at a time; the two writings are held together by an equality test over
+  the ten fixture games rather than by a comment.
 - `mart_cards_seen`: one row per (archetype, card). `seen_rate` is the share of
   games in which the card was observed being played or revealed. It is not a
   deck inclusion rate: stock exports only reveal played cards. `inclusion_rate`
@@ -640,7 +652,7 @@ Six dimensions:
 
 ### Tests
 
-105 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+121 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
 `unique` and `not_null` on every primary key, the fact's `game_side_key`, each
 dimension's key and each mart's grain key; `relationships` from every foreign
 key on the fact to its dimension, with the `player_key` one scoped to the
