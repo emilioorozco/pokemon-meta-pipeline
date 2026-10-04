@@ -94,6 +94,13 @@ PROMPT_TOKEN_KINDS: Final[dict[str, str]] = {
     "uncached": "input_tokens",
 }
 
+# The label values of `agent_context_relevance_total`, which is the closed set
+# of three verdicts `pipeline.sql_gate` can reach about the game on a member's
+# screen. `skipped` is not a model's answer: it is no judge configured, a call
+# that failed, or a game sent with no sentence to judge it by, and all three
+# attach the game anyway.
+RELEVANCE_VERDICTS: Final[tuple[str, ...]] = ("relevant", "irrelevant", "skipped")
+
 # Tighter than the Prometheus defaults, which start at 5 milliseconds: one
 # LightGBM call on one row is faster than that, so the default buckets would put
 # every inference in the first one and report a p95 of "under 5ms" forever.
@@ -109,6 +116,23 @@ _INFERENCE_BUCKETS: Final[tuple[float, ...]] = (
     0.25,
     0.5,
     1.0,
+)
+
+# One short Choice call over a network, which the vendor answers in tens of
+# milliseconds and which this project gives the same five second budget as
+# everything else it asks Jev. So the buckets start where a fast call lands
+# and end at the timeout, rather than at the Prometheus default of ten
+# seconds nothing here can reach.
+_RELEVANCE_BUCKETS: Final[tuple[float, ...]] = (
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
 )
 
 
@@ -258,6 +282,8 @@ class ServiceMetrics:
     predictions: Counter
     agent_tool_calls: Counter
     agent_prompt_tokens: Counter
+    agent_context_relevance: Counter
+    agent_relevance_duration: Histogram
     model_info: Gauge
 
     def observe_request(self, method: str, route: str, status: int, duration_s: float) -> None:
@@ -314,6 +340,25 @@ class ServiceMetrics:
             return
         for kind, name in PROMPT_TOKEN_KINDS.items():
             self.agent_prompt_tokens.labels(kind=kind).inc(usage.get(name, 0))
+
+    def observe_context_relevance(self, verdict: str, duration_s: float) -> None:
+        """One decision about the game on a member's screen: the verdict and its cost in time.
+
+        Recorded only when the application really sent a game, so the counter
+        is the number of questions asked from a game page and not the number
+        of questions. Two series out of one call because they answer two
+        questions a panel asks together: how often the game is worth
+        attaching, which is the split by verdict, and what deciding that adds
+        to a member's wait, which is the histogram. A `skipped` share that
+        climbs is the judge failing, and it is visible here before it is
+        visible anywhere else.
+
+        `verdict` is a closed set of three (`RELEVANCE_VERDICTS`), for the
+        same reason the gate label is closed: a label a provider chooses is
+        one time series per provider mood.
+        """
+        self.agent_context_relevance.labels(verdict=verdict).inc()
+        self.agent_relevance_duration.observe(duration_s)
 
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
@@ -384,6 +429,19 @@ def build_metrics() -> ServiceMetrics:
             "agent_prompt_tokens_total",
             "Input tokens the provider billed the agent for, by how they were paid for.",
             ["kind"],
+            registry=registry,
+        ),
+        agent_context_relevance=Counter(
+            "agent_context_relevance_total",
+            "Decisions about the game on a member's screen, by verdict.",
+            ["verdict"],
+            registry=registry,
+        ),
+        agent_relevance_duration=Histogram(
+            "agent_context_relevance_duration_seconds",
+            "Wall time of the one Choice call that decides whether the game on screen "
+            "bears on the question.",
+            buckets=_RELEVANCE_BUCKETS,
             registry=registry,
         ),
         model_info=Gauge(

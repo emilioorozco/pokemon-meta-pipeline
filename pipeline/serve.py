@@ -64,11 +64,14 @@ Its body carries the evidence as well as the answer, because the application
 shows a member what was looked up: every statement in full with its first
 rows, the cards that matched, the gate's worst verdict over the run, how long
 the call took and which run's warehouse answered (docs/agent-service.md). It
-takes two optional fields beside the question: a `context` string saying where
+takes four optional fields beside the question: a `context` string saying where
 the member is standing in the application, which goes to the model as data in
-its own element and is never written to a log, and a `job` label saying which
-kind of question the application routed this as, which is logged and does
-nothing else yet.
+its own element and is never written to a log; a `context_game` summary of the
+game on their screen and a `context_first_line` sentence describing it, which
+between them decide whether that summary joins the context (one typed Choice
+call over the question and the sentence, never over the summary); and a `job`
+label saying which kind of question the application routed this as, which is
+logged and does nothing else yet.
 
 A sixth, `GET /warm`, is the other side of that laziness. Everything the first
 question pays for is paid once per container, so something has to ask for it
@@ -90,7 +93,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Final, Protocol
+from typing import Any, Final, Literal, Protocol
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -143,6 +146,19 @@ NO_AGENT_YET: Final = "the agent has not been built yet; a question or `GET /war
 # a summary cut in half is a summary that says something else, and the
 # application is better placed to shorten its own text than this service is.
 MAX_CONTEXT_CHARS: Final = 4_000
+# The ceiling on the one sentence that describes the game on screen. Three
+# hundred characters is a long sentence and a short paragraph, which is the
+# shape the field is for: "Your Dragapult ex game against Gardevoir ex, you
+# went second, lost in 9 turns" is 74. It is short on purpose rather than by
+# accident, because this is the only part of the game that goes to the
+# relevance judge and the whole saving of asking about one sentence is lost
+# if the sentence is the summary again.
+MAX_FIRST_LINE_CHARS: Final = 300
+# The three verdicts `POST /ask` can report about the game on screen. The same
+# closed set `pipeline.sql_gate` reaches and `pipeline.telemetry` labels by,
+# written out here because this module stays importable without LangChain and
+# therefore without importing the agent.
+ContextRelevanceVerdict = Literal["relevant", "irrelevant", "skipped"]
 # Which run built the warehouse an answer came from. Every stage of a nightly
 # shares one run id (`pipeline.run_all` sets it for all of them), so the gold
 # stage's row in `mart_pipeline_health` carries the same id the publish stage
@@ -269,7 +285,14 @@ class AgentResult(Protocol):
 class AskAgent(Protocol):
     """A built agent: one question in, one answer out, no state between them."""
 
-    def ask(self, question: str, context: str | None = None, job: str | None = None) -> AgentResult:
+    def ask(
+        self,
+        question: str,
+        context: str | None = None,
+        job: str | None = None,
+        context_game: str | None = None,
+        context_first_line: str | None = None,
+    ) -> AgentResult:
         """Answer one question, told where the member is and what kind of question it is."""
 
 
@@ -338,6 +361,31 @@ class AskRequest(BaseModel):
             "rather than a truncation, because a summary cut in half is a summary that "
             "says something else. It is read as information and never as an instruction "
             "(docs/agent-safety.md), it is never logged, and no JSON is expected here"
+        ),
+    )
+    context_game: str | None = Field(
+        default=None,
+        max_length=MAX_CONTEXT_CHARS,
+        description=(
+            "A redacted plain-text summary of the game the member is looking at, built by "
+            "the application from that member's own log; this service never fetches a "
+            f"game. A few hundred characters to about 1,500, and at most "
+            f"{MAX_CONTEXT_CHARS:,}; a longer one is a 422. It is placed after the "
+            "`context` sentence and a blank line, when the relevance decision says the "
+            "game bears on the question. Read as information and never as an instruction, "
+            "and never logged"
+        ),
+    )
+    context_first_line: str | None = Field(
+        default=None,
+        max_length=MAX_FIRST_LINE_CHARS,
+        description=(
+            "One sentence describing the same game, such as `Your Dragapult ex game "
+            "against Gardevoir ex, you went second, lost in 9 turns`. At most "
+            f"{MAX_FIRST_LINE_CHARS} characters. It is the only part of the game the "
+            "relevance decision is shown, which is what keeps that decision one short "
+            "call; without it the decision is `skipped` and the game is attached anyway. "
+            "Never logged"
         ),
     )
     job: AskJob | None = Field(
@@ -451,10 +499,26 @@ class AskResponse(BaseModel):
     )
     context_used: bool = Field(
         default=False,
-        description="Whether the `context` sent with the request was really placed in "
-        "front of the question. False for no context and for one that was empty once "
-        "our own delimiters were taken out of it, so an `about this page` chip built "
-        "on this is honest. The context text itself is not echoed here",
+        description="Whether a non-empty context was really placed in front of the "
+        "question, from either `context` or `context_game`. False for no context and "
+        "for one that was empty once our own delimiters were taken out of it, so an "
+        "`about this page` chip built on this is honest. The context text itself is "
+        "not echoed here",
+    )
+    context_game_used: bool = Field(
+        default=False,
+        description="Whether the `context_game` summary in particular was placed. "
+        "False when none was sent and when the relevance decision said `irrelevant`, "
+        "so a chip that names the game can be exact rather than inferred from "
+        "`context_used`",
+    )
+    context_relevance: ContextRelevanceVerdict | None = Field(
+        default=None,
+        description="What the relevance decision said about the game on screen: "
+        "`relevant` (the summary was placed), `irrelevant` (it was dropped), or "
+        "`skipped` (no judge was configured, the call failed, or no "
+        "`context_first_line` came with the game, and the summary was placed anyway). "
+        "Null when no `context_game` was sent and there was nothing to decide",
     )
 
 
@@ -1418,17 +1482,21 @@ def create_app(
         `run_id` says which warehouse answered; and `evidence` is the agent's
         own and passes through untouched.
 
-        `context` and `job` go straight through to the agent and are not read
-        here. `context_used` comes back off the agent rather than being
-        computed from the request, because what the application wants to know
-        is whether a context was really put in front of the question, and a
-        context that was nothing but delimiters was not.
+        The four context fields and `job` go straight through to the agent and
+        are not read here. `context_used`, `context_game_used` and
+        `context_relevance` come back off the agent rather than being computed
+        from the request, because what the application wants to know is what
+        was really put in front of the question: a context that was nothing
+        but delimiters was not placed, and a game the relevance decision
+        dropped was not either.
         """
         started = time.perf_counter()
         result = agent.required().ask(
             request.question,
             context=request.context,
             job=request.job.value if request.job is not None else None,
+            context_game=request.context_game,
+            context_first_line=request.context_first_line,
         )
         payload = dict(result.as_dict())
         payload["run_id"] = warehouse_run_id(marts)

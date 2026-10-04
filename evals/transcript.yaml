@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 5
+version: 6
 
 runs:
   matchup_win_rate:
@@ -410,3 +410,15 @@ runs:
       how a record is spread across the archetypes you played against, with
       the number of games behind it, rather than pick one opponent out of a
       list. Ask me for that and I will read it.
+
+  game_on_screen_loss:
+    turns: []
+    answer: >-
+      From the game on screen: your Dragapult ex deck lost to Gardevoir ex on
+      turn 9, going second. The prizes went 6 to 2 against you, and the shape
+      of it is the tempo: the Gardevoir ex side attacked on turn 2 and you
+      first attacked on turn 3, it took a knockout on a benched basic on turn
+      4, and it closed with two prizes in a single turn at the end. These
+      numbers are from the summary of that game, not from a query: the
+      warehouse I can read holds aggregates across games rather than a single
+      one.

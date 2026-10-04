@@ -47,6 +47,8 @@
   },
   "gate_summary": "allowed",
   "context_used": false,
+  "context_game_used": false,
+  "context_relevance": null,
   "latency_ms": 2841,
   "run_id": "fixture-run"
 }

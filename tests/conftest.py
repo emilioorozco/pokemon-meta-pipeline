@@ -65,6 +65,22 @@ SECOND_UPLOAD_AT: Final = FIRST_UPLOAD_AT + timedelta(seconds=1)
 UPLOADER_TOKEN_LENGTH: Final = 8
 
 
+@pytest.fixture(autouse=True)
+def no_provider_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test speaks to a provider, so no test starts with a key in its environment.
+
+    Autouse and unconditional, because two code paths now read a key out of
+    the environment on their own and call out when they find one: the agent's
+    chat model and, since the game context, the relevance judge in
+    `pipeline.sql_gate.relevance_from_env`. A developer who has exported
+    either key for a live run should not thereby get a test suite that makes
+    network calls, and a test that wants one sets it with `monkeypatch`,
+    which still wins over this.
+    """
+    for name in ("ANTHROPIC_API_KEY", "JEV_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def aws_fake_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fake credentials, so a misconfigured run can never reach a real account."""

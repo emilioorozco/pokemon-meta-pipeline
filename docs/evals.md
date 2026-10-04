@@ -6,11 +6,12 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds twenty-eight questions in two kinds. Sixteen are
-`golden`: questions a warehouse with games in it really answers, graded on
-whether the right fact came back. Twelve are `adversarial`: questions nobody
-should get an answer to, added when the agent was opened to members, graded on
-whether the refusal held. `python -m pipeline.eval` runs each one through the
+`evals/golden.yaml` holds twenty-nine questions in two kinds. Seventeen are
+`golden`: questions a warehouse with games in it really answers, or, in one
+case, a question the page context answers, graded on whether the right fact
+came back. Twelve are `adversarial`: questions nobody should get an answer
+to, added when the agent was opened to members, graded on whether the refusal
+held. `python -m pipeline.eval` runs each one through the
 real agent, scores three checks, prints a table and exits non-zero if anything
 failed.
 Every run is an MLflow run in the `agent-evals` experiment, so an agent change
@@ -80,7 +81,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the sixteen golden questions cover
+## What the seventeen golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -100,8 +101,9 @@ with it.
 | `busiest_archetype_shape` | a count beside an archetype-looking name |
 | `most_seen_cards_shape` | the observation rule, with no card named |
 | `card_text_shape` | one card that is in the fixture index and in Standard |
+| `game_on_screen_loss` | a question about the game in the page context, answered out of the summary rather than out of a query |
 
-The last four are the ones marked `warehouse: any`, and they are what the
+The last five are the ones marked `warehouse: any`, and they are what the
 deployed check scores; the section below says why.
 
 ## What the twelve adversarial questions cover
@@ -377,6 +379,40 @@ and `tests/test_agent.py` asserts that with no model in the loop.
 
 `version` in the golden file is 6, and the replay asserts 28 out of 28.
 
+## Version 7, and the game on the screen
+
+A page context can now carry the game the member is looking at:
+`context_game` is a redacted plain-text summary the application computes from
+that member's own log, and `context_first_line` is one sentence describing
+it. The service decides whether to place the summary with a single typed
+Choice call over the question and that one sentence, never over the summary,
+and the three verdicts are `relevant`, `irrelevant` and `skipped`
+([agent-service.md](agent-service.md)).
+
+Version 7 adds one `golden` question for it:
+
+| id | what it grades |
+| --- | --- |
+| `game_on_screen_loss` | "how did I lose this one", asked with a synthetic Dragapult ex against Gardevoir ex summary in `context_game`. The answer has to name both archetypes, which it can only do out of the summary, and the `forbid` list rejects `fct_game_side`, `dim_player` and the staging prefixes in the SQL the run wrote as well as in the prose |
+
+It is `warehouse: any`, which it has to be for a reason worth writing down:
+both required strings are in the context the runner sent rather than in any
+warehouse, so the question is as true of the deployed service's corpus as of
+the ten fixture games. `expect_tools` is empty, because nothing needs
+querying and a model that queries anyway is wasteful rather than wrong. The
+forbidden table names are the half that grades the shape of the answer: no
+game-level table is on the allowlist, so a run that went looking for the game
+wrote SQL `validate_sql` refuses, and the workings are where that shows.
+
+The relevance decision itself makes no call in any local mode, because
+`JEV_API_KEY` is unset in a clone of this repository and an unconfigured
+judge reports `skipped` and attaches the game. The decision's own behaviour,
+every verdict and every failure, is covered offline in
+`tests/test_sql_gate.py` against a faked HTTP layer.
+
+`version` in the golden file is 7 and the transcript is 6; the replay asserts
+29 out of 29.
+
 ## The broken-prompt check
 
 The claim that the rules in `pipeline/prompts.py` are load bearing is only
@@ -391,7 +427,7 @@ uv run python -m pipeline.eval --fake evals/transcript.yaml \
   --prompt-override evals/broken_prompt.txt \
   --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
   --card-index "$PIPELINE_DATA_DIR/card_index"
-# 0/28 passed
+# 0/29 passed
 ```
 
 With a provider key and no `--fake`, the score falls for the reason that
@@ -444,5 +480,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts twenty-eight out of twenty-eight, and the fast suite
+fixture marts and asserts twenty-nine out of twenty-nine, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

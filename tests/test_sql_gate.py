@@ -419,3 +419,159 @@ def test_the_schema_the_gate_is_told_is_the_one_the_prompt_carries() -> None:
     for table in sql_gate.ALLOWED_TABLES:
         assert f"{table}:" in summary
     assert "dim_player" not in summary
+
+
+# ---------------------------------------------------- the relevance question --
+
+FIRST_LINE: Final = "Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns."
+GAME: Final = (
+    "Your Dragapult ex game against Gardevoir ex. You went second and lost on turn 9. "
+    "Prize cards taken: you 2, your opponent 6."
+)
+GAME_QUESTION: Final = "how did I lose this one"
+
+
+def decided(choice: str, confidence: float | None = 0.88) -> dict[str, Any]:
+    """A Decisions response to the relevance question, in the published shape."""
+    answer: dict[str, Any] = {"type": "choice", "choice": choice}
+    if confidence is not None:
+        answer["confidence"] = confidence
+    return {
+        "id": "gen-dec-relevance",
+        "answers": {sql_gate.RELEVANCE_QUESTION_ID: answer},
+        "usage": {"input_tokens": 118, "output_tokens": 0},
+    }
+
+
+def test_the_relevance_request_is_one_choice_question_over_one_sentence() -> None:
+    """The contract, and the reason the field exists: the summary is not in the state.
+
+    The whole saving of asking about a first line is lost if the game goes
+    along with it, so "the game text is not in the payload" is the assertion
+    this test is really for.
+    """
+    judge, wire = gate(HttpReply(200, decided("relevant")))
+    judge.relevance(GAME_QUESTION, FIRST_LINE)
+
+    url, headers, payload, timeout = wire.sent[0]
+    assert url == "https://openrouter.ai/api/alpha/decisions"
+    assert headers["Authorization"].startswith("Bearer ")
+    assert timeout == sql_gate.DEFAULT_TIMEOUT_S
+    assert payload["model"] == "typesafe/jev-1.13"
+    question = payload["questions"][sql_gate.RELEVANCE_QUESTION_ID]
+    assert question["type"] == "choice"
+    assert question["instructions"] == sql_gate.RELEVANCE_INSTRUCTIONS
+    assert set(question["criteria"]) == {"relevant", "irrelevant"}
+    assert FIRST_LINE in payload["state"]
+    assert GAME_QUESTION in payload["state"]
+    # The summary never leaves the application's half of the call.
+    assert "Prize cards taken" not in payload["state"]
+    # And the SQL gate's question is not in this request at all.
+    assert sql_gate.QUESTION_ID not in payload["questions"]
+
+
+@pytest.mark.parametrize("choice", ["relevant", "irrelevant"])
+def test_the_judges_verdict_is_reported_as_it_was_given(choice: str) -> None:
+    judge, _ = gate(HttpReply(200, decided(choice, 0.93)))
+    decision = judge.relevance(GAME_QUESTION, FIRST_LINE)
+    assert decision.verdict == choice
+    assert decision.confidence == 0.93
+    assert decision.attach is (choice == "relevant")
+    assert decision.input_tokens == 118
+    assert decision.latency_ms >= 0
+
+
+def test_an_answer_with_no_confidence_is_still_a_verdict() -> None:
+    """The opposite of the gate, because nothing here thresholds on it.
+
+    A missing confidence makes the gate's whole decision unmeasurable, so the
+    gate treats it as an error. This decision is the choice and nothing else,
+    so an answer without one is read and reported at zero.
+    """
+    judge, _ = gate(HttpReply(200, decided("irrelevant", None)))
+    decision = judge.relevance(GAME_QUESTION, FIRST_LINE)
+    assert decision.verdict == "irrelevant"
+    assert decision.confidence == 0.0
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        HttpReply(500, {}),
+        HttpReply(401, {"error": "no"}),
+        HttpReply(200, {"answers": {}}),
+        HttpReply(200, {"answers": {sql_gate.RELEVANCE_QUESTION_ID: {"choice": "maybe"}}}),
+        OSError("connection reset"),
+    ],
+)
+def test_a_failed_relevance_call_skips_and_attaches(reply: HttpReply | OSError) -> None:
+    """Fails open, which is the opposite of `judge` and the point of the pair.
+
+    A gate that breaks should refuse, because it stands in front of the
+    warehouse. This stands in front of nothing: the cost of being wrong is a
+    few hundred characters of the member's own game in a context window, and
+    the cost of dropping them on a question about that game is a worse
+    answer.
+    """
+    judge, _ = gate(reply, reply)
+    decision = judge.relevance(GAME_QUESTION, FIRST_LINE)
+    assert decision.verdict == sql_gate.VERDICT_SKIPPED
+    assert decision.attach is True
+    assert decision.reason
+
+
+def test_a_game_with_no_first_line_is_skipped_without_a_call() -> None:
+    """No sentence, no decision, and nothing paid for finding that out."""
+    judge, wire = gate(HttpReply(200, decided("relevant")))
+    decision = judge.relevance(GAME_QUESTION, "   ")
+    assert decision.verdict == sql_gate.VERDICT_SKIPPED
+    assert decision.attach is True
+    assert wire.sent == []
+
+
+def test_the_relevance_decision_is_logged_without_the_sentence_it_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The verdict and the numbers, never the game and never the question."""
+    judge, _ = gate(HttpReply(200, decided("relevant", 0.77)))
+    with caplog.at_level("DEBUG"):
+        judge.relevance(GAME_QUESTION, FIRST_LINE)
+    record = next(
+        entry for entry in caplog.records if entry.message == "context relevance decision"
+    )
+    assert record.verdict == "relevant"  # type: ignore[attr-defined]
+    assert record.relevance_ms >= 0  # type: ignore[attr-defined]
+    assert FIRST_LINE not in caplog.text
+    assert GAME_QUESTION not in caplog.text
+
+
+def test_the_judge_is_the_gate_when_the_gate_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One client and one key, which is the whole of `relevance_from_env`."""
+    monkeypatch.setenv(sql_gate.GATE_VAR, "jev")
+    monkeypatch.setenv(sql_gate.API_KEY_VAR, "not-a-real-key")
+    judge = sql_gate.gate_from_env()
+    assert sql_gate.relevance_from_env(judge) is judge
+
+
+def test_the_judge_is_built_from_the_same_variables_when_the_gate_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployment that has a key has a judge, whatever it decided about gating SQL."""
+    monkeypatch.delenv(sql_gate.GATE_VAR, raising=False)
+    monkeypatch.setenv(sql_gate.API_KEY_VAR, "not-a-real-key")
+    monkeypatch.setenv(sql_gate.PROVIDER_VAR, "typesafe")
+    judge = sql_gate.relevance_from_env(OffGate())
+    assert isinstance(judge, TypeSafeJevGate)
+
+
+def test_with_no_key_every_verdict_is_skipped_and_nothing_is_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default state of this repository, and of every test."""
+    monkeypatch.delenv(sql_gate.API_KEY_VAR, raising=False)
+    judge = sql_gate.relevance_from_env()
+    assert isinstance(judge, sql_gate.NoRelevance)
+    decision = judge.relevance(GAME_QUESTION, FIRST_LINE)
+    assert decision.verdict == sql_gate.VERDICT_SKIPPED
+    assert decision.attach is True
+    assert decision.latency_ms == 0

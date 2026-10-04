@@ -126,6 +126,8 @@ trust. Four fields were added for that panel and none of the old ones changed.
 | `latency_ms` | wall time of the whole call measured inside the service, so a question that had to build the agent reports what the caller waited for |
 | `run_id` | which run's data answered |
 | `context_used` | whether a page context was really placed in front of the question, for the `about this page` chip; see **Page context** below |
+| `context_game_used` | whether the game summary in particular was placed, so a chip that names the game can be exact |
+| `context_relevance` | `relevant`, `irrelevant`, `skipped`, or null when no game was sent |
 
 `evidence.queries` is one object per statement, in the order the model wrote
 them:
@@ -178,25 +180,65 @@ without allowing for two renderings; `--json` always carries it.
 
 ### Page context
 
-`POST /ask` takes two optional fields beside `question`.
+`POST /ask` takes four optional fields beside `question`.
 
 | field | what it is |
 |---|---|
 | `context` | where the member is in the application and what is on their screen, as plain text. At most **4,000** characters; a longer one is a **422** rather than a truncation, because a summary cut in half is a summary that says something else. Plain prose, not JSON |
+| `context_game` | a redacted plain-text summary of the game the member is looking at, built by the application from that member's own log. A few hundred characters to about 1,500, at most **4,000**, and a longer one is a 422 for the same reason. This service never fetches a game |
+| `context_first_line` | one sentence describing the same game, such as `Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns`. At most **300** characters. It is the only part of the game the relevance decision is shown |
 | `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It changes nothing about the answer today; the per-job playbooks are a later ticket |
+
+**The relevance decision.** A game summary is only worth its place in the
+context window when the question is about that game, and "which deck is best
+this week" asked from a game page is not. So when `context_game` is present,
+one typed Choice call goes to the same Jev client the SQL gate uses, with the
+same key, the same base URL and the same five second budget
+([sql-gate.md](sql-gate.md)), and asks whether the game on screen bears on the
+question. It is given the question and `context_first_line`, and never the
+summary, which is what keeps it one short call however long the game was. Its
+three verdicts:
+
+| verdict | what was placed | when |
+|---|---|---|
+| `relevant` | the route sentence, a blank line, then the game summary | the judge said the question is about this game |
+| `irrelevant` | the route sentence alone; the summary is dropped | the judge said it is about something else |
+| `skipped` | the route sentence, a blank line, then the game summary | no judge is configured (`JEV_API_KEY` unset), the call timed out or errored, or no `context_first_line` came with the game |
+
+`skipped` attaches rather than drops, which is the opposite of how the SQL
+gate fails and is deliberate. The gate stands in front of the warehouse, so a
+broken gate should refuse. This stands in front of nothing: an irrelevant
+game in the context is a few hundred characters the model ignores, and a
+missing game on a question about that game is a worse answer. A clone of this
+repository with no judge key answers every game question with the game in
+front of it, which is what it would do if the decision did not exist.
+
+`context_relevance` in the response is the verdict, null when no game was
+sent. `context_game_used` is whether the summary was really placed, and
+`context_used` keeps its older meaning, which is whether a non-empty context
+of any kind was placed.
 
 **Where it goes, and why there.** The context is placed in the human turn,
 after the cache breakpoint, as a `<context>` element in front of the
-`<question>` one:
+`<question>` one. With a route sentence and a game the judge kept:
 
 ```
 <context>
 The member is reviewing their last game against Dragapult control.
+
+Your Dragapult ex game against Gardevoir ex. You went second and lost on turn
+9. Prize cards taken: you 2, your opponent 6.
 </context>
 <question>
 why did I lose that one
 </question>
 ```
+
+One element with a blank line in it, not two elements and no heading over the
+second half: a label would be the project's own words inside the element rule
+9 tells the model is somebody else's. With no game, or with a game the judge
+dropped, it is the route sentence alone and the bytes are what they were
+before this existed.
 
 It is never in the system blocks. Those are the cached prefix, and a prefix is
 only a prefix while it is identical from one request to the next: a sentence
@@ -221,12 +263,23 @@ boundary; `validate_sql` is the boundary
 golden set measure the framing ([evals.md](evals.md)).
 
 **What is written down.** The `agent answered` log line and the `agent.answer`
-span carry `context_chars`, which is the length of the context as it was
-placed, and `job`. The context text itself is never logged, at any level, and
-is never put on a span; a test asserts its absence from every record of a
-request that carried one. The response carries `context_used`, a boolean, so
-the application can show an honest "about this page" chip without being handed
+span carry five things and no text: `context_chars`, the length of the context
+as it was placed; `context_game_chars`, the length of the game summary that
+was placed, which is zero when the judge dropped it; `context_relevance`, the
+verdict, empty when no game was sent; `relevance_ms`, the wall time of the
+decision call; and `job`. None of the four strings is ever logged, at any
+level, and none is put on a span; a test asserts the absence of all of them
+from every record of a request that carried them. The response carries
+`context_used`, `context_game_used` and `context_relevance`, so the
+application can show an honest "about this page" chip without being handed
 its own text back.
+
+Two Prometheus series come out of the same decision:
+`agent_context_relevance_total{verdict}` counts the three verdicts, so the
+denominator is questions asked from a game page rather than questions, and
+`agent_context_relevance_duration_seconds` is what deciding adds to a
+member's wait. A `skipped` share that climbs is the judge failing, and it is
+visible there before it is visible anywhere else.
 
 ## What a question costs, and the cached prefix
 
@@ -248,7 +301,7 @@ and the breakpoint goes on the last of it:
 | system, block 1 | the role sentence, the nine rules, the card-tool note | a deploy |
 | system, block 2 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
 | **breakpoint** | `cache_control: {"type": "ephemeral"}` on block 2 | |
-| human turn | the `<context>` element when there is one, then the `<question>` element, and nothing of ours | every request |
+| human turn | the `<context>` element when there is one, route sentence and game summary inside it, then the `<question>` element, and nothing of ours | every request |
 
 The breakpoint goes on the last **stable** block, not on the last block.
 Marking something that varies would rewrite the entry on every call and bill a
@@ -267,8 +320,8 @@ prefix is **4,096 tokens**
 Below it the provider caches nothing, marked or not, and returns no error: the
 only way to know is the `usage` fields.
 
-Today's prefix is **below that**. The system prompt is 8,226 characters with
-the card-tool note and 7,992 without, and the tool schemas are roughly 900
+Today's prefix is **below that**. The system prompt is 8,444 characters with
+the card-tool note and 8,210 without, and the tool schemas are roughly 900
 more, so at the four-characters-per-token rule this file already uses for
 `MAX_PROMPT_CHARS` the prefix is an **estimated ~2,300 tokens**. That is an
 estimate from a character count and not a measurement. The measurement is one

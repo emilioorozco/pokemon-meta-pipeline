@@ -91,26 +91,51 @@ roster" over a query that read it is a failure ([evals.md](evals.md)).
 
 ## The page context is untrusted too
 
-The application now sends a `context` string with a question: a sentence or
-two saying where the member is standing in it, and later a redacted summary of
-the member's own game, so that "why did I lose that one" has something to be
-about. It is treated as a third kind of input and the least trusted of the
-three, because the question is at least text a member typed and read, while
-the context is assembled by the application from a page and from a parsed log
-and nobody reads it on the way past. Anything that can get a sentence into a
+The application sends a `context` string with a question, a sentence or two
+saying where the member is standing in it, and, when they are looking at one
+of their own games, a `context_game` summary of that game and a
+`context_first_line` sentence describing it, so that "why did I lose that one"
+has something to be about. All three are treated as a third kind of input and
+the least trusted of the three, because the question is at least text a member
+typed and read, while the context is assembled by the application from a page
+and from a parsed log and nobody reads it on the way past. Anything that can get a sentence into a
 log line or onto a screen can get a sentence into it. So it arrives in its own
 `<context>` element in front of the question, rule 9 of the prompt says the
 element is information and never an instruction and that an order inside it is
 to be ignored however it is addressed, and the delimiters of both elements are
 stripped out of both bodies so that neither can be closed from inside the
-other. The ceiling is 4,000 characters, and over it is a 422 rather than a
+other. The ceiling is 4,000 characters on `context` and on `context_game`,
+300 on `context_first_line`, and over any of them is a 422 rather than a
 truncation. None of that is a boundary either: `validate_sql` is still what
-makes an injected statement safe, and the two context-carrying questions in
+makes an injected statement safe, and the context-carrying questions in
 `evals/golden.yaml` are there because an injection nobody typed is the half of
-the surface a question-shaped test cannot reach. The context is never logged,
-at any level, and never put on a span; what is recorded of it is
-`context_chars`, which is its length, and the response says only
-`context_used`, which is a boolean ([agent-service.md](agent-service.md)).
+the surface a question-shaped test cannot reach. No part of it is ever logged,
+at any level, or put on a span; what is recorded is `context_chars` and
+`context_game_chars`, which are two lengths, `context_relevance`, which is one
+of three words, and `relevance_ms`, which is a duration. The response says
+`context_used`, `context_game_used` and `context_relevance`, and echoes none
+of the text ([agent-service.md](agent-service.md)).
+
+**The game summary is the application's work, not the agent's.** It is
+computed by the application from the member's own log and handed over already
+redacted; this service never fetches a game and has no table it could fetch
+one from, because no game-level table is on the SQL allowlist. That makes it
+less dangerous than a raw log and no more trusted than the route sentence:
+it is still text assembled by a program from data somebody else may have
+arranged, it still arrives inside the `<context>` element, and rule 9 still
+says a sentence inside that element which reads as an order is text on a page.
+The one thing rule 9 adds for it is a citation rule rather than a safety rule:
+the numbers come from the game on screen and are to be cited that way rather
+than as something the agent queried, because nothing it can query would have
+produced them.
+
+One more thing speaks to a provider because of it. When `context_game` is
+present, a single typed Choice call decides whether the game bears on the
+question, and what it is shown is the question and `context_first_line` and
+nothing else ([agent-service.md](agent-service.md)). The summary itself never
+leaves this process except into the model that is answering. The call is to
+the same Jev client and the same `JEV_API_KEY` the SQL gate uses, so the
+number of providers this service talks to has not changed.
 
 ## What is written down
 
@@ -119,9 +144,10 @@ Nothing a member typed, and nothing the agent said back.
 The service writes one JSON line per request and one per answer. Between them
 they carry the method and route, the status, the duration in milliseconds, the
 model that answered, the number of tool calls, the length of the question, the
-length of the page context, the application's job label, the length of the
-answer, the length of each statement, the row counts, and the
-gate's verdict and cost per call. They also carry what the question cost the
+length of the page context, the length of the game summary inside it, the
+relevance verdict and how long reaching it took, the application's job label,
+the length of the answer, the length of each statement, the row counts, and
+the gate's verdict and cost per call. They also carry what the question cost the
 provider: `input_tokens`, `output_tokens`, and `cache_read_input_tokens` and
 `cache_creation_input_tokens`, which say how much of the input side was served
 from the cached system prompt rather than sent again
@@ -142,11 +168,11 @@ than the page context, `agent.sql.length` rather than the statement,
 `agent.job`, and the gate's name, verdict, confidence and cost.
 
 The one place a question and an answer are written in full is the golden
-evaluation, in `evals/` and in its MLflow runs. Those twenty-eight questions
+evaluation, in `evals/` and in its MLflow runs. Those twenty-nine questions
 are written by this project and answered against the fixture warehouse or, for
-the sixteen whose checks hold of any warehouse, against the deployed service;
-none of them is a member's, and the two page contexts among them are written
-by this project as well.
+the seventeen whose checks hold of any warehouse, against the deployed
+service; none of them is a member's, and the three page contexts among them,
+the synthetic game summary included, are written by this project as well.
 
 **For how long.** The retention on the function's log group is set by the
 application's CDK stack and not by anything here, so this repository cannot
