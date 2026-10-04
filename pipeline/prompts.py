@@ -26,6 +26,12 @@ most of a small model's context spent on prose it re-reads on every turn. The
 first sentence is the definition; the rest is the reasoning, which belongs in
 the file and not in a context window.
 
+One other list lives here and is not part of the prompt at all:
+`warehouse_tables`, every relation dbt builds, which the validator needs to
+tell a name nobody built from a real table it may not read. It is read from
+`pipeline.warehouse_tables`, a generated module committed to the repository,
+and not from the dbt project, which the serving image does not ship.
+
 The rules section is hand written, and it is the part that matters. Three of
 the nine rules exist because the corpus is small and honest reporting about a
 small corpus is the whole point of the project: cite the sample size, say when
@@ -107,16 +113,16 @@ from typing import Any, Final
 import yaml
 
 from pipeline.config import REPO_ROOT
+from pipeline.warehouse_tables import WAREHOUSE_TABLES
 
 MARTS_SCHEMA: Final = REPO_ROOT / "dbt" / "models" / "marts" / "schema.yml"
 SCHEMA_FILES: Final[tuple[Path, ...]] = (MARTS_SCHEMA,)
 
-# Every model dbt builds, which is a wider set than the agent may read. The
-# validator needs it to tell a name it is not allowed to read from a name that
-# is not a table at all, and one directory listing answers that for the whole
-# warehouse: a dbt model is a `.sql` file and the file's stem is the relation's
-# name. The schema files cannot stand in for it, because a model with no
-# `schema.yml` entry is still a model dbt builds (`ml_labeled_side` today).
+# Where the dbt models live, and the only thing in this module that reads
+# them is `dbt_model_names` below, which nothing on a serving path calls. The
+# list of relations the validator uses is generated from this directory and
+# committed (`pipeline.warehouse_tables`); this constant is the generator's
+# input and the test's oracle.
 DBT_MODELS_DIR: Final = REPO_ROOT / "dbt" / "models"
 
 # A file whose contents replace the whole prompt, schema and rules included.
@@ -231,20 +237,40 @@ def first_sentences(text: str, count: int, limit: int) -> str:
     return taken[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "..."
 
 
-@lru_cache(maxsize=4)
-def warehouse_tables(root: Path = DBT_MODELS_DIR) -> frozenset[str]:
+@lru_cache(maxsize=1)
+def warehouse_tables() -> frozenset[str]:
     """Every relation dbt builds in this project, by name, allowlisted or not.
 
-    One glob over the models directory, cached, because the caller is
+    The committed list and no filesystem at all. The caller is
     `pipeline.agent.check_sql`, which runs on every statement the model writes
-    and is otherwise a pure function of a string. A directory listing on the
-    first call and a dictionary lookup afterwards is the whole cost, and the
-    set cannot change inside a process: the models are files in the image.
+    and is otherwise a pure function of a string, so the set is built once per
+    process and looked up after.
 
-    Empty when the directory is not there, which is a container that ships the
-    warehouse without the dbt project. The caller falls back to a naming rule
-    in that case rather than calling every unknown name a guess; what it must
-    not do is claim to know a warehouse it cannot see.
+    It was a glob over `DBT_MODELS_DIR` until PLA-198, and the glob is why
+    this is a function worth a docstring. The serving image copies `pipeline/`
+    and not `dbt/` (`Dockerfile.agent`), so on the deployed Lambda the listing
+    came back empty and the validator fell through to a naming rule that
+    called `mart_archetype_summary` and `mart_weekly_archetype`, neither of
+    which dbt builds, real tables being blocked. The list is generated from
+    the same glob by `scripts/generate_warehouse_tables.py` and committed, so
+    the answer is right wherever `pipeline` is installed and the glob is the
+    test's oracle rather than the runtime path (docs/sql-gate.md).
+    """
+    return frozenset(name.lower() for name in WAREHOUSE_TABLES)
+
+
+def dbt_model_names(root: Path = DBT_MODELS_DIR) -> frozenset[str]:
+    """Every relation name in the dbt project on disk, globbed fresh.
+
+    A dbt model is a `.sql` file and the file's stem is the relation's name.
+    The schema files cannot stand in for it, because a model with no
+    `schema.yml` entry is still a model dbt builds (`ml_labeled_side` today).
+
+    Build time only: `scripts/generate_warehouse_tables.py` renders the
+    committed list from this, and the test that keeps the two in step is the
+    only other caller. Nothing on a serving path reads it, because on the
+    deployed image there is nothing here to read. Empty when the directory is
+    not there, which both callers treat as a failure rather than an answer.
     """
     if not root.is_dir():
         return frozenset()
