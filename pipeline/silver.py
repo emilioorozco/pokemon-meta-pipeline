@@ -921,15 +921,25 @@ def _archetype_name_raw(
 def _archetype_source(summary: Column, is_uploader: Column, manual: Column) -> Column:
     """Where the label came from: `auto` derived, `user` pinned, `manual` typed in.
 
+    Both seats read the blob's own source field first, whose `auto` and `user`
+    are already the values this column carries, so no mapping is needed. The
+    fallback behind the uploader's field is for blobs older than it: the
+    producer only started writing `myArchetypeSource`, so a back-catalogue
+    upload has an archetype and no source, and the pre-field reading is all
+    there is for it (a manual game had the label typed in, an uploaded game
+    only ever got one when the user set it).
+
     Null on an uploader seat that has no archetype, which is most of them: the
     deck name is not a source because it is not a label (see
     `_archetype_name_raw`).
     """
-    uploader = F.when(manual, F.lit("manual")).otherwise(
+    uploader = F.coalesce(
+        summary["my_archetype_source"],
+        F.when(manual, F.lit("manual")),
         F.when(
             F.coalesce(summary["my_archetype_id"], summary["my_archetype"]).isNotNull(),
             F.lit("user"),
-        )
+        ),
     )
     opponent = F.coalesce(summary["opponent_archetype_source"], F.when(manual, F.lit("manual")))
     return F.when(is_uploader, uploader).otherwise(opponent)

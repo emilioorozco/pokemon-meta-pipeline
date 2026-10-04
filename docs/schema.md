@@ -341,7 +341,10 @@ Two rows per game, seat 0 and seat 1. The grain gold's fact table is built on.
 | `deck_id` | string | yes | `summary.deckId`; uploader seat only, null on the other |
 
 The uploader's archetype comes from `myArchetype` and from nothing else; the
-opponent's comes from `opponentArchetype`. A manual game with no archetype row
+opponent's comes from `opponentArchetype`. `archetype_source` is whichever of
+`myArchetypeSource` and `opponentArchetypeSource` belongs to the seat, and falls
+back to `manual` on a manual game or `user` on an uploader seat whose blob
+predates the field. A manual game with no archetype row
 for the opponent falls back to the name the uploader typed, which bronze has
 already replaced with a token, so the stranger rule in 8.5 applies to it like
 any other token.
