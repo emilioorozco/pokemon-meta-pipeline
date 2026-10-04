@@ -174,9 +174,9 @@ MAX_COLUMN_CHARS: Final = 46
 # ceiling rather than a target; it went from 8,400 when rule 9 grew the
 # sentence about the game summary, which is 213 characters against 174 of
 # headroom, and the alternative was a third round of cuts to descriptions
-# already at 46 characters. 8,700 from 8,600 for `TABLE_LIST_NOTE`, which is
-# 145 characters against 156 of headroom: the line fits under the old ceiling
-# with nine characters to spare, which is a ceiling a one-column rename would
+# already at 46 characters. 8,700 from 8,600 for `TABLE_LIST_NOTE`, which
+# costs 145 characters of the 156 there were: the line fits under the old
+# ceiling with eleven to spare, which is a ceiling a one-column rename would
 # break, so the modest raise buys back the headroom rather than the line.
 MAX_PROMPT_CHARS: Final = 8_700
 
