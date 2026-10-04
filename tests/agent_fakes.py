@@ -28,7 +28,12 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 
-from pipeline.sql_gate import GATE_JEV, GateDecision
+from pipeline.sql_gate import (
+    GATE_JEV,
+    VERDICT_SKIPPED,
+    GateDecision,
+    RelevanceDecision,
+)
 
 
 class ScriptedChatModel(BaseChatModel):
@@ -127,4 +132,28 @@ class FakeGate:
 
     def judge(self, question: str, sql: str, schema_summary: str) -> GateDecision:
         self.judged.append((question, sql))
+        return self.decision
+
+
+class FakeRelevance:
+    """A `ContextRelevance` that answers however the test told it to, once per call.
+
+    The same bargain `FakeGate` makes. The verdict it returns goes through the
+    real `Agent.ask`, the real placement, the real counter and the real
+    response body, so a test that asserts the game was dropped is asserting
+    the whole path from a verdict to a `<context>` element. What it does not
+    do is speak to a provider: the request shape and the parsing of a real
+    relevance call are covered in `tests/test_sql_gate.py` against a faked
+    HTTP layer.
+
+    `asked` records the question and the first line it was given, which is
+    how a test shows that the summary itself never reached the judge.
+    """
+
+    def __init__(self, verdict: str = VERDICT_SKIPPED, *, latency_ms: int = 7) -> None:
+        self.decision = RelevanceDecision(verdict=verdict, latency_ms=latency_ms)
+        self.asked: list[tuple[str, str]] = []
+
+    def relevance(self, question: str, first_line: str) -> RelevanceDecision:
+        self.asked.append((question, first_line))
         return self.decision

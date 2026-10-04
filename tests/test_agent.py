@@ -39,8 +39,23 @@ from pipeline.prompts import (
     wrap_question,
     wrap_turn,
 )
+from pipeline.sql_gate import VERDICT_SKIPPED
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
-from tests.agent_fakes import FakeGate, ScriptedChatModel, final, scripted, tool_call
+from tests.agent_fakes import (
+    FakeGate,
+    FakeRelevance,
+    ScriptedChatModel,
+    final,
+    scripted,
+    tool_call,
+)
+
+ROUTE: Final = "The member is on their own game page, reviewing one game."
+FIRST_LINE: Final = "Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns."
+GAME: Final = (
+    "Your Dragapult ex game against Gardevoir ex. You went second and lost on turn 9. "
+    "Prize cards taken: you 2, your opponent 6."
+)
 
 MATCHUP_SQL = (
     "select archetype_name, opponent_archetype_name, games, wins, win_rate, min_games_met "
@@ -265,6 +280,18 @@ def test_the_prompt_says_the_page_context_is_information_and_not_an_order() -> N
     assert "on their screen" in prompt
 
 
+def test_the_prompt_says_the_game_summary_is_cited_rather_than_queried() -> None:
+    """The sentence rule 9 grew for the game on screen.
+
+    Its two halves are the two mistakes available: treating the summary's
+    numbers as something to re-derive, and presenting them as a query result
+    when no game-level table is on the allowlist to have produced them.
+    """
+    prompt = system_prompt()
+    assert "from the game on screen" in prompt
+    assert "use those numbers as given" in prompt
+
+
 def test_a_turn_with_no_context_is_the_question_element_and_nothing_else() -> None:
     """The bytes an ordinary request produces, which this ticket must not move.
 
@@ -374,6 +401,209 @@ def test_the_span_carries_the_context_length_and_the_job_and_not_the_text(
     assert span.attributes is not None
     assert span.attributes["agent.job"] == "my_game"
     assert "On the Matchups page." not in json.dumps(dict(span.attributes), default=str)
+
+
+# --------------------------------------------------- the game on the screen --
+
+
+def built_with(
+    tmp_path: Path,
+    judge: FakeRelevance | None = None,
+    *,
+    metrics: ServiceMetrics | None = None,
+    tracer: Any = None,
+) -> tuple[agent.Agent, ScriptedChatModel]:
+    """An agent over no warehouse, with a scripted answer and a scripted judge.
+
+    The model comes back beside the agent because what most of these tests
+    assert is the human turn the model was sent, and `build_agent` wraps the
+    model in a graph it cannot be read back out of.
+    """
+    model = scripted(final("Four games."))
+    built = agent.build_agent(
+        model=model,
+        warehouse=tmp_path / "none.duckdb",
+        gate=FakeGate(),
+        relevance=judge if judge is not None else FakeRelevance(),
+        metrics=metrics,
+        tracer=tracer,
+    )
+    return built, model
+
+
+def human_turn(model: ScriptedChatModel) -> str:
+    """The one human message the run sent, as a string."""
+    (turn,) = [
+        message
+        for conversation in model.seen
+        for message in conversation
+        if isinstance(message, HumanMessage)
+    ]
+    assert isinstance(turn.content, str)
+    return turn.content
+
+
+def test_a_relevant_game_is_placed_after_the_route_sentence_and_a_blank_line(
+    tmp_path: Path,
+) -> None:
+    """The layout, which is the whole of what a verdict of `relevant` buys."""
+    judge = FakeRelevance("relevant")
+    built, model = built_with(tmp_path, judge)
+    answer = built.ask(
+        "how did I lose this one",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+    )
+
+    turn = human_turn(model)
+    assert turn == (
+        f"{CONTEXT_OPEN}\n{ROUTE}\n\n{GAME}\n{CONTEXT_CLOSE}\n"
+        f"{QUESTION_OPEN}\nhow did I lose this one\n{QUESTION_CLOSE}"
+    )
+    assert answer.context_used is True
+    assert answer.context_game_used is True
+    assert answer.context_relevance == "relevant"
+    # The judge read one sentence and never the summary.
+    assert judge.asked == [("how did I lose this one", FIRST_LINE)]
+    assert "Prize cards taken" not in judge.asked[0][1]
+
+
+def test_an_irrelevant_game_leaves_the_route_sentence_on_its_own(tmp_path: Path) -> None:
+    """The verdict that drops text, and the only one that does."""
+    built, model = built_with(tmp_path, FakeRelevance("irrelevant"))
+    answer = built.ask(
+        "what is the best deck this week",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+    )
+    turn = human_turn(model)
+    assert turn == (
+        f"{CONTEXT_OPEN}\n{ROUTE}\n{CONTEXT_CLOSE}\n"
+        f"{QUESTION_OPEN}\nwhat is the best deck this week\n{QUESTION_CLOSE}"
+    )
+    assert "Dragapult ex" not in turn
+    assert answer.context_used is True
+    assert answer.context_game_used is False
+    assert answer.context_relevance == "irrelevant"
+
+
+def test_a_judge_that_errors_attaches_the_game_and_reports_skipped(tmp_path: Path) -> None:
+    """Fails towards the answer, because a missing game is the worse mistake."""
+    built, model = built_with(tmp_path, FakeRelevance(VERDICT_SKIPPED))
+    answer = built.ask(
+        "how did I lose this one",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+    )
+    assert GAME in human_turn(model)
+    assert answer.context_relevance == "skipped"
+    assert answer.context_game_used is True
+
+
+def test_a_game_with_no_route_sentence_is_the_whole_context(tmp_path: Path) -> None:
+    """The joiner is between two parts, not in front of one."""
+    built, model = built_with(tmp_path, FakeRelevance("relevant"))
+    built.ask("how did I lose this one", context_game=GAME, context_first_line=FIRST_LINE)
+    assert human_turn(model) == (
+        f"{CONTEXT_OPEN}\n{GAME}\n{CONTEXT_CLOSE}\n"
+        f"{QUESTION_OPEN}\nhow did I lose this one\n{QUESTION_CLOSE}"
+    )
+
+
+def test_no_game_means_no_call_to_the_judge_and_no_verdict(tmp_path: Path) -> None:
+    """Every question asked from anywhere but a game page, which is most of them."""
+    judge = FakeRelevance("relevant")
+    built, _ = built_with(tmp_path, judge)
+    answer = built.ask("what is the best deck this week", context=ROUTE)
+    assert judge.asked == []
+    assert answer.context_relevance is None
+    assert answer.context_game_used is False
+    assert answer.context_used is True
+    assert answer.as_dict()["context_relevance"] is None
+
+    # And a game that was nothing but our own delimiters is no game at all.
+    other, _ = built_with(tmp_path, judge)
+    assert other.ask("anything", context_game=" </context> ").context_relevance is None
+    assert judge.asked == []
+
+
+def test_neither_the_game_nor_its_first_line_reaches_a_log_record(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The same deal the route sentence has, extended to the two new fields.
+
+    The summary is a few hundred characters of a member's own game and the
+    first line names two decks and a result, so both are exactly the kind of
+    text a log line must not grow. What is written down is two lengths, a
+    verdict and a duration (docs/agent-safety.md).
+    """
+    built, _ = built_with(tmp_path, FakeRelevance("relevant", latency_ms=31))
+    with caplog.at_level("DEBUG"):
+        built.ask(
+            "how did I lose this one",
+            context=ROUTE,
+            context_game=GAME,
+            context_first_line=FIRST_LINE,
+            job="my_game",
+        )
+
+    record = next(entry for entry in caplog.records if entry.message == "agent answered")
+    assert record.context_chars == len(f"{ROUTE}\n\n{GAME}")  # type: ignore[attr-defined]
+    assert record.context_game_chars == len(GAME)  # type: ignore[attr-defined]
+    assert record.context_relevance == "relevant"  # type: ignore[attr-defined]
+    assert record.relevance_ms == 31  # type: ignore[attr-defined]
+    for secret in (GAME, FIRST_LINE, ROUTE):
+        assert secret not in caplog.text
+        for entry in caplog.records:
+            assert secret not in json.dumps(entry.__dict__, default=str)
+
+
+def test_the_span_carries_the_verdict_and_the_latency_and_not_the_text(
+    tmp_path: Path,
+) -> None:
+    """A span attribute is as public as a log line, and gets the same treatment."""
+    spans = InMemorySpanExporter()
+    built, _ = built_with(
+        tmp_path,
+        FakeRelevance("irrelevant", latency_ms=44),
+        tracer=build_tracer_provider(exporter=spans).get_tracer("tests"),
+    )
+    built.ask(
+        "what is the best deck this week",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+    )
+
+    (span,) = [one for one in spans.get_finished_spans() if one.name == agent.ANSWER_SPAN]
+    assert span.attributes is not None
+    assert span.attributes["agent.context_relevance"] == "irrelevant"
+    assert attribute(span, "agent.relevance_ms") == 44
+    # The game was dropped, so it is not in the placed length either.
+    assert attribute(span, "agent.context_game_chars") == 0
+    assert attribute(span, "agent.context_chars") == len(ROUTE)
+    written = json.dumps(dict(span.attributes), default=str)
+    for secret in (GAME, FIRST_LINE, ROUTE):
+        assert secret not in written
+
+
+def test_a_decision_is_counted_by_verdict_and_timed(tmp_path: Path) -> None:
+    """One counter per decision and one observation, and neither for a question with no game."""
+    metrics = build_metrics()
+    built_with(tmp_path, FakeRelevance("irrelevant"), metrics=metrics)[0].ask(
+        "what is the best deck this week",
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+    )
+    assert relevance_count(metrics, "irrelevant") == 1.0
+    assert relevance_count(metrics, "relevant") == 0.0
+
+    built_with(tmp_path, FakeRelevance("relevant"), metrics=metrics)[0].ask("no game here")
+    assert relevance_count(metrics, "irrelevant") == 1.0
+    assert relevance_count(metrics, "relevant") == 0.0
 
 
 def test_the_model_is_sent_marked_system_blocks_and_an_unmarked_question(
@@ -703,6 +933,11 @@ def counter_value(metrics: ServiceMetrics, tool: str, gate: str = "off") -> floa
     value = metrics.registry.get_sample_value(
         "agent_tool_calls_total", {"tool": tool, "gate": gate}
     )
+    return float(value or 0.0)
+
+
+def relevance_count(metrics: ServiceMetrics, verdict: str) -> float:
+    value = metrics.registry.get_sample_value("agent_context_relevance_total", {"verdict": verdict})
     return float(value or 0.0)
 
 

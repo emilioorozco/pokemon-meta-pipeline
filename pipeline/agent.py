@@ -54,6 +54,18 @@ injected statement safe is `validate_sql` underneath them, and the twelve
 adversarial questions in the golden set are scored on the SQL as well as the
 prose for exactly that reason (docs/agent-safety.md).
 
+**The game on screen is decided about before it is placed.** When the member
+is looking at one of their own games the application sends a redacted summary
+of it beside the route sentence, and one more sentence describing it. A single
+typed Choice call over the question and that one sentence says whether the
+game bears on what was asked (`pipeline.sql_gate.relevance`): `relevant`
+places the route sentence, a blank line and the summary, `irrelevant` places
+the route sentence alone, and `skipped`, which is a judge that is not
+configured or a call that failed, places the summary anyway. The decision
+never sees the summary, so it stays one short call however long the game was,
+and the verdict, the latency and two lengths are what is written down of any
+of it.
+
 **There is an optional second gate behind the first one.** `PRA_SQL_GATE=jev`
 puts `pipeline.sql_gate` between the validator and DuckDB: one typed Choice
 question to a System One model, asking whether the statement is a read-only
@@ -127,10 +139,14 @@ from pipeline.prompts import ALLOWED_TABLES, clean_context, system_blocks, wrap_
 from pipeline.sql_gate import (
     GATE_OFF,
     NO_GATE,
+    ContextRelevance,
     GateDecision,
+    NoRelevance,
     OffGate,
+    RelevanceDecision,
     SqlGate,
     gate_from_env,
+    relevance_from_env,
     schema_summary,
 )
 from pipeline.storage import AnyLocation, Location, duckdb_connect, location
@@ -198,6 +214,13 @@ SUMMARY_OFF: Final = "off"
 SUMMARY_ALLOWED: Final = "allowed"
 SUMMARY_ALLOWED_LOW: Final = "allowed_low"
 SUMMARY_REFUSED: Final = "refused"
+
+# What separates the route sentence from the game summary inside the one
+# `<context>` element. A blank line, so the two read as two paragraphs of one
+# description rather than as one run-on sentence, and no label: a heading
+# would be the project's own words inside the element rule 9 tells the model
+# is somebody else's.
+CONTEXT_JOINER: Final = "\n\n"
 
 # Statement keywords that are never allowed, whatever else the string contains.
 # Checked on word boundaries against the comment-stripped SQL, so a column
@@ -1040,6 +1063,15 @@ class Answer:
     # dropped for being empty or for being nothing but delimiters would be the
     # interface telling a small lie about what the answer was built from.
     context_used: bool = False
+    # Whether the game summary in particular was placed, which `context_used`
+    # cannot say on its own: a request that sent a route sentence and a game
+    # the judge dropped placed a context and did not place the game, and the
+    # chip the application draws is about the game.
+    context_game_used: bool = False
+    # What the relevance judge said about the game on screen, or None when no
+    # game was sent and there was nothing to decide. One of `relevant`,
+    # `irrelevant`, `skipped` (`pipeline.sql_gate.RELEVANCE_VERDICTS`).
+    context_relevance: str | None = None
 
     @property
     def gate_summary(self) -> str:
@@ -1055,6 +1087,8 @@ class Answer:
             "evidence": self.evidence.as_dict(),
             "gate_summary": self.gate_summary,
             "context_used": self.context_used,
+            "context_game_used": self.context_game_used,
+            "context_relevance": self.context_relevance,
         }
 
 
@@ -1091,6 +1125,7 @@ class Agent:
         metrics: ServiceMetrics | None = None,
         warmer: Callable[[], bool] | None = None,
         card_tool_reason: str | None = None,
+        relevance: ContextRelevance | None = None,
     ) -> None:
         self.graph = graph
         self.model_name = model_name
@@ -1110,6 +1145,11 @@ class Agent:
         # to decide whether the build is finished, so an attribute rather than
         # only a log line: a host cannot act on something it has to grep for.
         self.card_tool_reason = card_tool_reason
+        # Who decides whether the game on a member's screen belongs in front
+        # of their question. `NoRelevance` by default, which skips every
+        # decision and attaches every game, because that is what an
+        # environment with no judge configured should do.
+        self.relevance = relevance if relevance is not None else NoRelevance()
 
     def warm(self) -> bool:
         """Make the card tool's embedding model resident, asking the provider nothing.
@@ -1127,7 +1167,29 @@ class Agent:
             return False
         return self.warmer()
 
-    def ask(self, question: str, context: str | None = None, job: str | None = None) -> Answer:
+    def decide_relevance(
+        self, question: str, game: str, first_line: str | None
+    ) -> RelevanceDecision:
+        """What the judge says about the game on screen, for this question.
+
+        The judge is handed the question and the first line, and the game
+        text is handed to nothing: it is here only so that a caller cannot
+        reach this with no game and get a verdict about nothing. One short
+        call, whatever the summary's length, which is the whole reason the
+        application sends a first line at all.
+        """
+        if not game:
+            return RelevanceDecision(reason="no game was sent")
+        return self.relevance.relevance(question, clean_context(first_line))
+
+    def ask(
+        self,
+        question: str,
+        context: str | None = None,
+        job: str | None = None,
+        context_game: str | None = None,
+        context_first_line: str | None = None,
+    ) -> Answer:
         """Run the loop on one question and collect what it did.
 
         The question goes to the model inside the `<question>` element rule 8
@@ -1144,12 +1206,26 @@ class Agent:
         The gate's question is whether a statement answers what was asked, and
         the context is not what was asked.
 
+        `context_game` is the other half of that element and the one this
+        method decides about. It is a redacted plain-text summary of the game
+        the member is looking at, built by the application from their own log;
+        this service never fetches a game. `context_first_line` is one
+        sentence describing the same game, and it is the only part of it the
+        relevance judge is shown. When the judge says `irrelevant` the summary
+        is dropped and the route sentence goes on its own; on `relevant` and
+        on `skipped` the placed context is the route sentence, a blank line,
+        then the summary. Failing towards attaching is deliberate: an
+        irrelevant game in the context is a few hundred characters the model
+        ignores, and a missing game on a question about that game is a worse
+        answer.
+
         `job` is the application's own router label for the question, carried
         so that the log line and the span can be read by job. It changes
         nothing about the answer today; the playbooks are a later ticket.
 
-        Neither the context nor the question is logged or put on a span, here
-        or anywhere below. What is recorded of them is two lengths and a label
+        Neither the context, the game summary, the first line nor the question
+        is logged or put on a span, here or anywhere below. What is recorded
+        of them is three lengths, a label, a verdict and a duration
         (docs/agent-safety.md).
 
         This is the one place either surface wraps anything. `POST /ask` and
@@ -1159,16 +1235,26 @@ class Agent:
         collected: list[ToolCall] = []
         token = _calls.set(collected)
         asked = _question.set(question)
-        placed = clean_context(context)
+        route = clean_context(context)
+        game = clean_context(context_game)
+        decision = self.decide_relevance(question, game, context_first_line) if game else None
+        if decision is not None and self.metrics is not None:
+            self.metrics.observe_context_relevance(decision.verdict, decision.latency_ms / 1000)
+        attached = game if decision is not None and decision.attach else ""
+        placed = CONTEXT_JOINER.join(part for part in (route, attached) if part)
         try:
             with collect_evidence() as log, self.tracer.start_as_current_span(ANSWER_SPAN) as span:
                 span.set_attribute("agent.model", self.model_name)
                 span.set_attribute("agent.question.length", len(question))
                 # The context as it was placed, so a context that was nothing
-                # but delimiters reads as the nothing it became.
+                # but delimiters reads as the nothing it became, and a game
+                # the judge dropped is not counted in the length.
                 span.set_attribute("agent.context_chars", len(placed))
+                span.set_attribute("agent.context_game_chars", len(attached))
+                span.set_attribute("agent.context_relevance", decision.verdict if decision else "")
+                span.set_attribute("agent.relevance_ms", decision.latency_ms if decision else 0)
                 span.set_attribute("agent.job", job or "")
-                turn = HumanMessage(content=wrap_turn(question, context))
+                turn = HumanMessage(content=wrap_turn(question, placed))
                 state = self.graph.invoke({"messages": [turn]})
                 messages: list[BaseMessage] = list(state["messages"])
                 usage = token_usage(messages)
@@ -1190,6 +1276,8 @@ class Agent:
             usage=usage,
             evidence=log.finish(),
             context_used=bool(placed),
+            context_game_used=bool(attached),
+            context_relevance=decision.verdict if decision else None,
         )
         logger.info(
             "agent answered",
@@ -1199,9 +1287,13 @@ class Agent:
                 "usage": usage,
                 "answer_length": len(answer.answer),
                 "gate_summary": answer.gate_summary,
-                # A length and a label. The context itself is never written
-                # down, at this level or any other.
+                # Lengths, a label, a verdict and a duration. Neither the
+                # context, the game summary nor the sentence the verdict was
+                # reached on is written down, at this level or any other.
                 "context_chars": len(placed),
+                "context_game_chars": len(attached),
+                "context_relevance": decision.verdict if decision else "",
+                "relevance_ms": decision.latency_ms if decision else 0,
                 "job": job or "",
             },
         )
@@ -1280,6 +1372,7 @@ def build_agent(
     tracer: trace.Tracer | None = None,
     metrics: ServiceMetrics | None = None,
     gate: SqlGate | None = None,
+    relevance: ContextRelevance | None = None,
 ) -> Agent:
     """The agent, with its model, its warehouse, its instruments and its gate injected.
 
@@ -1292,10 +1385,16 @@ def build_agent(
     unless something has turned it on, and is read here rather than inside the
     tool so that a misconfigured gate fails while the agent is being built
     instead of in the middle of a question.
+
+    The relevance judge is resolved from the gate first and from the
+    environment second, so a deployment with the gate on holds one Jev client
+    and asks it two kinds of question rather than holding two
+    (`pipeline.sql_gate.relevance_from_env`).
     """
     resolved_metrics = metrics if metrics is not None else build_metrics()
     resolved_tracer = tracer or build_tracer_provider(SERVICE_NAME).get_tracer(__name__)
     resolved_gate = gate if gate is not None else gate_from_env()
+    resolved_relevance = relevance if relevance is not None else relevance_from_env(resolved_gate)
     chat = model if model is not None else chat_model()
     toolset = marts_tools(
         warehouse=warehouse,
@@ -1323,6 +1422,7 @@ def build_agent(
         tool_names=[tool.name for tool in tools],
         warmer=toolset.warm,
         card_tool_reason=toolset.card_reason,
+        relevance=resolved_relevance,
     )
 
 
