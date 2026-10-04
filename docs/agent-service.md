@@ -159,7 +159,7 @@ that has to write a better query; the word is written for the badge.
 | `statement_not_allowed` | not a single read-only SELECT: two statements, a write keyword, or a file-reading function |
 | `judge_low_confidence` | the Jev gate chose `allow` under its threshold and `PRA_SQL_GATE_LOW_CONFIDENCE=refuse` is set. A threshold to tune rather than a verdict |
 | `judge_refused` | the Jev gate really said no |
-| `error` | the gate could not be reached or read, or DuckDB would not run an allowed statement. The second of those is not a refusal and does not affect `gate_summary` |
+| `error` | the gate could not be reached or read, or DuckDB would not run an allowed statement. The second of those is not a refusal and does not affect `gate_summary`. A column the model invented on a real table lands here, not in the table codes: `games_played` on `mart_archetype_weekly` is a legal SELECT over an allowed table that DuckDB answers with a binder error |
 
 The two table codes are the distinction PLA-198 was filed over. The same
 validator catches both, which is why they arrived as one event for so long,
@@ -194,6 +194,27 @@ hold it; the nearest readable thing is `mart_player_summary`. A question with
 because there is no season column to filter on. The eval set measures whether
 the line works: `guessed_tables` counts the `table_not_found` refusals of a
 run ([evals.md](evals.md)).
+
+**It has not stopped, and what it turned into is the thing to watch.** On dev
+after the line landed, the model asked about the week wrote
+`mart_weekly_archetype`: not a fourth invented concept but
+`mart_archetype_weekly` with its two words transposed, a name close enough to
+the listing to look like a reading of it. The same run then wrote a column
+`games_played` on `mart_archetype_weekly`, which has no such column, and that
+one is not a refusal at all: the statement is a legal SELECT over an allowed
+table, the validator passes it, and DuckDB answers with a binder error. It
+lands in `evidence.queries[].refused_code` as `error`, with the binder's
+message in `refused_reason`.
+
+So `guessed_tables` is a floor rather than a count of the behaviour. A reader
+of the metric should watch three shapes, not one: a plainly invented table
+(`mart_leaderboard`), a transposition of a real one
+(`mart_weekly_archetype`), and an invented column on a real table
+(`games_played`), which is the only one of the three the table-name codes
+cannot see. The columns are in the prompt's schema listing already, and
+whether their descriptions carry enough for the model to pick the right one
+is PLA-197's question; this is what the failure looks like from the receipt
+when it does not.
 
 `evidence.cards` is one object per card the card tool matched, deduplicated by
 name, set and number in first-seen order and capped at **10**: `name`,
