@@ -20,22 +20,28 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
+import yaml
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+import pipeline.marts_schema
 import pipeline.warehouse_tables
 from pipeline import agent
 from pipeline import prompts as agent_prompts
+from pipeline.config import REPO_ROOT
 from pipeline.facts import Fact
+from pipeline.marts_schema import MARTS_MODELS
 from pipeline.prompts import (
     ALLOWED_TABLES,
     CONTEXT_CLOSE,
     CONTEXT_OPEN,
     FACTS_CLOSE,
+    FACTS_GLOSSARY,
     FACTS_OPEN,
     JOBS,
+    MARTS_SCHEMA,
     MAX_PROMPT_CHARS,
     MIN_CACHEABLE_PREFIX_TOKENS,
     MIN_PREFIX_TOKENS,
@@ -50,9 +56,12 @@ from pipeline.prompts import (
     clean_history,
     dbt_model_names,
     estimated_prefix_tokens,
+    marts_models_from_files,
     prefix_chars,
+    read_models,
     render_schema,
     route_line,
+    schema_table_count,
     system_blocks,
     system_prompt,
     warehouse_tables,
@@ -61,7 +70,7 @@ from pipeline.prompts import (
 )
 from pipeline.sql_gate import VERDICT_SKIPPED
 from pipeline.telemetry import ServiceMetrics, build_metrics, build_tracer_provider
-from scripts import generate_warehouse_tables
+from scripts import generate_marts_schema, generate_warehouse_tables
 from tests.agent_fakes import (
     FakeGate,
     FakeRelevance,
@@ -236,6 +245,70 @@ def test_the_known_tables_are_answered_with_no_dbt_project_to_read(tmp_path: Pat
     assert agent.table_exists("dim_player") is True
     assert agent.table_exists("fct_game_side") is True
     assert agent.table_exists("ml_labeled_side") is True
+
+
+def test_the_schema_listing_is_the_committed_parse_of_the_dbt_schema() -> None:
+    """The second committed artifact, held to the file it was generated from.
+
+    `dbt/models/marts/schema.yml` is the oracle and `pipeline/marts_schema.py`
+    is the answer carried to production, so a description edited, a column
+    added or a model renamed with no regeneration has to be a red test here
+    rather than a column the agent guesses at in production. Comparing the
+    rendered text catches a hand edit of the generated file too.
+    """
+    parsed = marts_models_from_files()
+    assert parsed, "no marts models found; this test needs the dbt project in the checkout"
+    assert parsed == MARTS_MODELS
+    target = generate_marts_schema.TARGET
+    assert target.read_text(encoding="utf-8") == generate_marts_schema.render(parsed), (
+        "pipeline/marts_schema.py is out of date: "
+        "run `uv run python scripts/generate_marts_schema.py`"
+    )
+    # And the listing the prompt renders is the same text either way, which
+    # is what makes the committed copy a move and not a rewrite.
+    assert render_schema() == render_schema(models=parsed)
+
+
+def test_the_schema_listing_is_rendered_with_no_dbt_project_to_read(tmp_path: Path) -> None:
+    """What the deployed image is, for the prompt this time.
+
+    PLA-198's bug in the other half of this module. `Dockerfile.agent` copies
+    `pipeline/` and not `dbt/`, so `read_models` found no file there, every
+    allowlisted table was skipped as undescribed and the prompt went out with
+    an empty listing: the model wrote SQL against columns it had never been
+    shown, and the prefix was about a thousand tokens shorter than in a
+    checkout. The listing is a module of the package now.
+    """
+    assert read_models((tmp_path / "gone.yml",)) == {}
+    assert marts_models_from_files((tmp_path / "gone.yml",)) == ()
+    # Data and not a loader: the generated module imports `typing` and
+    # nothing that could go looking for a file.
+    assert not hasattr(pipeline.marts_schema, "Path")
+    assert not hasattr(pipeline.marts_schema, "yaml")
+    listing = render_schema()
+    for table in ALLOWED_TABLES:
+        assert f"\n{table}:" in f"\n{listing}", table
+    assert schema_table_count() == len(ALLOWED_TABLES)
+
+
+def test_an_empty_table_listing_raises_rather_than_shipping() -> None:
+    """The failure that used to be silent, made loud.
+
+    A listing with nothing in it is not a degraded prompt, it is a prompt
+    that sends the model at tables it has never been shown, and the only
+    symptom was invented column names in refused SQL. So it raises, with the
+    command that fixes it in the message, and the raise reaches whoever
+    builds the prompt.
+    """
+    with pytest.raises(agent_prompts.SchemaListingError) as refused:
+        render_schema(models=())
+    assert "scripts/generate_marts_schema.py" in str(refused.value)
+    # A listing that lost one table is still a listing: a rename the
+    # allowlist has not caught up with must not take the service down.
+    one = render_schema(models=tuple(m for m in MARTS_MODELS if m[0] == "mart_matchups"))
+    assert one.startswith("mart_matchups:")
+    with pytest.raises(agent_prompts.SchemaListingError):
+        render_schema(("no_such_model",))
 
 
 def test_two_statements_are_refused_even_when_both_would_be_allowed() -> None:
@@ -502,7 +575,7 @@ def test_the_job_reaches_the_model_as_the_route_line_and_an_unknown_one_does_not
     """What `ask` does with the label now, which until PLA-205 was only logging it.
 
     One line at the top of the turn and nothing else: the prefix is the same
-    three blocks whatever the job is, because a playbook that moved into the
+    four blocks whatever the job is, because a playbook that moved into the
     cached blocks per request would bill a cache write on every call.
     """
     model = scripted(final("Four games."))
@@ -958,12 +1031,15 @@ def test_the_cached_prefix_stays_over_the_providers_minimum() -> None:
     and quietly stops caching: every call pays full price and the only
     symptom is a counter nobody is watching. This is the thing that notices.
 
-    An estimate and not a measurement, by the same four characters per token
-    rule the ceiling above uses, over the three blocks joined with the
-    card-tool note plus the tool schemas, which the provider hashes in front
-    of the system blocks and which are inside the prefix too. The measurement
-    is a `count_tokens` call with a key and it is written out in
-    docs/agent-service.md.
+    An estimate and not a measurement, by the four characters per token the
+    ceiling above uses, over the four blocks joined with the card-tool note
+    plus the tool schemas, which the provider hashes in front of the system
+    blocks and which are inside the prefix too. Both halves of the estimate
+    were checked against a real `count_tokens` run on 2026-10-04: the ratio
+    held at about 3.9 characters per token and the tool allowance did not,
+    which is why `PREFIX_TOOL_CHARS` is 2,600 rather than the 900 it was
+    guessed at. The measurement is a `count_tokens` call with a key and it is
+    written out in docs/agent-service.md.
     """
     assert estimated_prefix_tokens() >= MIN_PREFIX_TOKENS
     assert MIN_PREFIX_TOKENS > MIN_CACHEABLE_PREFIX_TOKENS
@@ -998,6 +1074,61 @@ def test_there_is_a_playbook_for_every_job_and_nothing_else() -> None:
     # And none of them advertises the card tool by name, because the note
     # that does is only added when the tool is really registered.
     assert "lookup_cards" not in text
+
+
+def test_the_glossary_defines_every_fact_the_application_sends() -> None:
+    """One line per fact id, held against the fixtures the application's output is in.
+
+    The glossary is only worth a cached block if it is complete: a fact that
+    reaches the model as a numbered sentence with no definition above it is
+    exactly the case the block exists to remove. So the oracle is the ten
+    recorded games in `evals/fixtures/facts`, which are the application's own
+    `context_facts` lists, and a new fact id arriving there without a line
+    here fails this rather than arriving undefined.
+
+    The ids carry the seat they are about after a colon, `:me`, `:opponent`
+    or `:both`, and the glossary names a fact once and says what the three
+    suffixes mean, so what is matched is the part in front of the colon.
+    """
+    seats = set()
+    ids = set()
+    for path in sorted((REPO_ROOT / "evals" / "fixtures" / "facts").glob("game-*.json")):
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+        for fact in recorded["context_facts"]:
+            name, _, seat = str(fact["id"]).partition(":")
+            ids.add(name)
+            seats.add(seat)
+    assert len(ids) == 12, sorted(ids)
+    missing = sorted(name for name in ids if f"\n{name} - " not in FACTS_GLOSSARY)
+    assert missing == [], missing
+    # And the suffixes themselves, since the lines are written without them.
+    assert seats == {"me", "opponent", "both"}
+    for seat in sorted(seats):
+        assert f"`:{seat}`" in FACTS_GLOSSARY, seat
+
+
+def test_the_glossary_defines_every_column_of_the_pace_mart() -> None:
+    """One line per pace column, held against the dbt schema the mart is built from.
+
+    `mart_archetype_pace` is the community half of the same ten
+    measurements, and a column renamed or added in `schema.yml` is a column
+    the prompt would otherwise describe nowhere. The four that are not pace
+    numbers (the two keys, the seat count and the thin-cell flag) are named
+    in the paragraph above the lines rather than on lines of their own,
+    which is why this asserts the name is present rather than the shape of
+    its line.
+    """
+    models = yaml.safe_load(MARTS_SCHEMA.read_text(encoding="utf-8"))["models"]
+    (pace,) = [model for model in models if model["name"] == "mart_archetype_pace"]
+    columns = [str(column["name"]) for column in pace["columns"]]
+    assert len(columns) == 14, columns
+    missing = [name for name in columns if name not in FACTS_GLOSSARY]
+    assert missing == [], missing
+    # The ten that are pace numbers get a line of their own.
+    keys = {"archetype_key", "archetype_name", "games", "min_games_met"}
+    for name in columns:
+        if name not in keys:
+            assert f"\n{name} - " in FACTS_GLOSSARY, name
 
 
 def test_the_job_is_one_line_above_the_turn_and_only_for_a_known_job() -> None:
@@ -1080,19 +1211,19 @@ def text_blocks(with_card_tool: bool = False) -> list[dict[str, Any]]:
     return [block for block in blocks if isinstance(block, dict)]
 
 
-def test_the_prompt_is_three_blocks_with_the_breakpoint_on_the_last() -> None:
-    """The cache layout: three stable blocks, marked once, at the end.
+def test_the_prompt_is_four_blocks_with_the_breakpoint_on_the_last() -> None:
+    """The cache layout: four stable blocks, marked once, at the end.
 
-    The role and the rules, then the per-job playbooks, then the schema
-    listing. The breakpoint is on the last of them because everything after
-    it, the member's question and the `Routed as` line above it, changes
-    every request, and a breakpoint in front of something that varies is a
-    cache write on every call.
+    The role and the rules, then the per-job playbooks, then the facts and
+    pace glossary, then the schema listing. The breakpoint is on the last of
+    them because everything after it, the member's question and the
+    `Routed as` line above it, changes every request, and a breakpoint in
+    front of something that varies is a cache write on every call.
     """
     for with_card_tool in (False, True):
         blocks = text_blocks(with_card_tool)
-        assert len(blocks) == 3
-        assert [block["type"] for block in blocks] == ["text", "text", "text"]
+        assert len(blocks) == 4
+        assert [block["type"] for block in blocks] == ["text"] * 4
         assert all("cache_control" not in block for block in blocks[:-1])
         assert blocks[-1]["cache_control"] == {"type": "ephemeral"}
         # The seam, not a rewrite: joined back it is the prompt as it was.
@@ -1102,14 +1233,19 @@ def test_the_prompt_is_three_blocks_with_the_breakpoint_on_the_last() -> None:
 
 
 def test_the_blocks_split_at_the_seams_the_prompt_already_had() -> None:
-    """Block one is the rules, block two the playbooks, block three the schema."""
-    rules, playbooks, schema = (block["text"] for block in text_blocks(with_card_tool=True))
+    """Rules, then playbooks, then the glossary, then the schema."""
+    rules, playbooks, glossary, schema = (
+        block["text"] for block in text_blocks(with_card_tool=True)
+    )
     assert "Rules you follow on every answer" in rules
     assert "lookup_cards" in rules
     assert "mart_matchups:" not in rules
     assert playbooks.startswith("Playbooks, one for each kind")
     assert "Rules you follow" not in playbooks
     assert "mart_matchups:" not in playbooks
+    assert glossary.startswith("What the per-game numbers mean")
+    assert "Rules you follow" not in glossary
+    assert "mart_matchups:" not in glossary
     assert schema.startswith("Tables you can query")
     assert "mart_matchups:" in schema
     assert "Rules you follow" not in schema
