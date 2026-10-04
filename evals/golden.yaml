@@ -188,7 +188,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 12
+version: 13
 
 questions:
   - id: matchup_win_rate
@@ -1783,3 +1783,253 @@ questions:
     notes: >-
       The game the member lost without attacking. Two of its facts have no numbers in
       them at all, which is the case the check has to leave alone rather than report.
+
+  # ------------------------------------------------------------ the jobs --
+  #
+  # One question per router label, added with the playbooks in version 13.
+  # Each carries a `job`, which is what puts the `Routed as: <job>` line at
+  # the top of the turn and sends the model at one playbook of the prompt's
+  # second block. What they grade is the shape of the answer rather than a
+  # new fact of the warehouse: a `my_mistake` answer that reads like a stats
+  # summary is the failure the playbooks exist to fix, and nothing in the
+  # set before this could see it.
+  #
+  # Three of them require a turn of phrase, which the note at the top of
+  # this file warns against, and they do it with a wide alternation and on
+  # purpose. The structure of an answer is the thing under test here, and
+  # there is no number that says "a line the member could have taken
+  # instead" was offered. The alternations are long enough that two right
+  # answers worded differently both pass, and anything that answers the
+  # question some other way fails for the right reason.
+
+  - id: job_my_mistake_review
+    job: my_mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+    context_game: >-
+      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
+      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
+      Your opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 17 turns."
+        values: [17]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 4."
+        values: [4]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: turns_without_attack:me
+        text: "You made no attack on 1 of your turns, on turn 2."
+        values: [1, 2]
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 4."
+        values: [1, 4]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 12."
+        values: [12]
+      - id: prizes_taken:both
+        text: "You took 4 prizes and your opponent took 4."
+        values: [4, 4]
+      - id: prizes_by_turn:me
+        text: "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8."
+        values: [0, 4, 0, 6, 0, 8]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 12."
+        values: [12]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 10."
+        values: [200, 10]
+      - id: energy_per_turn:me
+        text: "You attached 1 energy cards per turn you took."
+        values: [1]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 17."
+        values: [17]
+    question: what should I have done differently in that one
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b12\\b"
+      - "re:\\b17\\b"
+      - "re:instead|could have|rather than|next time|worth|try "
+      - "re:matchup|the league|other games|the corpus|the warehouse|no row|holds no"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+      - "re:they (probably|must have|likely) (had|held|drew)"
+    notes: >-
+      The post-loss review, and the question the playbooks were written for.
+      The game is fixture game 4: a loss over 17 turns where the member's
+      first prize did not come until turn 12, which is the fact that decided
+      it and is the one a stats summary would never surface.
+
+      The three required shapes are the three parts of the playbook's answer,
+      in the order it asks for them. Turn 12 and turn 17 are the facts that
+      mattered, both values of the facts the application sent; the third
+      entry is the line the member could have taken instead; and the fourth
+      is the sentence placing the game against how the matchup usually goes.
+      That last one passes on an honest "the warehouse holds no row for this
+      pairing", which is what the fixture corpus really says, because the
+      playbook asks for the caveat and not for a number that is not there.
+
+      `warehouse: any` because nothing required is a fixture fact: the two
+      numbers are in the context the runner sent and the rest are shapes.
+      The last forbidden entry is the playbook's prohibition on guessing at
+      the opponent's hand, which is the easiest way to fill the second part
+      with something that sounds like advice.
+
+  - id: job_my_game_walkthrough
+    job: my_game
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult control game against Alakazam / Toucannon, you went second, won in
+      10 turns.
+    context_game: >-
+      Your Dragapult control deck against Alakazam / Toucannon. You went second and won
+      on turn 10. You took 6 prizes and your opponent took 2. Your first attack was on
+      turn 2. Your opponent first attacked on turn 3.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 10 turns."
+        values: [10]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 3."
+        values: [3]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 6."
+        values: [6]
+      - id: prizes_taken:both
+        text: "You took 6 prizes and your opponent took 2."
+        values: [6, 2]
+      - id: knockouts:both
+        text: "You took 5 knockouts and your opponent took 2."
+        values: [5, 2]
+    question: walk me through how that game went
+    expect_tools: [query_marts]
+    max_unverified: 0
+    require:
+      - Alakazam / Toucannon
+      - "re:\\b6\\b"
+      - "re:1 game\\b"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+      - deck inclusion
+    notes: >-
+      The other half of the page context, and the one case in the set that
+      asks for both halves of the `my_game` playbook at once: the game out of
+      the facts, then one sentence placing it against the community out of a
+      mart. Fixture game 9, which is the only fixture loss or win whose
+      member deck is named, so `mart_matchups` has a row for the pairing: it
+      is Dragapult control against Alakazam / Toucannon, 1 game, and the
+      required `1 game` is the sample size of that row rather than anything
+      about the game on screen.
+
+      Turn 6 is the member's first prize and their first knockout, which is
+      the turn the game turned, and it is a value of two of the facts sent.
+      This is the only job case whose `require` names a fixture number, so
+      it is the only one with no `warehouse: any`.
+
+  - id: job_my_record_season
+    job: my_record
+    context: >-
+      The member is on their own record page. Theirs is the row of the player summary
+      with the most uploaded games.
+    question: how have I done overall, and which deck do I play most?
+    expect_tools: [query_marts]
+    require:
+      - "re:8 games\\b"
+      - "re:4 wins|won 4|4 and 4|4\\s*[-–]\\s*4"
+      - Dragapult / Dusknoir
+    forbid:
+      - deck inclusion
+      - "re:\\bdim_player\\b"
+      - "re:handle|username|their name is"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The member's own row, which is the one thing `mart_player_summary` is
+      for and the one table the agent can read that is keyed by a person.
+
+      Which row is theirs arrives in the page context, because nothing else
+      in the request carries identity: the application knows who is asking
+      and the agent has no way to work it out. It says which row rather than
+      naming the key, and that is not a simplification for the test's sake:
+      the key is an HMAC of a handle under a secret this repository does not
+      hold, so it is a different string in every build of the fixture
+      warehouse and a question that hard-coded one would pass here and
+      nowhere else.
+
+      The row is 8 games, 4 wins, 4 losses and no ties, with Dragapult /
+      Dusknoir as the archetype played most, which is why this one is a
+      fixture question. The record is required as a record rather than as a
+      percentage, which is what the playbook asks for on a sample this size,
+      and the token shape is forbidden as everywhere else: reading a member's
+      own row is no reason to hand the key back.
+
+  - id: job_card_rules_ability
+    job: card_rules
+    question: What does Budew's ability do?
+    expect_tools: [lookup_cards]
+    require:
+      - Itchy Pollen
+      - "re:Item card"
+      - "re:Active Spot|active"
+    forbid:
+      - "re:from mart_"
+      - "re:seen_rate"
+      - "re:\\d+(\\.\\d+)?\\s?% of games"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      Printed text and nothing else, which is the whole of the `card_rules`
+      playbook. Budew's ability is in the fixture card corpus and in no mart,
+      so the right answer is the retriever's and a query is not a wasted call
+      here but a wrong one: `re:from mart_` is searched in the statements of
+      the run, so a mart read fails the question whatever the prose says.
+
+      `card_text_lookup` already asserts that an answer about printed text
+      does not quote a play rate. What this adds is the other direction, that
+      the lookup is the only thing the run does at all.
+
+  - id: job_meta_week
+    job: meta
+    question: >-
+      Which archetypes won more than they lost in the week starting 2026-09-14, and how
+      many games is that over?
+    expect_tools: [query_marts]
+    require:
+      - "2026-09-14"
+      - "re:1 game\\b"
+      - "re:8 games\\b"
+      - "re:thin|anecdote|too few|not enough|below|min_games_met|cannot"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+      - "desc:re:\\b[a-z]+_[a-z_]+\\b"
+    notes: >-
+      The community question, and the three things the `meta` playbook asks
+      for in one answer: the number, the sample size and the caveat. Six
+      archetypes of that week won their only game, so the number is a list,
+      the sample behind each name is 1 game, the week itself holds 8, and a
+      1 and 0 record is not a win rate. An answer that reports six names and
+      stops has given the member something they will read as a ranking.
+
+      `week_games` rather than `games` is the column that holds 8, for the
+      reason `week_coverage` is in the set: the per-archetype column counts
+      seats. The `desc:` entry holds the receipt to the same bar
+      `matchup_win_rate` does.

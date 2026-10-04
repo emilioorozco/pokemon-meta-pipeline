@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 10
+version: 11
 
 runs:
   matchup_win_rate:
@@ -580,3 +580,84 @@ runs:
       From the game on screen: your opponent first attacked on turn 3 and took 2 prizes.
       You never attacked and took none, over a game that ran 4 turns and ended in a
       concession.
+
+  # The five job questions of version 13. Each one is the run the playbook
+  # for its job describes: the facts first on the two game questions, the
+  # member's own row on `my_record`, the retriever alone on `card_rules`.
+
+  job_my_mistake_review:
+    turns: []
+    answer: >-
+      From the game on screen, two things decided it. Your first prize did not come
+      until turn 12, and by the end of turn 8 you had taken none at all, so the game was
+      half over before you were on the board. Your opponent first attacked on turn 7 and
+      you on turn 4, which is the one part of it you were ahead on.
+
+      The line worth taking instead is the earlier trade: you had an attack available
+      from turn 4 and your first knockout was turn 12, so a knockout taken around the
+      middle turns rather than at the end is what would have changed the race. Over a
+      game that ran 17 turns and finished 4 prizes each, that is the whole margin.
+
+      How the matchup usually goes I cannot tell you here: the warehouse holds no
+      matchup row for this pairing, so there is no community record to place the game
+      against.
+
+  job_my_game_walkthrough:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins,
+            losses, win_rate, min_games_met from mart_matchups where
+            archetype_name ilike 'Dragapult control' and
+            opponent_archetype_name ilike 'Alakazam / Toucannon'
+    answer: >-
+      From the game on screen: you went second with Dragapult control and attacked first
+      anyway, on turn 2, with your opponent following on turn 3. Your first prize and
+      your first knockout both came on turn 6, and from there you took 5 knockouts to
+      their 2 and finished 6 prizes to 2 on turn 10.
+
+      Against Alakazam / Toucannon the warehouse holds 1 game for Dragapult control, the
+      one you are looking at, and the mart flags the row as thin. So there is nothing to
+      say yet about whether that shape is ordinary for the pairing.
+
+  job_my_record_season:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select games, wins, losses, ties, favourite_archetype_name,
+            favourite_archetype_games from mart_player_summary order by
+            games_uploaded desc
+    answer: >-
+      Over the 8 games you have uploaded you are 4 wins and 4 losses, with no ties, so
+      the record is even. The deck you have played most is Dragapult / Dusknoir, in 2 of
+      those 8 games. Eight games is a thin sample, so read it as the record it is rather
+      than as a rate.
+
+  job_card_rules_ability:
+    turns:
+      - tool: lookup_cards
+        args:
+          query: Budew ability
+          k: 2
+    answer: >-
+      Budew's ability is Itchy Pollen: while Budew is in the Active Spot, your opponent
+      cannot play any Item card from their hand. That is the printed text. It is the
+      reason Budew is played at all, as an early turn tax on the other side's searching.
+
+  job_meta_week:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, wins, losses, week_games from
+            mart_archetype_weekly where week_start = date '2026-09-14' and
+            wins > losses order by archetype_name
+    answer: >-
+      In the week starting 2026-09-14 six archetypes won more than they lost: Crustle /
+      Mega Kangaskhan ex, Cynthia's Garchomp, Dragapult / Dusknoir, Dragapult control,
+      Festival Lead and Mega Starmie ex / Mega Froslass ex. Every one of them is 1 game
+      and 1 win, over a week that holds 8 games in all, so this is six decks that won
+      once and not a ranking. The mart flags all six rows as thin, which on a sample of
+      one is what you would expect.
