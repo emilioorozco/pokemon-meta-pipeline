@@ -418,11 +418,22 @@ class StubAgent:
         # and dropped in the handler.
         self.contexts: list[str | None] = []
         self.jobs: list[str | None] = []
+        self.games: list[str | None] = []
+        self.first_lines: list[str | None] = []
 
-    def ask(self, question: str, context: str | None = None, job: str | None = None) -> "StubAgent":
+    def ask(
+        self,
+        question: str,
+        context: str | None = None,
+        job: str | None = None,
+        context_game: str | None = None,
+        context_first_line: str | None = None,
+    ) -> "StubAgent":
         self.asked.append(question)
         self.contexts.append(context)
         self.jobs.append(job)
+        self.games.append(context_game)
+        self.first_lines.append(context_first_line)
         return self
 
     def as_dict(self) -> dict[str, Any]:
@@ -434,6 +445,16 @@ ALLOWED_SQL: Final = (
     "where archetype_name ilike 'Alpha' and opponent_archetype_name ilike 'Beta'"
 )
 REFUSED_SQL: Final = "select * from dim_player"
+# The game on a member's screen, as the application would send it: a first
+# line the relevance decision is taken on, and the summary that decision
+# decides about.
+GAME_FIRST_LINE: Final = (
+    "Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns."
+)
+GAME_SUMMARY: Final = (
+    "Your Dragapult ex game against Gardevoir ex. You went second and lost on turn 9. "
+    "Prize cards taken: you 2, your opponent 6."
+)
 REFUSAL: Final = "refused: `dim_player` is not a table this tool can read."
 
 # One run of each of the three things a question does: a query that ran, a
@@ -485,6 +506,8 @@ ANSWER: Final[dict[str, Any]] = {
     },
     "gate_summary": "refused",
     "context_used": False,
+    "context_game_used": False,
+    "context_relevance": None,
 }
 
 
@@ -571,6 +594,8 @@ def test_a_request_with_neither_field_sends_neither(registry: Registry) -> None:
 
     assert agent.contexts == [None]
     assert agent.jobs == [None]
+    assert agent.games == [None]
+    assert agent.first_lines == [None]
 
 
 def test_a_context_over_the_ceiling_is_a_422_rather_than_a_truncation(
@@ -617,6 +642,105 @@ def test_context_used_is_the_agents_answer_and_the_context_is_not_echoed(
     assert secret not in json.dumps(body)
 
 
+def test_the_game_on_screen_and_its_first_line_reach_the_agent(registry: Registry) -> None:
+    """Four context fields now, all carried through rather than read and dropped."""
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask",
+            json={
+                "question": "how did I lose this one",
+                "context": "The member is on their own game page.",
+                "context_game": GAME_SUMMARY,
+                "context_first_line": GAME_FIRST_LINE,
+                "job": "my_game",
+            },
+        )
+
+    assert response.status_code == 200
+    assert agent.games == [GAME_SUMMARY]
+    assert agent.first_lines == [GAME_FIRST_LINE]
+
+
+@pytest.mark.parametrize(
+    ("field", "ceiling"),
+    [("context_game", serve.MAX_CONTEXT_CHARS), ("context_first_line", serve.MAX_FIRST_LINE_CHARS)],
+)
+def test_each_game_field_has_its_own_ceiling_and_a_422_over_it(
+    registry: Registry, field: str, ceiling: int
+) -> None:
+    """Two ceilings, because the two fields are two different sizes of thing.
+
+    The first line is short on purpose: it is the only part of the game the
+    relevance decision is shown, and a 1,500 character first line would make
+    a short call a long one on every question asked from a game page.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        at_the_line = started.post("/ask", json={"question": "anything", field: "x" * ceiling})
+        over = started.post("/ask", json={"question": "anything", field: "x" * (ceiling + 1)})
+
+    assert at_the_line.status_code == 200
+    assert over.status_code == 422
+    assert len(agent.asked) == 1
+
+
+def test_the_two_game_chips_are_the_agents_answer_and_not_the_requests(
+    registry: Registry,
+) -> None:
+    """`context_game_used` and `context_relevance` come off the run, not off the body.
+
+    A request that sent a game and a decision that dropped it is a request
+    where `context_game` was present and the game was not placed, which is
+    exactly the case a chip built from the request would get wrong.
+    """
+    payload = dict(ANSWER) | {
+        "context_used": True,
+        "context_game_used": False,
+        "context_relevance": "irrelevant",
+    }
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(payload))
+    with TestClient(app) as started:
+        body = started.post(
+            "/ask",
+            json={
+                "question": "what is the best deck this week",
+                "context": "The member is on their own game page.",
+                "context_game": GAME_SUMMARY,
+                "context_first_line": GAME_FIRST_LINE,
+            },
+        ).json()
+
+    assert body["context_used"] is True
+    assert body["context_game_used"] is False
+    assert body["context_relevance"] == "irrelevant"
+    # Neither the summary nor the sentence is echoed back.
+    assert GAME_SUMMARY not in json.dumps(body)
+    assert GAME_FIRST_LINE not in json.dumps(body)
+
+
+def test_no_game_means_a_null_verdict_rather_than_skipped(registry: Registry) -> None:
+    """Null is "there was nothing to decide", which is not the same as `skipped`."""
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))
+    with TestClient(app) as started:
+        body = started.post("/ask", json={"question": "what is the best deck"}).json()
+
+    assert body["context_relevance"] is None
+    assert body["context_game_used"] is False
+
+
+def test_a_verdict_that_is_not_one_of_the_three_is_not_a_body_this_service_sends(
+    registry: Registry,
+) -> None:
+    """A closed set on the way out, so a chip cannot be drawn from a fourth word."""
+    payload = dict(ANSWER) | {"context_relevance": "probably"}
+    app = serve.create_app(registry, agent_factory=lambda: StubAgent(payload))
+    with TestClient(app) as started, pytest.raises(Exception, match="context_relevance"):
+        started.post("/ask", json={"question": "why"})
+
+
 def test_the_context_is_not_in_any_line_the_service_logs(
     registry: Registry, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -631,12 +755,24 @@ def test_the_context_is_not_in_any_line_the_service_logs(
     secret = "The member is reviewing their loss to Dragapult control on 2026-09-14."
     app = serve.create_app(registry, agent_factory=lambda: StubAgent(ANSWER))
     with TestClient(app) as started, caplog.at_level(logging.DEBUG):
-        started.post("/ask", json={"question": "why", "context": secret, "job": "my_game"})
+        started.post(
+            "/ask",
+            json={
+                "question": "why",
+                "context": secret,
+                "context_game": GAME_SUMMARY,
+                "context_first_line": GAME_FIRST_LINE,
+                "job": "my_game",
+            },
+        )
 
     assert any(entry.message == "request" for entry in caplog.records)
-    assert secret not in caplog.text
-    for entry in caplog.records:
-        assert secret not in json.dumps(entry.__dict__, default=str)
+    # All three, because all three are text the application assembled out of a
+    # page and a member's own log and none of them belongs in a log line.
+    for text in (secret, GAME_SUMMARY, GAME_FIRST_LINE):
+        assert text not in caplog.text
+        for entry in caplog.records:
+            assert text not in json.dumps(entry.__dict__, default=str)
 
 
 def test_an_agent_that_cannot_be_built_is_a_503_that_says_why(registry: Registry) -> None:
