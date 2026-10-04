@@ -34,6 +34,7 @@ FAMILIES: Final[tuple[str, ...]] = (
     "model_inference_duration_seconds",
     "model_predictions_total",
     "agent_tool_calls_total",
+    "agent_prompt_tokens_total",
     "model_info",
 )
 
@@ -233,3 +234,38 @@ def test_the_agent_counter_exists_before_the_agent_does(
     app.state.metrics.count_tool_call("sql")
     with TestClient(app) as started:
         assert sample(started.get("/metrics").text, "agent_tool_calls_total", tool="sql") == 1
+
+
+def test_prompt_tokens_are_counted_by_how_they_were_paid_for(
+    exporter: InMemorySpanExporter,
+) -> None:
+    """The three kinds are the provider's split of the input side, and they do not overlap.
+
+    `cache_read` over their sum is the hit ratio the dashboard shows, so all
+    three have to be exposed under one metric with one label.
+    """
+    app = serve.create_app(Registry(loaded(StubPredictor(0.73), "7")), span_exporter=exporter)
+    app.state.metrics.count_prompt_tokens(
+        {
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 2_200,
+            "cache_creation_input_tokens": 0,
+        }
+    )
+    with TestClient(app) as started:
+        text = started.get("/metrics").text
+    assert sample(text, "agent_prompt_tokens_total", kind="uncached") == 120
+    assert sample(text, "agent_prompt_tokens_total", kind="cache_read") == 2_200
+    assert sample(text, "agent_prompt_tokens_total", kind="cache_creation") == 0
+
+
+def test_a_run_that_reported_no_usage_moves_no_token_counter(
+    exporter: InMemorySpanExporter,
+) -> None:
+    """A fake model reports nothing, and a counter ticking by zero would look like traffic."""
+    app = serve.create_app(Registry(loaded(StubPredictor(0.73), "7")), span_exporter=exporter)
+    app.state.metrics.count_prompt_tokens({})
+    with TestClient(app) as started:
+        text = started.get("/metrics").text
+    assert "agent_prompt_tokens_total{" not in text
