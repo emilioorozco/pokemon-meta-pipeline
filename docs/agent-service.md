@@ -135,6 +135,7 @@ them:
 | field | what it carries |
 |---|---|
 | `sql` | the statement in full, not the shortened `input_summary` |
+| `description` | what the lookup was for, in one plain-language line of at most **160** characters, derived from the statement and never written by the model |
 | `row_count` | how many rows it returned; 0 for a refusal |
 | `rows` | the **first 10** rows as JSON values, every string cut to **500** characters |
 | `gate` | `off`, `jev:allowed`, `jev:allowed_low`, `jev:refused` or `jev:error` |
@@ -190,6 +191,84 @@ hold it; the nearest readable thing is `mart_player_summary`. A question with
 because there is no season column to filter on. The eval set measures whether
 the line works: `guessed_tables` counts the `table_not_found` refusals of a
 run ([evals.md](evals.md)).
+
+### `description`, and keeping the SQL off the screen
+
+The receipt the application draws under an answer used to be the statement
+with a copy button on it, which puts `mart_archetype_weekly` and
+`min_games_met` in front of a member who asked which deck beats which.
+`description` is the replacement: one plain line per lookup, with the rows
+under it.
+
+**It is derived from the statement, and the model is never asked for it.**
+`pipeline.describe.describe_sql` is a pure function of the SQL, it runs
+offline, and `QueryEvidence.description` is a property rather than a field so
+that there is no slot anybody could put a different line in. That is the
+whole design decision. A model that captioned its own receipt would be
+writing the one part of the panel a reader cannot check against anything, and
+a caption is exactly the thing a prompt injection would like to choose: "a
+look at the archetype list", over a query that read something else. Derived,
+it cannot drift from the statement it describes, it is the same line every
+time for the same query, and it costs no tokens.
+
+**What goes into it.** Five pieces, all optional:
+
+1. the relations, through the phrase table below;
+2. the aggregate when it is obvious: a rate column in the select list, or a
+   `count`, `avg`, `sum`, `max` or `min` call, named with the column it is
+   over;
+3. the filters, as `for <column words> = <value>`, with the value lifted out
+   of the statement's own literal;
+4. a time window when a date column is filtered: `for the week beginning
+   2026-09-14`, `from 2026-09-01 to 2026-09-30`, `in September`;
+5. the ordering and the limit together: `top 10 by win rate`, or `ordered by
+   matches, highest first` when the model wrote no limit of its own.
+
+The phrase table is one entry per allowlisted table, and a test asserts it
+covers the allowlist:
+
+| relation | what the receipt calls it |
+|---|---|
+| `mart_matchups` | matchup results |
+| `mart_archetype_weekly` | how each deck did week by week |
+| `mart_cards_seen` | which cards showed up |
+| `mart_player_summary` | per-player summaries |
+| `dim_archetype` | the deck list |
+| `dim_card` | card details |
+| `dim_date` | the calendar |
+
+Columns have their own table of words, written against the same `schema.yml`
+the prompt's schema listing is generated from, and checked against it so a
+renamed column is a red test rather than a phrase that can never fire. A
+column with no words of its own borrows the first sentence of its description
+when that sentence is short and names nothing; a filter nothing can name is
+left out of the line rather than guessed at.
+
+**The rule: no raw names, ever.** A description may not contain a relation
+name, a column name, or a SQL keyword in upper case. It holds by
+construction, because every word but a filter's value comes out of those two
+hand written tables, and it is checked anyway over every statement in
+`evals/transcript.yaml` and every statement the golden replay writes
+(`tests/test_describe.py`), plus one `desc:` entry carried in the golden set
+itself ([evals.md](evals.md)). It is why the counts read "matches" and not
+"games": `games` is a real column of five of the seven marts, and so are
+`wins`, `losses`, `ties`, `undecided`, `aliases`, `number`, `year` and
+`month`.
+
+Anything the function cannot read falls back rather than guesses. A statement
+over a table that is not on the allowlist, which is every guessed name and
+every blocked one, is `A lookup over data this tool cannot read`, and a
+statement whose shape it does not recognise is `A lookup over <mart words>`.
+A refused query is described exactly like one that ran: the line says what the
+lookup was for and stops. Why there are no rows is `refused_code`.
+
+**The contract for the application.** Render `description` and the rows.
+Render a refusal from `refused_code`, using the application's own phrasing
+table for the six codes, beside the description of what was attempted. Do not
+put `sql` in the panel: it stays on the wire for the evaluation and for
+debugging, it is in the service log and in the eval report, and the moment it
+is on screen the field above has bought nothing. `description` is never null
+and never empty.
 
 `evidence.cards` is one object per card the card tool matched, deduplicated by
 name, set and number in first-seen order and capped at **10**: `name`,
