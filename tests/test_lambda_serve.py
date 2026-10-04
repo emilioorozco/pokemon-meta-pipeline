@@ -568,7 +568,7 @@ class StubWarmAgent:
         self.warmed += 1
         return True
 
-    def ask(self, question: str) -> Any:
+    def ask(self, question: str, context: str | None = None, job: str | None = None) -> Any:
         raise AssertionError("/warm must not ask the provider anything")
 
 

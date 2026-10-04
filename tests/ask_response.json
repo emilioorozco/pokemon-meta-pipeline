@@ -46,6 +46,7 @@
     "cards": []
   },
   "gate_summary": "allowed",
+  "context_used": false,
   "latency_ms": 2841,
   "run_id": "fixture-run"
 }

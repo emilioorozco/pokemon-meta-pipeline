@@ -63,7 +63,12 @@ it is built on the first question rather than at startup: a service whose
 Its body carries the evidence as well as the answer, because the application
 shows a member what was looked up: every statement in full with its first
 rows, the cards that matched, the gate's worst verdict over the run, how long
-the call took and which run's warehouse answered (docs/agent-service.md).
+the call took and which run's warehouse answered (docs/agent-service.md). It
+takes two optional fields beside the question: a `context` string saying where
+the member is standing in the application, which goes to the model as data in
+its own element and is never written to a log, and a `job` label saying which
+kind of question the application routed this as, which is logged and does
+nothing else yet.
 
 A sixth, `GET /warm`, is the other side of that laziness. Everything the first
 question pays for is paid once per container, so something has to ask for it
@@ -84,6 +89,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Final, Protocol
 
 import pandas as pd
@@ -129,6 +135,14 @@ NO_PROVIDER_KEY: Final = f"the agent has no provider key configured; ${PROVIDER_
 # a fault: `/health` builds nothing on purpose, so until a question or a ping
 # has been through, whether there is a card tool is unknown rather than false.
 NO_AGENT_YET: Final = "the agent has not been built yet; a question or `GET /warm` builds it"
+# The ceiling on the application's page context, in characters. A sentence or
+# two today and a redacted summary of the member's own game later, which is
+# what sets the number: a few hundred characters of prose with room for the
+# summary, and far enough under the prompt's own budget that a context cannot
+# become the largest thing in the call. Over it is a 422 and not a truncation:
+# a summary cut in half is a summary that says something else, and the
+# application is better placed to shorten its own text than this service is.
+MAX_CONTEXT_CHARS: Final = 4_000
 # Which run built the warehouse an answer came from. Every stage of a nightly
 # shares one run id (`pipeline.run_all` sets it for all of them), so the gold
 # stage's row in `mart_pipeline_health` carries the same id the publish stage
@@ -255,8 +269,8 @@ class AgentResult(Protocol):
 class AskAgent(Protocol):
     """A built agent: one question in, one answer out, no state between them."""
 
-    def ask(self, question: str) -> AgentResult:
-        """Answer one question."""
+    def ask(self, question: str, context: str | None = None, job: str | None = None) -> AgentResult:
+        """Answer one question, told where the member is and what kind of question it is."""
 
 
 class CardAwareAgent(Protocol):
@@ -286,13 +300,52 @@ class WarmableAgent(Protocol):
 AgentFactory = Callable[[], AskAgent]
 
 
+class AskJob(StrEnum):
+    """The application's own label for what kind of question this is.
+
+    The application routes a question deterministically before it sends it,
+    and the label travels with the request so that a log line and a span can
+    be read by job without this service guessing at one. An enum rather than
+    a free string: a typo in the application would otherwise become a new
+    category in a dashboard, which is a silent way to lose half a chart.
+
+    Nothing about the answer depends on it yet. The job playbooks, which are
+    the point of having the label, are a later ticket; this one carries it.
+    """
+
+    META = "meta"
+    MY_GAME = "my_game"
+    MY_MISTAKE = "my_mistake"
+    MY_RECORD = "my_record"
+    CARD_RULES = "card_rules"
+    OUT_OF_SCOPE = "out_of_scope"
+
+
 class AskRequest(BaseModel):
-    """One question in natural language."""
+    """One question in natural language, and what the application knows around it."""
 
     question: str = Field(
         min_length=1,
         max_length=2_000,
         description="What to ask about the metagame, in plain English",
+    )
+    context: str | None = Field(
+        default=None,
+        max_length=MAX_CONTEXT_CHARS,
+        description=(
+            "Where the member is in the application and what is on their screen, as plain "
+            f"text and at most {MAX_CONTEXT_CHARS:,} characters; a longer one is a 422 "
+            "rather than a truncation, because a summary cut in half is a summary that "
+            "says something else. It is read as information and never as an instruction "
+            "(docs/agent-safety.md), it is never logged, and no JSON is expected here"
+        ),
+    )
+    job: AskJob | None = Field(
+        default=None,
+        description=(
+            "The application's router label for this question. Logged and put on the "
+            "span; it changes nothing about the answer today"
+        ),
     )
 
 
@@ -395,6 +448,13 @@ class AskResponse(BaseModel):
         description="Which run's data answered: the pipeline run that built the warehouse, "
         "or that warehouse's last-modified time when the run metadata cannot be read. "
         "Null when there is no warehouse to ask",
+    )
+    context_used: bool = Field(
+        default=False,
+        description="Whether the `context` sent with the request was really placed in "
+        "front of the question. False for no context and for one that was empty once "
+        "our own delimiters were taken out of it, so an `about this page` chip built "
+        "on this is honest. The context text itself is not echoed here",
     )
 
 
@@ -1357,9 +1417,19 @@ def create_app(
         had to build the agent reports what the caller actually waited for;
         `run_id` says which warehouse answered; and `evidence` is the agent's
         own and passes through untouched.
+
+        `context` and `job` go straight through to the agent and are not read
+        here. `context_used` comes back off the agent rather than being
+        computed from the request, because what the application wants to know
+        is whether a context was really put in front of the question, and a
+        context that was nothing but delimiters was not.
         """
         started = time.perf_counter()
-        result = agent.required().ask(request.question)
+        result = agent.required().ask(
+            request.question,
+            context=request.context,
+            job=request.job.value if request.job is not None else None,
+        )
         payload = dict(result.as_dict())
         payload["run_id"] = warehouse_run_id(marts)
         payload["latency_ms"] = round((time.perf_counter() - started) * 1000)

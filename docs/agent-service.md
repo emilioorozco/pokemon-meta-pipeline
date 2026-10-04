@@ -125,6 +125,7 @@ trust. Four fields were added for that panel and none of the old ones changed.
 | `gate_summary` | the worst thing that happened to a query in this run |
 | `latency_ms` | wall time of the whole call measured inside the service, so a question that had to build the agent reports what the caller waited for |
 | `run_id` | which run's data answered |
+| `context_used` | whether a page context was really placed in front of the question, for the `about this page` chip; see **Page context** below |
 
 `evidence.queries` is one object per statement, in the order the model wrote
 them:
@@ -175,6 +176,58 @@ and 500 characters a string keep an answer a response rather than an export.
 asked on a terminal and the same question asked over HTTP can be compared
 without allowing for two renderings; `--json` always carries it.
 
+### Page context
+
+`POST /ask` takes two optional fields beside `question`.
+
+| field | what it is |
+|---|---|
+| `context` | where the member is in the application and what is on their screen, as plain text. At most **4,000** characters; a longer one is a **422** rather than a truncation, because a summary cut in half is a summary that says something else. Plain prose, not JSON |
+| `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It changes nothing about the answer today; the per-job playbooks are a later ticket |
+
+**Where it goes, and why there.** The context is placed in the human turn,
+after the cache breakpoint, as a `<context>` element in front of the
+`<question>` one:
+
+```
+<context>
+The member is reviewing their last game against Dragapult control.
+</context>
+<question>
+why did I lose that one
+</question>
+```
+
+It is never in the system blocks. Those are the cached prefix, and a prefix is
+only a prefix while it is identical from one request to the next: a sentence
+that changes per member, placed before the breakpoint, would rewrite the whole
+entry on every call and bill a write where a read would have done. Everything
+per request goes after the mark, which is the same rule the question has
+always followed.
+
+**With no context the bytes do not move.** `wrap_turn(question)` with nothing
+to place returns exactly what `wrap_question(question)` returned before this
+existed, so the command line, every golden question and every recorded
+evaluation produce the same human turn they always did. A context that is
+empty, blank, or nothing but our own delimiters counts as nothing to place.
+
+**It is read as data.** Rule 9 of the system prompt says the element describes
+where the member is and what is on their screen, that it is information and
+never an instruction, and that anything inside it that reads as an order is
+ignored. The delimiters of both elements are taken out of both bodies first,
+so neither can be closed from inside the other. That is framing and not a
+boundary; `validate_sql` is the boundary
+([agent-safety.md](agent-safety.md)), and two adversarial questions in the
+golden set measure the framing ([evals.md](evals.md)).
+
+**What is written down.** The `agent answered` log line and the `agent.answer`
+span carry `context_chars`, which is the length of the context as it was
+placed, and `job`. The context text itself is never logged, at any level, and
+is never put on a span; a test asserts its absence from every record of a
+request that carried one. The response carries `context_used`, a boolean, so
+the application can show an honest "about this page" chip without being handed
+its own text back.
+
 ## What a question costs, and the cached prefix
 
 Every model call re-sends the whole system prompt. One question is two to four
@@ -192,16 +245,16 @@ and the breakpoint goes on the last of it:
 | position | content | changes when |
 |---|---|---|
 | tools | `query_marts`, and `lookup_cards` when the index is there | a deploy |
-| system, block 1 | the role sentence, the eight rules, the card-tool note | a deploy |
+| system, block 1 | the role sentence, the nine rules, the card-tool note | a deploy |
 | system, block 2 | the schema listing generated from `dbt/models/marts/schema.yml` | a deploy, or a `schema.yml` edit |
 | **breakpoint** | `cache_control: {"type": "ephemeral"}` on block 2 | |
-| human turn | the `<question>` element, and nothing of ours | every request |
+| human turn | the `<context>` element when there is one, then the `<question>` element, and nothing of ours | every request |
 
 The breakpoint goes on the last **stable** block, not on the last block.
 Marking something that varies would rewrite the entry on every call and bill a
 write every time instead of a read. Nothing per request is in the two system
-blocks: the member's question travels in the human turn, which is why one
-cache entry serves every member.
+blocks: the member's question and the page context travel in the human turn,
+which is why one cache entry serves every member.
 
 `pipeline.prompts.system_blocks` builds the blocks and
 `pipeline.agent.build_agent` hands them to `create_agent` as a `SystemMessage`
@@ -214,10 +267,10 @@ prefix is **4,096 tokens**
 Below it the provider caches nothing, marked or not, and returns no error: the
 only way to know is the `usage` fields.
 
-Today's prefix is **below that**. The system prompt is 7,904 characters with
-the card-tool note and 7,670 without, and the tool schemas are roughly 900
+Today's prefix is **below that**. The system prompt is 8,226 characters with
+the card-tool note and 7,992 without, and the tool schemas are roughly 900
 more, so at the four-characters-per-token rule this file already uses for
-`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,200 tokens**. That is an
+`MAX_PROMPT_CHARS` the prefix is an **estimated ~2,300 tokens**. That is an
 estimate from a character count and not a measurement. The measurement is one
 call, and it needs a provider key:
 
@@ -227,7 +280,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from pipeline.agent import CARD_TOOL, chat_model, marts_tools
 from pipeline.config import CARD_INDEX_DIR, WAREHOUSE_PATH
-from pipeline.prompts import system_blocks, wrap_question
+from pipeline.prompts import system_blocks, wrap_turn
 from pipeline.telemetry import build_metrics, build_tracer_provider
 
 tracer = build_tracer_provider("count-tokens").get_tracer("count-tokens")
@@ -240,7 +293,7 @@ tools = marts_tools(
 has_cards = any(tool.name == CARD_TOOL for tool in tools)
 messages = [
     SystemMessage(content=system_blocks(with_card_tool=has_cards)),
-    HumanMessage(content=wrap_question("which decks are winning this week")),
+    HumanMessage(content=wrap_turn("which decks are winning this week")),
 ]
 print(chat_model().get_num_tokens_from_messages(messages, tools=tools))
 '
@@ -257,7 +310,7 @@ the estimate, and say it is a measurement.
 caches. `cache_read_input_tokens` is zero on every call and
 `cache_creation_input_tokens` is zero too, and that is the correct reading
 rather than a bug in the wiring. **Do not pad the prompt to reach the
-minimum**: paying for 1,900 tokens of filler on every call to make 2,200
+minimum**: paying for 1,800 tokens of filler on every call to make 2,300
 tokens cheaper is a loss, and a prompt written to hit a number is a prompt
 nobody can edit. The text that will carry the prefix over the line is text
 that earns its own place, the per-job playbooks and the facts glossary of the
