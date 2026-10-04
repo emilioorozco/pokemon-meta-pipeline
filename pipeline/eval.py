@@ -4,15 +4,15 @@
     op run --env-file=.env.op -- uv run python -m pipeline.eval
     uv run python -m pipeline.eval --remote "$PIPELINE_AGENT_URL"
 
-Twenty-eight questions in `evals/golden.yaml` in two kinds, each with the tools
-its answer has to call and the facts its answer has to contain. Sixteen are
+Twenty-nine questions in `evals/golden.yaml` in two kinds, each with the tools
+its answer has to call and the facts its answer has to contain. Seventeen are
 `golden`, which a warehouse with games in it answers; twelve are `adversarial`,
 which nobody should get an answer to. The command runs them through the real
 `Agent`, scores three checks per question, prints a table and exits non-zero
 when anything failed. The score of a run is logged to MLflow, so a prompt
 change is tracked the way a model change is.
 
-**Which warehouse a question is true of.** Twelve of the sixteen golden
+**Which warehouse a question is true of.** Twelve of the seventeen golden
 questions assert facts of the ten-game fixture corpus: "1 game", "Dragapult /
 Dusknoir", "2026-09-14". Those are `warehouse: fixture`, the default, and they
 are the questions the replay and the local run are built around. The rest are
@@ -25,10 +25,14 @@ how many and why; every local mode scores all of them.
 
 **A question can carry a page context.** `context` on a case is the string the
 application would have sent beside the question, and it goes to the agent the
-way `POST /ask` sends one. Two adversarial questions use it, and they are the
-only ones that do: an injected instruction in a context is the failure mode
-the field was added to measure, and it is graded exactly like an injection in
-a question, on the SQL the run wrote as well as on the prose.
+way `POST /ask` sends one. Two adversarial questions use it: an injected
+instruction in a context is the failure mode the field was added to measure,
+and it is graded exactly like an injection in a question, on the SQL the run
+wrote as well as on the prose. `context_game` and `context_first_line` are the
+other two, a redacted summary of the game on a member's screen and the one
+sentence the relevance decision is taken on, and one golden question uses
+them: what it grades is that the answer comes out of the summary rather than
+out of a query against a game-level table the agent cannot read anyway.
 
 **The gate is reported, not scored.** With `PRA_SQL_GATE=jev` the optional
 second gate in `pipeline.sql_gate` judges every statement the denylist let
@@ -255,11 +259,18 @@ class Question:
     kind: str = KIND_GOLDEN
     warehouse: str = WAREHOUSE_FIXTURE
     # The page context the application would have sent with this question,
-    # empty on all but the two questions that are about the context itself.
+    # empty on all but the three questions that are about the context itself.
     # It travels with the question so that an injection placed in a context
     # is graded the same way one placed in a question already is: the run is
     # scored on what it wrote as well as on what it said.
     context: str = ""
+    # The other two halves of a page context: a redacted summary of the game
+    # the member is looking at, and the one sentence the relevance decision is
+    # taken on. Carried for the same reason `context` is, which is that a
+    # field the harness cannot send is a field the harness cannot grade; one
+    # question uses them (docs/evals.md).
+    context_game: str = ""
+    context_first_line: str = ""
 
     @property
     def any_warehouse(self) -> bool:
@@ -363,12 +374,18 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
             raise GoldenError(
                 f"{where}: {warehouse!r} is not a warehouse ({', '.join(VALID_WAREHOUSES)})"
             )
-        raw_context = raw.get("context")
-        if raw_context is not None and not isinstance(raw_context, str):
-            raise GoldenError(
-                f"{where}: `context` has to be a string, got {type(raw_context).__name__}"
-            )
-        context = str(raw_context or "").strip()
+        contexts: dict[str, str] = {}
+        for name in ("context", "context_game", "context_first_line"):
+            value = raw.get(name)
+            if value is not None and not isinstance(value, str):
+                raise GoldenError(
+                    f"{where}: `{name}` has to be a string, got {type(value).__name__}"
+                )
+            contexts[name] = str(value or "").strip()
+        # A first line with no game to describe is a field that reaches
+        # nothing: the relevance decision is only taken when a game was sent.
+        if contexts["context_first_line"] and not contexts["context_game"]:
+            raise GoldenError(f"{where}: `context_first_line` needs a `context_game` to describe")
         forbid = _patterns(raw.get("forbid"), where=f"{where} forbid")
         # An adversarial question is scored on what the run did as well as on
         # what it said, and the only thing that catches "it refused in prose
@@ -387,7 +404,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 notes=str(raw.get("notes", "")).strip(),
                 kind=kind,
                 warehouse=warehouse,
-                context=context,
+                **contexts,
             )
         )
     return Golden(version=version, questions=tuple(questions), path=path)
@@ -1017,6 +1034,12 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
         ),
         evidence=Evidence(queries=queries, cards=cards),
         context_used=bool(payload.get("context_used")),
+        context_game_used=bool(payload.get("context_game_used")),
+        context_relevance=(
+            str(payload["context_relevance"])
+            if isinstance(payload.get("context_relevance"), str)
+            else None
+        ),
     )
     reported = str(payload.get("gate_summary", "")).strip()
     if reported and reported != built.gate_summary:
@@ -1051,13 +1074,24 @@ class RemoteAgent:
         self.model_name = REMOTE_MODEL
         self.send = send if send is not None else sigv4_post
 
-    def ask(self, question: str, context: str = "") -> Answer:
+    def ask(
+        self,
+        question: str,
+        context: str = "",
+        context_game: str = "",
+        context_first_line: str = "",
+    ) -> Answer:
         body: dict[str, Any] = {"question": question}
-        # Sent only when there is one, so the ordinary question is the same
-        # request body it has always been and a question with a context is
-        # the only one that exercises the new field.
-        if context:
-            body["context"] = context
+        # Each sent only when there is one, so the ordinary question is the
+        # same request body it has always been and a question that carries a
+        # context is the only one that exercises those fields.
+        for name, value in (
+            ("context", context),
+            ("context_game", context_game),
+            ("context_first_line", context_first_line),
+        ):
+            if value:
+                body[name] = value
         answer = answer_from_response(self.send(self.url, body))
         self.model_name = answer.model or REMOTE_MODEL
         return answer
@@ -1077,7 +1111,18 @@ class Askable(Protocol):
 
     model_name: str
 
-    def ask(self, question: str, context: str = "") -> Answer: ...
+    # The two game fields are keyword only here, because `Agent.ask` takes
+    # `job` in the position they would otherwise occupy and a protocol that
+    # promised them positionally would exclude the real agent from satisfying
+    # it. The runner passes every optional field by name anyway.
+    def ask(
+        self,
+        question: str,
+        context: str = "",
+        *,
+        context_game: str = "",
+        context_first_line: str = "",
+    ) -> Answer: ...
 
 
 AgentFactory = Callable[[Question], Askable]
@@ -1154,7 +1199,12 @@ def run_question(question: Question, agent: Askable) -> Result:
     than the traceback.
     """
     try:
-        answer = agent.ask(question.question, context=question.context)
+        answer = agent.ask(
+            question.question,
+            context=question.context,
+            context_game=question.context_game,
+            context_first_line=question.context_first_line,
+        )
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
         return Result(question=question, answer="", error=f"{type(failure).__name__}: {failure}")
