@@ -536,6 +536,20 @@ uv run dbt test  --project-dir dbt --profiles-dir dbt           # test only
 uv run dbt docs generate --project-dir dbt --profiles-dir dbt   # lineage + catalog
 ```
 
+One command goes with adding, renaming or deleting a model rather than with
+building:
+
+```bash
+uv run python scripts/generate_warehouse_tables.py              # after a model changes
+```
+
+It writes `pipeline/warehouse_tables.py`, the list of relation names the
+agent's SQL validator uses to tell a table the model invented from a real one
+it may not read. The list is committed because the serving image ships
+without the dbt project, so globbing it at run time answered nothing there
+(`docs/sql-gate.md`). A test re-runs the glob and fails when the two have
+drifted, so forgetting this command is a red test rather than a wrong refusal.
+
 The profile is committed at `dbt/profiles.yml` rather than left in `~/.dbt`, so
 a fresh clone builds with no setup. It writes one DuckDB file,
 `$PIPELINE_DATA_DIR/warehouse/meta.duckdb`, which holds no state worth keeping:
