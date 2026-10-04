@@ -285,6 +285,7 @@ class ServiceMetrics:
     agent_context_relevance: Counter
     agent_relevance_duration: Histogram
     agent_unverified_numbers: Counter
+    agent_history_turns: Counter
     model_info: Gauge
 
     def observe_request(self, method: str, route: str, status: int, duration_s: float) -> None:
@@ -379,6 +380,23 @@ class ServiceMetrics:
         """
         self.agent_unverified_numbers.inc(count)
 
+    def count_history_turns(self, count: int) -> None:
+        """Prior turns of a conversation placed in front of one question.
+
+        A count of turns rather than of questions, and incremented by zero on
+        a question that carried none, so the series exists from the first
+        scrape and the ordinary first question of a thread is in the
+        denominator. No label: the only ones available would be the roles,
+        which alternate, or the text, which never leaves this process.
+
+        What it is for is the shape of a thread. Against the questions
+        answered it says how much of a member's asking is follow-ups, which
+        is the thing the drawer was built on a guess about, and a sudden
+        climb is the application sending more memory than it meant to before
+        it is visible in anybody's bill.
+        """
+        self.agent_history_turns.inc(count)
+
     def set_model_info(self, name: str, version: str, alias: str) -> None:
         """Record which model is loaded, as the usual info-gauge-set-to-one.
 
@@ -466,6 +484,11 @@ def build_metrics() -> ServiceMetrics:
         agent_unverified_numbers=Counter(
             "agent_unverified_numbers_total",
             "Numbers in an agent answer that no row, card or fact of its run can account for.",
+            registry=registry,
+        ),
+        agent_history_turns=Counter(
+            "agent_history_turns_total",
+            "Prior conversation turns placed in front of an agent question.",
             registry=registry,
         ),
         model_info=Gauge(

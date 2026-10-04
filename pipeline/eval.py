@@ -145,7 +145,15 @@ from pipeline.agent import (
 from pipeline.config import REPO_ROOT, WAREHOUSE_PATH, default_tracking_uri
 from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fact, FactEvidence
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
-from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
+from pipeline.prompts import (
+    HISTORY_ROLES,
+    MAX_HISTORY_TURNS,
+    PROMPT_FILE_VAR,
+    HistoryError,
+    system_prompt,
+    validate_history,
+)
+from pipeline.prompts import Turn as HistoryTurn
 from pipeline.sql_gate import GATE_OFF, SqlGate, gate_from_env
 from pipeline.storage import AnyLocation, experiment_id, location, tracking_store
 
@@ -326,6 +334,14 @@ class Question:
     # `<facts>` list under the summary. The ten `mistake` questions carry
     # them and nothing else does.
     context_facts: tuple[Fact, ...] = ()
+    # The conversation the application would have sent back with this
+    # question: the prior turns, oldest first, alternating from the member
+    # and ending on an answer. Empty on every question that is not a
+    # follow-up, which is most of them. It is carried for the reason every
+    # other context field is, which is that a field the harness cannot send
+    # is a field the harness cannot grade: an instruction hidden in an
+    # earlier assistant turn is a question-shaped test nothing else reaches.
+    history: tuple[HistoryTurn, ...] = ()
     # How many numbers this question's answer may state that nothing the run
     # read can account for. None is the default and asserts nothing, which is
     # what every question written before the check existed wants; `0` is what
@@ -444,6 +460,41 @@ def _facts(raw: Any, *, where: str) -> tuple[Fact, ...]:
     return tuple(facts)
 
 
+def _history(raw: Any, *, where: str) -> tuple[HistoryTurn, ...]:
+    """A question's `history`, checked against the same ceilings the service holds.
+
+    Checked here rather than trusted, for the reason `_facts` is: a
+    conversation over the service's limits would be a 422 on a remote run and
+    a silently dropped history on a local one, which is two different
+    failures for one typo. The shape check is `validate_history` itself, so
+    the golden file and `POST /ask` cannot come to disagree about what a
+    conversation is (`pipeline.prompts`).
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise GoldenError(f"{where}: `history` has to be a list")
+    if len(raw) > MAX_HISTORY_TURNS:
+        raise GoldenError(f"{where}: at most {MAX_HISTORY_TURNS} prior turns, got {len(raw)}")
+    turns: list[HistoryTurn] = []
+    for position, entry in enumerate(raw, start=1):
+        place = f"{where}: turn {position}"
+        if not isinstance(entry, dict):
+            raise GoldenError(f"{place}: expected a mapping with `role` and `text`")
+        role = str(entry.get("role", "")).strip()
+        text = str(entry.get("text", "")).strip()
+        if role not in HISTORY_ROLES:
+            raise GoldenError(f"{place}: {role!r} is not a role ({', '.join(HISTORY_ROLES)})")
+        if not text:
+            raise GoldenError(f"{place}: every turn needs a `text`")
+        turns.append(HistoryTurn(role=role, text=text))
+    try:
+        validate_history(turns)
+    except HistoryError as refused:
+        raise GoldenError(f"{where}: {refused}") from refused
+    return tuple(turns)
+
+
 def load_golden(path: Path = GOLDEN_PATH) -> Golden:
     """Read and check the golden file. Raises `GoldenError` on anything wrong.
 
@@ -516,6 +567,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         # inside the context element and only when the game summary is.
         if facts and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_facts` needs a `context_game` to belong to")
+        history = _history(raw.get("history"), where=where)
         limit = raw.get("max_unverified")
         if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
             raise GoldenError(f"{where}: `max_unverified` has to be an integer, got {limit!r}")
@@ -540,6 +592,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 kind=kind,
                 warehouse=warehouse,
                 context_facts=facts,
+                history=history,
                 max_unverified=limit if isinstance(limit, int) else None,
                 **contexts,
             )
@@ -1325,6 +1378,7 @@ def answer_from_response(payload: dict[str, Any]) -> Answer:
             else None
         ),
         unverified_numbers=[str(value) for value in payload.get("unverified_numbers") or []],
+        from_history=[str(value) for value in payload.get("from_history") or []],
     )
     reported = str(payload.get("gate_summary", "")).strip()
     if reported and reported != built.gate_summary:
@@ -1366,10 +1420,16 @@ class RemoteAgent:
         context_game: str = "",
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
+        history: Sequence[HistoryTurn] = (),
     ) -> Answer:
         body: dict[str, Any] = {"question": question}
         if context_facts:
             body["context_facts"] = [fact.as_dict() for fact in context_facts]
+        # Sent only when there is a conversation, for the reason the context
+        # fields are: a question that is not a follow-up has to produce the
+        # body it has always produced, or every recorded run stops comparing.
+        if history:
+            body["history"] = [turn.as_dict() for turn in history]
         # Each sent only when there is one, so the ordinary question is the
         # same request body it has always been and a question that carries a
         # context is the only one that exercises those fields.
@@ -1411,6 +1471,7 @@ class Askable(Protocol):
         context_game: str = "",
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
+        history: Sequence[HistoryTurn] = (),
     ) -> Answer: ...
 
 
@@ -1494,6 +1555,7 @@ def run_question(question: Question, agent: Askable) -> Result:
             context_game=question.context_game,
             context_first_line=question.context_first_line,
             context_facts=question.context_facts,
+            history=question.history,
         )
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})

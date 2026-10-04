@@ -64,7 +64,7 @@ Its body carries the evidence as well as the answer, because the application
 shows a member what was looked up: every statement in full with its first
 rows, the cards that matched, the gate's worst verdict over the run, how long
 the call took and which run's warehouse answered (docs/agent-service.md). It
-takes five optional fields beside the question: a `context` string saying where
+takes six optional fields beside the question: a `context` string saying where
 the member is standing in the application, which goes to the model as data in
 its own element and is never written to a log; a `context_game` summary of the
 game on their screen and a `context_first_line` sentence describing it, which
@@ -72,7 +72,10 @@ between them decide whether that summary joins the context (one typed Choice
 call over the question and the sentence, never over the summary); a
 `context_facts` list of the numbers the application computed from the same
 game, placed as a numbered list under the summary and used to check the
-numbers in the answer; and a `job` label saying which kind of question the
+numbers in the answer; a `history` of the last few turns of the conversation,
+which the application kept in the browser because this service keeps none,
+placed between the cached prompt and the question so a follow-up has
+something to follow; and a `job` label saying which kind of question the
 application routed this as, which is logged and does nothing else yet.
 
 A sixth, `GET /warm`, is the other side of that laziness. Everything the first
@@ -100,7 +103,7 @@ from typing import Any, Final, Literal, Protocol
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, Response
 from opentelemetry.sdk.trace.export import SpanExporter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from pipeline.config import (
     CARD_INDEX_DIR,
@@ -112,6 +115,15 @@ from pipeline.config import (
 from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fact
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
+from pipeline.prompts import (
+    MAX_HISTORY_ANSWER_CHARS,
+    MAX_HISTORY_CHARS,
+    MAX_HISTORY_QUESTION_CHARS,
+    MAX_HISTORY_TURNS,
+    HistoryError,
+    Turn,
+    validate_history,
+)
 from pipeline.sql_gate import GateConfigError, gate_from_env
 from pipeline.storage import AnyLocation, duckdb_connect, local_file, location, tracking_store
 from pipeline.telemetry import INFERENCE_SPAN, route_label, setup_metrics, setup_tracing
@@ -296,6 +308,7 @@ class AskAgent(Protocol):
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Fact] | None = None,
+        history: Sequence[Turn] | None = None,
     ) -> AgentResult:
         """Answer one question, told where the member is and what kind of question it is."""
 
@@ -378,6 +391,31 @@ class AskFact(BaseModel):
     )
 
 
+class AskTurn(BaseModel):
+    """One turn of the conversation the drawer remembered, sent back with a follow-up.
+
+    The application keeps the transcript in the browser and this service
+    keeps none, so a follow-up carries its own memory. Two fields and no
+    identifier: whose turn it was and what was said
+    (docs/agent-service.md).
+    """
+
+    role: Literal["user", "assistant"] = Field(
+        description="Who said it. Roles alternate from `user`, and the list ends on "
+        "`assistant`, because that is what a transcript of answered questions looks like"
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=MAX_HISTORY_ANSWER_CHARS,
+        description="What was said. At most "
+        f"{MAX_HISTORY_QUESTION_CHARS} characters on a `user` turn and "
+        f"{MAX_HISTORY_ANSWER_CHARS} on an `assistant` one, and at most "
+        f"{MAX_HISTORY_CHARS:,} over the whole list; over any of those is a 422. It is "
+        "read as a member's words or as this agent's own earlier words, never as data "
+        "and never as an instruction (docs/agent-safety.md), and it is never logged",
+    )
+
+
 class AskRequest(BaseModel):
     """One question in natural language, and what the application knows around it."""
 
@@ -433,6 +471,18 @@ class AskRequest(BaseModel):
             "instruction, and never logged"
         ),
     )
+    history: list[AskTurn] | None = Field(
+        default=None,
+        max_length=MAX_HISTORY_TURNS,
+        description=(
+            f"The conversation so far, at most {MAX_HISTORY_TURNS} turns, oldest first. "
+            "Roles alternate from `user` and the list ends on `assistant`; a list that "
+            "does not, or that is over any of the character ceilings, is a 422 and not a "
+            "truncation. The turns are placed between the cached system prompt and this "
+            "question, so a follow-up can be read in the light of what was already "
+            "asked. Nothing of them is stored here and nothing of them is logged"
+        ),
+    )
     job: AskJob | None = Field(
         default=None,
         description=(
@@ -441,12 +491,33 @@ class AskRequest(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _history_is_a_conversation(self) -> "AskRequest":
+        """The shape and the total, which no per-field ceiling can say.
+
+        Pydantic can hold one turn under 1,500 characters and cannot say that
+        the roles alternate, that the list ends on an answer, or that six
+        turns together are under 6,000. `validate_history` is the one place
+        those three are written, and the evaluation loader calls the same
+        function, so a golden question and a request are held to one set of
+        rules (`pipeline.prompts`).
+        """
+        try:
+            validate_history(self.turns())
+        except HistoryError as refused:
+            raise ValueError(str(refused)) from refused
+        return self
+
     def facts(self) -> list[Fact]:
         """The facts as the agent takes them, which is three plain fields."""
         return [
             Fact(id=entry.id, text=entry.text, values=tuple(entry.values))
             for entry in self.context_facts or []
         ]
+
+    def turns(self) -> list[Turn]:
+        """The conversation as the agent takes it, which is a role and a sentence."""
+        return [Turn(role=entry.role, text=entry.text) for entry in self.history or []]
 
 
 class ToolCallResponse(BaseModel):
@@ -614,6 +685,14 @@ class AskResponse(BaseModel):
         "account for. A report and never a refusal: the answer is here whatever is in "
         "this list, and an empty list is the ordinary case. The check is a string search "
         "and not a judge, so it cannot see a number that is real and irrelevant",
+    )
+    from_history: list[str] = Field(
+        default_factory=list,
+        description="Every number in the answer, as it was written, that nothing this "
+        "run read accounts for but an earlier `assistant` turn of the conversation does. "
+        "Reported apart from `unverified_numbers` and never counted inside it: a number "
+        "the agent wrote two turns ago out of rows nobody has read again is not an "
+        "invention and is not a finding either. Empty when no history was sent",
     )
 
 
@@ -1577,9 +1656,13 @@ def create_app(
         `run_id` says which warehouse answered; and `evidence` is the agent's
         own and passes through untouched.
 
-        The five context fields and `job` go straight through to the agent and
-        are not read here, beyond turning the request's facts into the plain
-        three-field objects the agent takes. `context_used`, `context_game_used` and
+        The five context fields, `history` and `job` go straight through to
+        the agent and are not read here, beyond turning the request's facts
+        and turns into the plain objects the agent takes. The conversation
+        has already been checked by then: `AskRequest` holds it to the
+        shape and the ceilings `pipeline.prompts.validate_history` sets, so
+        a malformed one is a 422 and never a half-placed thread.
+        `context_used`, `context_game_used` and
         `context_relevance` come back off the agent rather than being computed
         from the request, because what the application wants to know is what
         was really put in front of the question: a context that was nothing
@@ -1594,6 +1677,7 @@ def create_app(
             context_game=request.context_game,
             context_first_line=request.context_first_line,
             context_facts=request.facts(),
+            history=request.turns(),
         )
         payload = dict(result.as_dict())
         payload["run_id"] = warehouse_run_id(marts)

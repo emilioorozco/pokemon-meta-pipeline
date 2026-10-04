@@ -55,6 +55,7 @@
   "context_game_used": false,
   "context_relevance": null,
   "unverified_numbers": [],
+  "from_history": [],
   "latency_ms": 2841,
   "run_id": "fixture-run"
 }
