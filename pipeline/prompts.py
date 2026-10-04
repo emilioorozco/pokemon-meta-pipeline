@@ -109,13 +109,33 @@ behind it in this run. Rule 11 says so, and the numeric check backs it the
 way it backs rule 10, by reporting such a number separately as `from_history`
 rather than counting it as an invention (`pipeline.facts`).
 
-The prompt leaves here in two parts rather than one string, and `system_blocks`
-turns them into the provider's content blocks with a cache breakpoint on the
-last. The split is the seam the prompt already had, between the hand written
-rules and the generated schema listing, and joining the parts back gives the
-same bytes as before. Nothing that varies per request is in either part, which
-is the whole property a cached prefix depends on: the question, the page
-context and the thread memory are in the human turn.
+The prompt leaves here in three parts rather than one string, and
+`system_blocks` turns them into the provider's content blocks with a cache
+breakpoint on the last. The seams are the ones the prompt already had: the
+hand written rules, then the per-job playbooks, then the generated schema
+listing. Nothing that varies per request is in any part, which is the whole
+property a cached prefix depends on: the question, the page context, the
+thread memory and the job label are in the human turn.
+
+The playbooks are the second block and PLA-205's half of the ticket. The
+application routes every question before it sends it, into one of six jobs
+(`JOBS`), and until that ticket the service only logged the label, so a
+post-loss review came back shaped like the stats summary a question about the
+week gets. A playbook says what the member is asking at that moment, what to
+read first, what a good answer looks like and what to do when the data is
+thin, in the voice of the rules above it. The label itself reaches the model
+as one line at the top of the human turn, `Routed as: my_mistake`, written
+only when the value is one of the six (`route_line`), so there is nothing in
+it to forge and nothing per request in the prefix.
+
+They also fix a second thing, which is why the block is as long as it is.
+Haiku 4.5 caches nothing below a 4,096 token prefix and the old prompt plus
+the tool schemas estimated at about 2,700, so every request this service has
+ever made has read zero cached tokens and written zero, silently, because a
+provider under its minimum declines without an error. The playbooks carry the
+prefix over the line with text that earns its own place rather than with
+padding, and `MIN_PREFIX_TOKENS` is the floor a later cut has to stay above
+(docs/agent-service.md).
 
 The whole prompt can be replaced from outside, by pointing
 `PRA_AGENT_SYSTEM_PROMPT_FILE` at a file. That hook exists for one purpose: the
@@ -228,7 +248,39 @@ MAX_COLUMN_CHARS: Final = 46
 # further cut would buy is a column description already truncated at 46
 # characters, and what the raise pays for is the rule that stops an answer
 # laundering its own earlier number back in as a fact.
-MAX_PROMPT_CHARS: Final = 10_400
+# 17,000 from 10,400 for the job playbooks, and the one raise that is not a
+# concession. Every earlier line of this comment treats the ceiling as
+# something to defend, because the prompt was a cost and nothing more. It is
+# not any more: Haiku 4.5 caches nothing under a 4,096 token prefix, the old
+# prompt plus the tool schemas estimated at about 2,700, and so every request
+# this service has ever made has written nothing and read nothing. The
+# playbooks are about 6,600 characters of text that earns its own place, and
+# they carry the prefix over the minimum, which makes the next two to four
+# calls of the same question a tenth of the price instead of full price.
+# 17,000 is a ceiling over a prompt measured at about 16,700 with the
+# card-tool note, so there is room for a rule or a column rename and not for
+# a second schema. The floor underneath it is the new constraint and the one
+# that matters: `MIN_PREFIX_TOKENS` below, which a cut cannot drop under
+# without turning a test red (docs/agent-service.md).
+MAX_PROMPT_CHARS: Final = 17_000
+
+# The four characters per token rule this file has always estimated with, and
+# the two numbers it is now measured against.
+#
+# `MIN_CACHEABLE_PREFIX_TOKENS` is the provider's, not ours: Claude Haiku 4.5
+# caches nothing below a 4,096 token prefix, marked or not, and returns no
+# error when it declines, so the only symptom is a `cache_read_input_tokens`
+# of zero for ever. `MIN_PREFIX_TOKENS` is the floor the prompt test holds the
+# rendered prefix to, 204 tokens over the provider's line, because a prefix
+# sitting exactly on a minimum is a prefix one tokenizer revision away from
+# caching nothing. `PREFIX_TOOL_CHARS` is the tool schemas, which are inside
+# the prefix and are not this module's text: the figure is the one
+# docs/agent-service.md already uses, and the measurement that replaces both
+# estimates is the `count_tokens` call written out there.
+CHARS_PER_TOKEN: Final = 4
+MIN_CACHEABLE_PREFIX_TOKENS: Final = 4_096
+MIN_PREFIX_TOKENS: Final = 4_300
+PREFIX_TOOL_CHARS: Final = 900
 
 # What separates the parts of the prompt when they are joined back into one
 # string. The two parts were one f-string with this between them, so joining
@@ -529,6 +581,149 @@ come back and answer from them. The tool appends a LIMIT when you leave one
 out. Prefer `archetype_name` over `archetype_key` in the answer, and keep it to
 a few sentences."""
 
+# The application's six router labels, written here rather than imported from
+# `pipeline.serve`, because this module is the one that acts on them and the
+# serving container that holds it does not install FastAPI. `AskJob` in
+# `pipeline.serve` is the same six values and a test holds the two in step.
+JOB_META: Final = "meta"
+JOB_MY_GAME: Final = "my_game"
+JOB_MY_MISTAKE: Final = "my_mistake"
+JOB_MY_RECORD: Final = "my_record"
+JOB_CARD_RULES: Final = "card_rules"
+JOB_OUT_OF_SCOPE: Final = "out_of_scope"
+JOBS: Final[tuple[str, ...]] = (
+    JOB_META,
+    JOB_MY_GAME,
+    JOB_MY_MISTAKE,
+    JOB_MY_RECORD,
+    JOB_CARD_RULES,
+    JOB_OUT_OF_SCOPE,
+)
+
+# The line that carries the job into the human turn, and the whole of what a
+# request adds to the turn. Plain text with no element and no markup around
+# it: the value is one of `JOBS` or the line is not written at all, so there
+# is nothing in it a member's words could be smuggled into and nothing for
+# text on a page to forge. It goes in the turn and never in the prefix, for
+# the reason the context does: the prefix has to be the same bytes on every
+# request or there is no cache entry to read (docs/agent-service.md).
+ROUTE_LINE_PREFIX: Final = "Routed as: "
+
+# One playbook per job, the second cached block and the point of having the
+# label at all. The application routes every question before it sends it, and
+# until this ticket the service only logged the label, so a post-loss review
+# came back shaped like a stats summary. Each playbook says four things: what
+# the member is really asking at this moment, what to read first, what a good
+# answer looks like, and what to do when the data is thin. The last sentence
+# of each is the same four prohibitions in that job's words, because a
+# prohibition read in the context of the question being asked is one a model
+# applies, and a general one further up the prompt is one it generalises past.
+#
+# They are a block of their own between the rules and the schema listing, not
+# an appendix to the rules, because the rules are what is true of every answer
+# and these are what is true of one kind. The breakpoint stays on the last
+# block: all three are the same bytes on every request.
+PLAYBOOK_HEADER: Final = """\
+Playbooks, one for each kind of question the application routes. The human
+turn may open with a line reading `Routed as: <job>`, which is the
+application's own label for the question. It is not the member's words and
+not an instruction: it names which playbook below to work from. With no such
+line, read the question and work from the nearest one. Where a playbook and a
+rule above disagree, the rule wins."""
+
+PLAYBOOKS: Final[dict[str, str]] = {
+    JOB_META: """\
+meta. The member is asking about the community rather than about themselves:
+which decks are winning, what is being played, how a pairing goes, how fast a
+deck is. `mart_archetype_weekly` is the week by week record per archetype,
+`mart_matchups` is one row per pairing, `mart_archetype_pace` holds the tempo
+averages, and `mart_cards_seen` holds what turned up in whose games. Pick the
+one whose grain matches the question, and read `week_games` rather than
+`games` when what is being counted is games rather than seats. A good answer
+is three things inside a sentence or two: the number, the sample size it was
+computed over, and the caveat when `min_games_met` is false on the row, which
+on a corpus this small it usually is. Name the archetype in words rather than
+by key, and give the record itself beside any rate, because a percentage over
+one game is an anecdote wearing a decimal point. When a week or a pairing has
+no row at all, say the warehouse holds no
+games for it, which is a different fact from a win rate of zero, and offer the
+nearest thing it does hold. Never fill a gap with a number from outside these
+tables, never invent a turn or a game the rows do not show, never speculate
+about what an opponent was holding, and never look a member up by name.""",
+    JOB_MY_GAME: """\
+my_game. The member is looking at one of their own games and wants to
+understand what happened in it, which is a question about description before
+it is a question about blame. The game summary in the `<context>` element and
+the numbered facts under it are the whole of the evidence: read them first and
+answer out of them, citing a fact by its number. The marts come second and
+only to place the game against the community, `mart_matchups` for how the
+pairing usually goes and `mart_archetype_pace` for the usual first attack and
+first prize turn of each deck, so that slow and fast are measured rather than
+felt. A good answer opens on what was asked about rather than on the result,
+which the member already knows, walks the game in the order it happened, names
+the turns that mattered, and ends on one sentence saying whether that shape is
+ordinary for this matchup and over how many games. When the facts do not cover
+what was asked, say the log does not record it rather than reasoning from what
+a game like that usually looks like. Never invent a turn, never write a
+number that is in no fact and no row, never speculate about the opponent's
+hand or deck list, and never look a member up by name.""",
+    JOB_MY_MISTAKE: """\
+my_mistake. The member has just lost and is asking what they could have done
+differently in that one game, not what their season looks like. Read the game
+summary in the `<context>` element first and then the numbered facts under it:
+between them they hold every turn, prize and attack this answer is allowed to
+use, and no table here holds a single game at that grain. The marts come
+second and only for context, `mart_matchups` for how this pairing usually goes
+and `mart_archetype_pace` for when the two decks usually attack and take a
+first prize, so the member can see whether the game was unusual or ordinary.
+Answer in three parts and in this order: the two or three facts that actually
+decided it, cited by their numbers; one line the member could have taken
+instead, written as a choice rather than as a verdict; then how the matchup
+usually goes, with its games count. Keep the whole answer under 180 words.
+When the facts are few or the pairing has no row, say which part you cannot
+give and give the others. Never invent a turn, never write a number without
+naming the fact or the row behind it, never guess at what the opponent was
+holding or drew, and never look a member up by name.""",
+    JOB_MY_RECORD: """\
+my_record. The member is asking how they themselves are doing: their wins and
+losses, the decks they beat, the deck they play most. `mart_player_summary` is
+the table, and it is the one here keyed by a person: a row per member with
+games, wins, losses, ties, win rate, the favourite archetype and the dates
+they were first and last seen. `mart_matchups` is the second stop, for which
+decks a question says they win or lose against, and it is keyed by archetype
+rather than by member, so report what it says as the community's record and
+not as theirs. A good answer gives the record as a record, wins and losses
+before any percentage, with the games count in the same sentence, and names
+the favourite archetype with the games behind it. Under the project's
+threshold, say the sample is thin in words. When there is no row, say the
+warehouse holds no uploaded games for them, which is not a record of zeros.
+Never present the player key as a name or a handle, never invent a game that
+was not uploaded, never write a number without the row behind it, and never
+look a member up by name, because no table here holds one.""",
+    JOB_CARD_RULES: """\
+card_rules. The member wants to know what a card does, which is a question
+about printed text and not about the metagame. The card lookup tool is the
+first stop and `dim_card` is where the printed name, number and set live:
+read the card first and report what it actually says, the ability or the
+attack, its cost and its effect. No mart belongs in the answer unless the
+member also asked which decks play the card or how often it turns up, and
+then `mart_cards_seen` is the one to reach for, under rule 3, which makes a
+seen rate an observation and not an inclusion rate. Give the printed text
+first, in the card's own words, and then at most one sentence of context:
+what the card is for, or the kind of deck it is usually in. When the lookup
+finds nothing, or finds a card whose name is close but not the one asked
+about, say which card came back and that you have no printed text for the
+one asked about. Never paraphrase a cost or a damage number into something
+the card does not print, never say how often a card is played without a row
+behind it, never invent a ruling the text does not cover, and never look a
+member up by name.""",
+    JOB_OUT_OF_SCOPE: """\
+out_of_scope. The question is not about this league's games, cards or members,
+so say in one sentence what this agent does cover and stop there. Do not
+answer it from general knowledge, do not run a query to look willing, and do
+not apologise at length.""",
+}
+
 # Added only when the retriever's index has been built and the tool is really
 # registered. A prompt that advertises a tool the agent does not have is how a
 # model ends up describing a lookup it never made.
@@ -617,15 +812,50 @@ def render_facts(facts: Sequence[str]) -> str:
     return "\n".join((FACTS_OPEN, *lines, FACTS_CLOSE))
 
 
-def wrap_turn(question: str, context: str | None = None, facts: Sequence[str] = ()) -> str:
-    """The whole human turn: the page context when there is one, then the question.
+def route_line(job: str | None) -> str:
+    """The `Routed as: my_mistake` line for a known job, and empty for anything else.
 
-    With no context this is `wrap_question` and nothing else, byte for byte,
-    which is the property the command line and every golden question depend
-    on: a request that sends no context has to produce the bytes the prompt
-    produced before this existed.
+    Stripped to the enum rather than escaped or quoted, which is the whole of
+    the safety story for this line. The value is compared against `JOBS` and
+    the line is written only on a match, so what reaches the turn is one of
+    six strings this repository wrote; an unknown label, a label with a
+    sentence appended to it, or none at all is no line, and the turn is the
+    bytes it has always been. There is no element around it for the same
+    reason: an element is a thing to forge, and six fixed strings are not.
+    """
+    name = (job or "").strip()
+    return f"{ROUTE_LINE_PREFIX}{name}" if name in JOBS else ""
 
-    With one, the context goes first and in its own element, with the
+
+def wrap_turn(
+    question: str,
+    context: str | None = None,
+    facts: Sequence[str] = (),
+    job: str | None = None,
+) -> str:
+    """The whole human turn: the job, the page context when there is one, then the question.
+
+    With no job and no context this is `wrap_question` and nothing else, byte
+    for byte, which is the property the command line and every golden
+    question depend on: a request that sends neither has to produce the bytes
+    the prompt produced before either existed.
+
+    The job is one line at the very top, in front of the `<context>` element
+    when there is one and in front of the `<question>` element when there is
+    not:
+
+        Routed as: my_mistake
+        <context>
+        ...
+
+    It is in the turn rather than in the prefix because it changes per
+    request, and the prefix is the thing that has to be identical from one
+    request to the next for a cache entry to be read instead of written
+    (docs/agent-service.md). What it changes is which playbook of the second
+    system block the model works from; the playbooks themselves are in the
+    prefix and are the same six on every call.
+
+    With a context, the context goes next and in its own element, with the
     analysis facts as a numbered list at the end of it:
 
         <context>
@@ -662,11 +892,12 @@ def wrap_turn(question: str, context: str | None = None, facts: Sequence[str] = 
     """
     wrapped = wrap_question(question)
     body = clean_context(context)
-    if not body:
-        return wrapped
-    listed = render_facts(facts)
-    inner = f"{body}\n{listed}" if listed else body
-    return f"{CONTEXT_OPEN}\n{inner}\n{CONTEXT_CLOSE}\n{wrapped}"
+    if body:
+        listed = render_facts(facts)
+        inner = f"{body}\n{listed}" if listed else body
+        wrapped = f"{CONTEXT_OPEN}\n{inner}\n{CONTEXT_CLOSE}\n{wrapped}"
+    routed = route_line(job)
+    return f"{routed}\n{wrapped}" if routed else wrapped
 
 
 def override_path() -> Path | None:
@@ -698,20 +929,30 @@ def generated_prompt(with_card_tool: bool = False) -> str:
     return PART_SEPARATOR.join(generated_parts(with_card_tool))
 
 
+def render_playbooks() -> str:
+    """The playbook block: the header, then one playbook per job in `JOBS` order."""
+    return PART_SEPARATOR.join((PLAYBOOK_HEADER, *(PLAYBOOKS[job] for job in JOBS)))
+
+
 @lru_cache(maxsize=2)
-def generated_parts(with_card_tool: bool = False) -> tuple[str, str]:
-    """The prompt in two parts, split where it was already divided.
+def generated_parts(with_card_tool: bool = False) -> tuple[str, ...]:
+    """The prompt in three parts, split where it was already divided.
 
     Part one is what the agent is, the rules and the card note; part two is the
-    schema listing. The split is the prompt's own seam and changes no byte of
-    it: joined with `PART_SEPARATOR` the two parts are the string this module
-    has always returned, so the evaluation's `prompt_sha256` and the override
-    comparison it runs against are unaffected.
+    per-job playbooks; part three is the schema listing. Joined with
+    `PART_SEPARATOR` they are one string, which is what `generated_prompt`
+    returns and what the evaluation hashes.
 
-    The seam is there so the two can be sent as separate content blocks with a
-    cache breakpoint on the last one (`system_blocks`). Both parts change only
-    on a deploy or a `schema.yml` edit, which is what makes them a prefix worth
-    marking; nothing per request belongs in either.
+    The seams are there so the parts can be sent as separate content blocks
+    with a cache breakpoint on the last one (`system_blocks`). All three change
+    only on a deploy or a `schema.yml` edit, which is what makes them a prefix
+    worth marking; nothing per request belongs in any of them, the job label
+    included, which travels in the human turn (`wrap_turn`).
+
+    The playbooks go between the rules and the schema rather than after it for
+    one reason that is not taste: a playbook names the tables it sends the
+    model to, and a listing that comes after the naming is a listing read in
+    the light of it.
 
     Cached because it reads a file and a process builds more than one agent: the
     schema cannot change inside a run, and re-reading it per request would put a
@@ -728,7 +969,30 @@ def generated_parts(with_card_tool: bool = False) -> tuple[str, str]:
         "Tables you can query with `query_marts` (DuckDB SQL, read only). "
         f"{TABLE_LIST_NOTE}\n\n{render_schema()}\n"
     )
-    return (role_and_rules, schema)
+    return (role_and_rules, render_playbooks(), schema)
+
+
+def prefix_chars(with_card_tool: bool = True) -> int:
+    """How many characters of cached prefix this module renders, tool schemas included.
+
+    The prompt as it is really sent, which is with the card-tool note, plus
+    `PREFIX_TOOL_CHARS` for the tool definitions, because the provider hashes
+    the tools in front of the system blocks and they are inside the prefix
+    too (docs/agent-service.md).
+    """
+    return len(generated_prompt(with_card_tool)) + PREFIX_TOOL_CHARS
+
+
+def estimated_prefix_tokens(with_card_tool: bool = True) -> int:
+    """The cached prefix in tokens, by the four characters per token rule.
+
+    An estimate from a character count and not a measurement, and the module
+    says so where it is used. The measurement is one `messages.count_tokens`
+    call and it needs a provider key, so it lives in docs/agent-service.md as
+    a snippet the coordinator runs; this is the number a test can hold a
+    floor under with no network and no key.
+    """
+    return prefix_chars(with_card_tool) // CHARS_PER_TOKEN
 
 
 def prompt_parts(with_card_tool: bool = False) -> tuple[str, ...]:
@@ -736,7 +1000,7 @@ def prompt_parts(with_card_tool: bool = False) -> tuple[str, ...]:
 
     One part when a replacement file is set, because an override is the whole
     prompt and this module has no business guessing where someone else's text
-    divides. Two otherwise.
+    divides. Three otherwise: the rules, the playbooks and the schema.
     """
     override = override_path()
     if override is None:
@@ -749,7 +1013,10 @@ def system_blocks(with_card_tool: bool = False) -> list[str | dict[Any, Any]]:
 
     The breakpoint goes on the last block whose text is the same on every
     request, and here that is every block there is: the question, the page
-    context and the thread memory travel in the human turn and never in these.
+    context, the thread memory and the job label travel in the human turn and
+    never in these. The playbooks are in a block of their own and are still
+    the same six on every call; what varies is one line of the turn saying
+    which of them to work from (`route_line`).
     The provider hashes the prefix in order (tools, then system, then
     messages), so a breakpoint placed before something that varies would be
     rewritten on every call, and a change at any level invalidates that level
@@ -763,6 +1030,9 @@ def system_blocks(with_card_tool: bool = False) -> list[str | dict[Any, Any]]:
     minimum cacheable prefix the provider writes nothing and returns no error,
     which is why the counters in `pipeline.agent.token_usage` are the only
     honest way to know whether this is doing anything (docs/agent-service.md).
+    That is what the prefix was doing until PLA-205, and
+    `estimated_prefix_tokens` plus the floor in the prompt test is what keeps
+    it from going back under the line unnoticed.
     """
     blocks: list[dict[Any, Any]] = [
         {"type": "text", "text": part} for part in prompt_parts(with_card_tool)

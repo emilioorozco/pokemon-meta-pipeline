@@ -1479,9 +1479,16 @@ class Agent:
         and not a refusal: the answer returns either way, and what is written
         down is the two counts (`pipeline.facts`).
 
-        `job` is the application's own router label for the question, carried
-        so that the log line and the span can be read by job. It changes
-        nothing about the answer today; the playbooks are a later ticket.
+        `job` is the application's own router label for the question, one of
+        `pipeline.prompts.JOBS`. Since PLA-205 it does something: it is
+        written into the human turn as one line, `Routed as: my_mistake`,
+        above the `<context>` element when there is one and above the
+        `<question>` element when there is not, and it names which of the
+        playbooks in the second system block the model works from. A label
+        that is not one of the six is no line at all, and the turn is then
+        the bytes it has always been (`pipeline.prompts.route_line`). It is
+        still on the log line and on the span, which is what it was carried
+        for before it changed anything.
 
         Neither the context, the game summary, the first line, the question
         nor a word of the conversation is logged or put on a span, here or
@@ -1531,7 +1538,7 @@ class Agent:
                 if self.metrics is not None:
                     self.metrics.count_history_turns(len(prior))
                 turn = HumanMessage(
-                    content=wrap_turn(question, placed, [fact.text for fact in facts])
+                    content=wrap_turn(question, placed, [fact.text for fact in facts], job)
                 )
                 state = self.graph.invoke({"messages": [*prior_messages(prior), turn]})
                 messages: list[BaseMessage] = list(state["messages"])

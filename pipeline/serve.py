@@ -349,8 +349,12 @@ class AskJob(StrEnum):
     a free string: a typo in the application would otherwise become a new
     category in a dashboard, which is a silent way to lose half a chart.
 
-    Nothing about the answer depends on it yet. The job playbooks, which are
-    the point of having the label, are a later ticket; this one carries it.
+    Since PLA-205 the answer depends on it. The label is written into the
+    human turn as one line, `Routed as: my_mistake`, and the system prefix
+    carries a playbook per job saying what that kind of question is really
+    asking and what a good answer to it looks like
+    (`pipeline.prompts.PLAYBOOKS`). The six values here are the six in
+    `pipeline.prompts.JOBS`, and a test holds the two lists in step.
     """
 
     META = "meta"
@@ -486,8 +490,9 @@ class AskRequest(BaseModel):
     job: AskJob | None = Field(
         default=None,
         description=(
-            "The application's router label for this question. Logged and put on the "
-            "span; it changes nothing about the answer today"
+            "The application's router label for this question. It selects the playbook "
+            "the agent answers from, and travels to the model as one line of the turn "
+            "reading `Routed as: <job>`. Logged and put on the span"
         ),
     )
 
@@ -1658,7 +1663,8 @@ def create_app(
 
         The five context fields, `history` and `job` go straight through to
         the agent and are not read here, beyond turning the request's facts
-        and turns into the plain objects the agent takes. The conversation
+        and turns into the plain objects the agent takes and the job enum
+        into the string the prompt's `route_line` matches. The conversation
         has already been checked by then: `AskRequest` holds it to the
         shape and the ceilings `pipeline.prompts.validate_history` sets, so
         a malformed one is a 422 and never a half-placed thread.
