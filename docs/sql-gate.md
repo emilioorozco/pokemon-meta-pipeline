@@ -50,7 +50,7 @@ that tried to read the roster. The validator now reports which, in
 the model ([agent-service.md](agent-service.md) lists the six codes).
 
 **How it knows.** The dbt project is the authority: every model dbt builds is
-a `.sql` file under `dbt/models/`, so one cached directory listing answers
+a `.sql` file under `dbt/models/`, so one listing of that directory answers
 "is this a real relation" for the whole warehouse, including models that have
 no `schema.yml` entry. The DuckDB catalog was the other candidate and is the
 worse one. It would need a connection on a path the validator has never been
@@ -58,14 +58,42 @@ given, it is empty before the gold stage has run, and a validator that opened
 a file would stop being the pure function of a string that the rest of
 [agent-safety.md](agent-safety.md) rests on.
 
-Where the dbt project is not there to read, which is an image that ships the
-warehouse without it, the rule is the naming convention instead: a `mart_`,
-`dim_` or `fct_` name off the allowlist is read as a real table being blocked
-and everything else as a guess. That is deliberately the conservative way
-round, because calling a real block a guess is the error that loses a reader
-a refusal worth seeing. It is also wrong about `mart_leaderboard` and
-`mart_archetype_summary`, which is the honest cost of a fallback and the
-reason it is not the rule.
+**The listing is taken at build time, not at run time**, and that is the half
+of PLA-198 that had to be fixed twice. The validator globbed `dbt/models/`
+when it was asked, which is right in a checkout and empty on the deployed
+Lambda: `Dockerfile.agent` copies `pipeline/` and the embedding model into
+the image and nothing else, so the dbt project is not there, the glob found
+no models, and a naming-convention fallback (`mart_`, `dim_` and `fct_`
+counting as real) answered instead. That fallback was wrong about exactly the
+names the ticket was filed over, so on dev `mart_archetype_summary` and
+`mart_weekly_archetype`, neither of which dbt builds, came back
+`table_not_allowed`: the badge that means a boundary held, on two names
+nobody had ever built a table for.
+
+So the glob runs where the models are, which is a checkout, and its answer is
+committed:
+
+- `scripts/generate_warehouse_tables.py` writes `pipeline/warehouse_tables.py`,
+  a sorted tuple of the model stems and nothing else. Run it after adding,
+  renaming or deleting a model; `--check` exits 1 instead of writing.
+- `pipeline.prompts.warehouse_tables` reads that tuple. No filesystem, so the
+  answer is the same in a checkout, in the serving image, under
+  `python -m pipeline.eval --remote` and in any other caller that has
+  `pipeline` installed with no dbt tree beside it.
+- `pipeline.prompts.dbt_model_names` is the glob, and it is now the test's
+  oracle rather than the runtime path. `tests/test_agent.py` re-runs it and
+  re-renders the file, so a model added without a regeneration is a red test
+  and never a wrong refusal in production.
+
+The naming-convention fallback is gone rather than demoted. There is nothing
+left for it to cover: a list that is a module of the package travels wherever
+the validator does, and keeping a second, worse answer in reserve only meant
+keeping the answer that was wrong about `mart_leaderboard`.
+
+Copying `dbt/models/` into the serving image was the other way to do this and
+is not worse by much, but the committed list is the one that also answers for
+a caller that has no dbt project at all, which the `--remote` evaluation and
+anything else importing `pipeline.agent` can be.
 
 ## What Jev is, and what it is not
 

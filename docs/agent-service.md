@@ -168,13 +168,17 @@ correcting itself, and a blocked name is a privacy or correctness boundary
 doing what it is there for. An application that draws the same error badge on
 both tells a member that a correct answer was refused.
 
-How the validator tells them apart: it lists the dbt project's models, which
-are the `.sql` files under `dbt/models/`, and a name that is not one of them
-is a name nothing builds. An image that ships the warehouse without the dbt
-project has no list to read, and there the rule is the naming convention
-instead, `mart_`, `dim_` and `fct_` prefixes counting as real and everything
-else as a guess. That fallback is wrong about exactly the names this ticket
-was filed over, which is why it is the fallback and not the rule.
+How the validator tells them apart: it reads a list of the dbt project's
+models, which are the `.sql` files under `dbt/models/`, and a name that is not
+one of them is a name nothing builds. **The list is generated at build time
+and committed**, as `pipeline/warehouse_tables.py`, rather than globbed when
+the question is asked. This image is why: `Dockerfile.agent` copies
+`pipeline/` and the embedding model and not the dbt project, so the glob found
+nothing on the deployed function and a naming-convention fallback answered in
+its place, which is how two names nobody has ever built a table for came back
+`table_not_allowed` on dev. `scripts/generate_warehouse_tables.py` regenerates
+the list and a test fails when it has drifted from the glob
+([sql-gate.md](sql-gate.md)).
 
 The cheaper half of the fix is upstream of all of it. The prompt's schema
 listing now closes with one line, carried in the `query_marts` tool
