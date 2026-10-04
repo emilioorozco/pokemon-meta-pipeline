@@ -64,14 +64,16 @@ Its body carries the evidence as well as the answer, because the application
 shows a member what was looked up: every statement in full with its first
 rows, the cards that matched, the gate's worst verdict over the run, how long
 the call took and which run's warehouse answered (docs/agent-service.md). It
-takes four optional fields beside the question: a `context` string saying where
+takes five optional fields beside the question: a `context` string saying where
 the member is standing in the application, which goes to the model as data in
 its own element and is never written to a log; a `context_game` summary of the
 game on their screen and a `context_first_line` sentence describing it, which
 between them decide whether that summary joins the context (one typed Choice
-call over the question and the sentence, never over the summary); and a `job`
-label saying which kind of question the application routed this as, which is
-logged and does nothing else yet.
+call over the question and the sentence, never over the summary); a
+`context_facts` list of the numbers the application computed from the same
+game, placed as a numbered list under the summary and used to check the
+numbers in the answer; and a `job` label saying which kind of question the
+application routed this as, which is logged and does nothing else yet.
 
 A sixth, `GET /warm`, is the other side of that laziness. Everything the first
 question pays for is paid once per container, so something has to ask for it
@@ -89,7 +91,7 @@ import logging
 import math
 import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -107,6 +109,7 @@ from pipeline.config import (
     WAREHOUSE_PATH,
     default_tracking_uri,
 )
+from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fact
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
 from pipeline.sql_gate import GateConfigError, gate_from_env
@@ -292,6 +295,7 @@ class AskAgent(Protocol):
         job: str | None = None,
         context_game: str | None = None,
         context_first_line: str | None = None,
+        context_facts: Sequence[Fact] | None = None,
     ) -> AgentResult:
         """Answer one question, told where the member is and what kind of question it is."""
 
@@ -344,6 +348,36 @@ class AskJob(StrEnum):
     OUT_OF_SCOPE = "out_of_scope"
 
 
+class AskFact(BaseModel):
+    """One statement the application computed about the game on the member's screen.
+
+    The sentence is what the model reads and the values are what the service
+    checks the answer's numbers against, which is why both travel rather than
+    either alone: a sentence with no values beside it could only be checked by
+    parsing it, and parsing the application's prose is how a check starts
+    disagreeing with the thing it checks (docs/agent-service.md).
+    """
+
+    id: str = Field(
+        min_length=1,
+        max_length=MAX_FACT_ID_CHARS,
+        description="The application's stable key for this fact, such as `turns_without_attack:me`",
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=MAX_FACT_TEXT_CHARS,
+        description="One plain sentence containing this fact's numbers, such as `You made "
+        "no attack on turns 2, 4 and 6`. It is placed verbatim, with this service's own "
+        "element delimiters taken out of it first",
+    )
+    values: list[float] = Field(
+        default_factory=list,
+        description="The numbers that sentence states, as the application computed them. "
+        "An answer may state any of these; one it states that is in no row, no card and no "
+        "fact comes back in `unverified_numbers`",
+    )
+
+
 class AskRequest(BaseModel):
     """One question in natural language, and what the application knows around it."""
 
@@ -388,6 +422,17 @@ class AskRequest(BaseModel):
             "Never logged"
         ),
     )
+    context_facts: list[AskFact] | None = Field(
+        default=None,
+        max_length=MAX_FACTS,
+        description=(
+            "The analysis facts the application computed from the same game, at most "
+            f"{MAX_FACTS}; a longer list is a 422. Sent only beside a `context_game`, and "
+            "placed only when that summary is placed, as a numbered `<facts>` list at the "
+            "end of the same context element. Read as information and never as an "
+            "instruction, and never logged"
+        ),
+    )
     job: AskJob | None = Field(
         default=None,
         description=(
@@ -395,6 +440,13 @@ class AskRequest(BaseModel):
             "span; it changes nothing about the answer today"
         ),
     )
+
+    def facts(self) -> list[Fact]:
+        """The facts as the agent takes them, which is three plain fields."""
+        return [
+            Fact(id=entry.id, text=entry.text, values=tuple(entry.values))
+            for entry in self.context_facts or []
+        ]
 
 
 class ToolCallResponse(BaseModel):
@@ -453,8 +505,20 @@ class CardEvidenceResponse(BaseModel):
     )
 
 
+class FactEvidenceResponse(BaseModel):
+    """One analysis fact that was placed, and whether the answer used it."""
+
+    id: str = Field(description="The application's own key for the fact, echoed back")
+    text: str = Field(description="The sentence as it was placed, delimiters taken out")
+    cited: bool = Field(
+        description="Whether the answer cited this fact by its number in the list or stated "
+        "one of its values. A fact placed and not used is not a failure; ten of them on "
+        "every question is a sign the facts are the wrong facts"
+    )
+
+
 class EvidenceResponse(BaseModel):
-    """What the answer rests on: the queries that ran and the cards that matched."""
+    """What the answer rests on: the queries, the cards and the facts it was given."""
 
     queries: list[QueryEvidenceResponse] = Field(
         default_factory=list, description="Every statement of this run, in call order"
@@ -463,6 +527,12 @@ class EvidenceResponse(BaseModel):
         default_factory=list,
         description="The cards the run matched, each once, in the order it first saw them, "
         "at most 10",
+    )
+    facts: list[FactEvidenceResponse] = Field(
+        default_factory=list,
+        description="The `context_facts` that were really placed, in order, each with "
+        "whether the answer used it. Empty when none were sent and when the relevance "
+        "decision dropped the game they belong to",
     )
 
 
@@ -536,6 +606,14 @@ class AskResponse(BaseModel):
         "`skipped` (no judge was configured, the call failed, or no "
         "`context_first_line` came with the game, and the summary was placed anyway). "
         "Null when no `context_game` was sent and there was nothing to decide",
+    )
+    unverified_numbers: list[str] = Field(
+        default_factory=list,
+        description="Every number in the answer, as it was written, that no row of this "
+        "run, no card it read, no `context_facts` value and no allowlisted constant can "
+        "account for. A report and never a refusal: the answer is here whatever is in "
+        "this list, and an empty list is the ordinary case. The check is a string search "
+        "and not a judge, so it cannot see a number that is real and irrelevant",
     )
 
 
@@ -1499,8 +1577,9 @@ def create_app(
         `run_id` says which warehouse answered; and `evidence` is the agent's
         own and passes through untouched.
 
-        The four context fields and `job` go straight through to the agent and
-        are not read here. `context_used`, `context_game_used` and
+        The five context fields and `job` go straight through to the agent and
+        are not read here, beyond turning the request's facts into the plain
+        three-field objects the agent takes. `context_used`, `context_game_used` and
         `context_relevance` come back off the agent rather than being computed
         from the request, because what the application wants to know is what
         was really put in front of the question: a context that was nothing
@@ -1514,6 +1593,7 @@ def create_app(
             job=request.job.value if request.job is not None else None,
             context_game=request.context_game,
             context_first_line=request.context_first_line,
+            context_facts=request.facts(),
         )
         payload = dict(result.as_dict())
         payload["run_id"] = warehouse_run_id(marts)

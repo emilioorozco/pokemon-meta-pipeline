@@ -1,0 +1,104 @@
+{
+  "case_id": "mistake_game_02",
+  "source_fixture": "game-02-0d213f9a.json",
+  "context": "The member is on their own game page, reviewing one game.",
+  "context_first_line": "Your game against Cynthia's Garchomp, you went second, lost in 6 turns.",
+  "context_game": "Your deck against Cynthia's Garchomp. You went second and lost on turn 6. You took 1 prize and your opponent took 4. Your first attack was on turn 2. Your opponent first attacked on turn 3.",
+  "context_facts": [
+    {
+      "id": "turn_count:both",
+      "text": "The game ran 6 turns.",
+      "values": [
+        6
+      ]
+    },
+    {
+      "id": "first_attack_turn:me",
+      "text": "Your first attack was on turn 2.",
+      "values": [
+        2
+      ]
+    },
+    {
+      "id": "first_attack_turn:opponent",
+      "text": "Your opponent first attacked on turn 3.",
+      "values": [
+        3
+      ]
+    },
+    {
+      "id": "turns_without_attack:me",
+      "text": "You attacked on every turn you took.",
+      "values": []
+    },
+    {
+      "id": "turns_without_energy_attach:me",
+      "text": "You attached energy on every turn you took.",
+      "values": []
+    },
+    {
+      "id": "first_prize_turn:me",
+      "text": "Your first prize came on turn 4.",
+      "values": [
+        4
+      ]
+    },
+    {
+      "id": "prizes_taken:both",
+      "text": "You took 1 prize and your opponent took 4.",
+      "values": [
+        1,
+        4
+      ]
+    },
+    {
+      "id": "prizes_by_turn:me",
+      "text": "You had taken 1 prize by the end of turn 4, 1 by turn 6 and 1 by turn 8.",
+      "values": [
+        1,
+        4,
+        1,
+        6,
+        1,
+        8
+      ]
+    },
+    {
+      "id": "first_knockout_turn:me",
+      "text": "Your first knockout came on turn 4.",
+      "values": [
+        4
+      ]
+    },
+    {
+      "id": "knockouts:both",
+      "text": "You took 1 knockout and your opponent took 3.",
+      "values": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "biggest_attack:me",
+      "text": "Your biggest attack dealt 200 damage, on turn 4.",
+      "values": [
+        200,
+        4
+      ]
+    },
+    {
+      "id": "energy_per_turn:me",
+      "text": "You attached 2 energy cards per turn you took.",
+      "values": [
+        2
+      ]
+    },
+    {
+      "id": "concession_turn:both",
+      "text": "The game ended in a concession on turn 6.",
+      "values": [
+        6
+      ]
+    }
+  ]
+}

@@ -11,15 +11,15 @@ a golden file with a duplicate id or an unknown tool in it is refused at load
 rather than silently scoring nothing.
 
 The committed set is checked here too, because `evals/golden.yaml` is data and
-data rots: thirty questions in two kinds, unique ids, every tool name real,
+data rots: forty questions in three kinds, unique ids, every tool name real,
 every question answerable, every question forbidding the player-token shape,
 every adversarial question forbidding something about the run as well, every
 question saying which warehouse it is true of, and a recorded run in
 `evals/transcript.yaml` for each one.
 
 The `dbt` half runs the loop for real over the fixture warehouse, and it is
-the one that would catch a harness that scores nothing: thirty out of
-thirty with the recorded turns replayed through the real tools, fewer when
+the one that would catch a harness that scores nothing: forty out of
+forty with the recorded turns replayed through the real tools, fewer when
 the answers stop carrying the facts, and fewer when the system prompt is
 replaced with the deliberately broken one. It is also where the optional SQL
 gate is driven end to end, with `FakeGate` in the provider's place: the same set, once with the gate
@@ -28,6 +28,7 @@ nothing when it is off" is a measurement rather than a claim.
 """
 
 import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
@@ -36,6 +37,7 @@ import pytest
 
 from pipeline import card_index
 from pipeline import eval as evals
+from pipeline import facts as facts_module
 from pipeline.agent import ToolCall
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from tests.agent_fakes import final, scripted, tool_call
@@ -328,6 +330,48 @@ def test_a_golden_question_with_the_same_failed_require_still_fails() -> None:
     assert result.advisory == ()
 
 
+def test_a_question_that_grades_its_numbers_fails_on_one_it_cannot_trace() -> None:
+    """The fourth check, which only a question that asked for it ever fails.
+
+    The numbers are computed by the service and carried here, so this is the
+    scorer's half: over the limit is a failed `unverified` check, under it is
+    nothing, and a question that set no limit is never failed however many
+    it reported.
+    """
+    graded = question(kind=evals.KIND_MISTAKE, max_unverified=0, expect_tools=())
+    over = evals.score(graded, "12 games", [], unverified=("12",))
+    assert not over.passed
+    assert over.failed_checks == (evals.CHECK_UNVERIFIED,)
+    assert over.unverified_numbers == ("12",)
+    assert over.as_dict()["unverified_numbers"] == ["12"]
+
+    clean = evals.score(graded, "12 games", [], unverified=())
+    assert clean.passed
+
+    ungraded = evals.score(question(expect_tools=()), "12 games", [], unverified=("12", "15"))
+    assert ungraded.passed
+    # Reported on a question that passed, because the report prints it and
+    # the run totals it either way.
+    assert ungraded.unverified_numbers == ("12", "15")
+
+
+def test_the_run_totals_the_untraceable_numbers_and_names_the_questions() -> None:
+    results = (
+        evals.score(question(id="a", expect_tools=()), "12", [], unverified=("12",)),
+        evals.score(question(id="b", expect_tools=()), "13 and 14", [], unverified=("13", "14")),
+        evals.score(question(id="c", expect_tools=()), "nothing", []),
+    )
+    report = evals.Report(
+        golden=evals.Golden(version=1, questions=(), path=Path("g.yaml")),
+        results=results,
+        model="m",
+        prompt_sha256="",
+    )
+    assert report.unverified_numbers == 3
+    assert report.as_dict()["unverified_numbers"] == 3
+    assert evals.render_unverified_numbers(report) == "unverified numbers: 3 in a, b"
+
+
 def test_an_adversarial_question_still_fails_on_forbid_and_on_tools() -> None:
     """`require` is the only check an adversarial question gets to shrug off."""
     from pipeline.agent import Evidence, QueryEvidence
@@ -373,14 +417,51 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_eighteen_golden_and_twelve_adversarial(golden: evals.Golden) -> None:
-    assert len(golden.questions) == 30
+def test_the_golden_set_is_eighteen_golden_twelve_adversarial_and_ten_mistake(
+    golden: evals.Golden,
+) -> None:
+    assert len(golden.questions) == 40
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
     assert kinds.count(evals.KIND_GOLDEN) == 18
     assert kinds.count(evals.KIND_ADVERSARIAL) == 12
+    assert kinds.count(evals.KIND_MISTAKE) == 10
+
+
+def test_every_mistake_question_is_answered_from_the_facts_and_grades_the_numbers(
+    golden: evals.Golden,
+) -> None:
+    """What makes a `mistake` question that kind, asserted rather than assumed.
+
+    One per fixture game, each carrying the whole page context the
+    application would have sent, each expecting no tool call because the
+    warehouse holds nothing at the grain of one game, and each refusing to
+    pass with a number in its answer that no fact accounts for. A case
+    missing any of the four would still load and would grade almost nothing.
+    """
+    mistakes = [entry for entry in golden.questions if entry.kind == evals.KIND_MISTAKE]
+    assert len(mistakes) == 10
+    for entry in mistakes:
+        assert entry.expect_tools == (), entry.id
+        assert entry.max_unverified == 0, entry.id
+        assert entry.context_game, entry.id
+        assert entry.context_first_line, entry.id
+        assert entry.context_facts, entry.id
+        assert entry.any_warehouse, entry.id
+        # Every number a required pattern is looking for has to be in a fact,
+        # or the case is grading the model's imagination rather than the
+        # facts the application sent.
+        values = {value for fact in entry.context_facts for value in fact.values}
+        for pattern in entry.require:
+            # The pattern as a piece of text: the prefix off, the word
+            # boundaries turned into spaces so a number against one is still
+            # a number, and the remaining backslashes dropped.
+            plain = re.sub(r"\\(.)", r"\1", pattern.removeprefix("re:").replace("\\b", " "))
+            for token in facts_module.number_tokens(plain):
+                parsed = facts_module.parse_number(token)
+                assert parsed is not None and parsed[0] in values, (entry.id, pattern)
 
 
 def test_every_adversarial_question_grades_the_run_and_not_only_the_prose(
@@ -428,7 +509,7 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         for name in evals.VALID_WAREHOUSES
     }
     assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 12
-    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 18
+    assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 28
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
             assert entry.any_warehouse, entry.id
@@ -439,7 +520,8 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         # claim of `game_on_screen_loss`, so an archetype named in its own
         # game summary is exempt from the check below rather than a hole in
         # it; one that is not in the context it sent is not.
-        sent = f"{entry.context}\n{entry.context_game}\n{entry.context_first_line}"
+        placed = "\n".join(fact.text for fact in entry.context_facts)
+        sent = f"{entry.context}\n{entry.context_game}\n{entry.context_first_line}\n{placed}"
         for pattern in (*entry.require, *entry.forbid):
             if pattern in sent:
                 continue
@@ -513,12 +595,41 @@ def test_a_well_formed_file_loads(tmp_path: Path) -> None:
     # leaves alone.
     assert golden.questions[0].warehouse == evals.WAREHOUSE_FIXTURE
     assert golden.questions[0].any_warehouse is False
+    # And one that says nothing about facts or untraceable numbers asserts
+    # nothing about either, which is what the thirty questions written
+    # before PLA-188 want.
+    assert golden.questions[0].context_facts == ()
+    assert golden.questions[0].max_unverified is None
 
 
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
         (ONE_QUESTION + ONE_QUESTION, "duplicate id"),
+        # The facts, held to the ceilings the service holds them to, so a
+        # list that would be a 422 on a remote run is a load error here.
+        (
+            ONE_QUESTION.rstrip("\n")
+            + "\n    context_game: a game\n    context_facts: [{id: a, text: ''}]\n",
+            "needs an `id` and a `text`",
+        ),
+        (
+            ONE_QUESTION.rstrip("\n")
+            + "\n    context_game: a game\n    context_facts: [{id: a, text: b, values: [x]}]\n",
+            "`values` has to be a list of numbers",
+        ),
+        (
+            ONE_QUESTION.rstrip("\n") + "\n    context_facts: [{id: a, text: b}]\n",
+            "needs a `context_game` to belong to",
+        ),
+        (
+            ONE_QUESTION.rstrip("\n") + "\n    max_unverified: lots\n",
+            "`max_unverified` has to be an integer",
+        ),
+        (
+            ONE_QUESTION.rstrip("\n") + "\n    max_unverified: -1\n",
+            "cannot be negative",
+        ),
         (
             "  - id: only\n    question: q\n    require: [x]\n    expect_tools: [nope]\n",
             "not a tool",
@@ -968,13 +1079,16 @@ def test_a_response_missing_everything_optional_is_still_an_answer() -> None:
 def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     """The fields are only worth having if they reach the agent, locally and remotely.
 
-    Three of the thirty carry a context and the rest carry nothing, so
-    this asserts both: those three are asked with theirs, and every other
-    question is asked exactly as it was before the fields existed.
+    Thirteen of the forty carry a context and the rest carry nothing, so
+    this asserts both: those thirteen are asked with theirs, and every other
+    question is asked exactly as it was before the fields existed. Eleven of
+    the thirteen carry a game, which is the one `golden` question about the
+    game on screen and the ten `mistake` ones, and only those ten carry
+    facts.
     """
     from pipeline.agent import Answer
 
-    seen: list[tuple[str, str, str, str]] = []
+    seen: list[tuple[str, str, str, str, tuple[object, ...]]] = []
 
     class Recorder:
         model_name = "recorder"
@@ -985,20 +1099,27 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
             context: str = "",
             context_game: str = "",
             context_first_line: str = "",
+            context_facts: object = (),
         ) -> Answer:
-            seen.append((question, context, context_game, context_first_line))
+            seen.append(
+                (question, context, context_game, context_first_line, tuple(context_facts))  # type: ignore[arg-type]
+            )
             return Answer(answer="", model="recorder")
 
     evals.run_evals(golden, lambda entry: Recorder(), warehouse=Path("unused"))
     with_context = [row for row in seen if row[1]]
-    assert len(with_context) == 3
+    assert len(with_context) == 13
     with_game = [row for row in seen if row[2]]
-    assert len(with_game) == 1
-    # The one that carries a game carries a first line for it too, which is
-    # what the relevance decision is taken on.
-    assert "Dragapult ex" in with_game[0][2]
-    assert "lost in 9 turns" in with_game[0][3]
-    assert len(seen) == 30
+    assert len(with_game) == 11
+    with_facts = [row for row in seen if row[4]]
+    assert len(with_facts) == 11
+    # Every question that carries a game carries a first line for it too,
+    # which is what the relevance decision is taken on, and every question
+    # that carries facts carries the game they are about.
+    assert all(row[3] for row in with_game)
+    assert all(row[2] for row in with_facts)
+    assert any("Dragapult ex" in row[2] and "lost in 9 turns" in row[3] for row in with_game)
+    assert len(seen) == 40
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -1087,8 +1208,8 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
         warehouse=Path("unused"),
         remote=True,
     )
-    assert len(asked) == 18
-    assert report.total == 18
+    assert len(asked) == 28
+    assert report.total == 28
     assert report.model == "m"
     assert report.remote is True
     # Nothing local answered, so nothing local is reported as having.
@@ -1113,7 +1234,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
     class Silent:
         model_name = "quiet"
 
-        def ask(self, question: str, context: str = "", **extra: str) -> Answer:
+        def ask(self, question: str, context: str = "", **extra: object) -> Answer:
             return Answer(answer="", model="quiet")
 
     report = evals.run_evals(
@@ -1121,7 +1242,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         lambda entry: Silent(),
         warehouse=Path("unused"),
     )
-    assert report.total == len(golden.questions) == 30
+    assert report.total == len(golden.questions) == 40
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -1177,7 +1298,7 @@ def hashed_index(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_the_whole_set_passes_against_the_fixture_marts(
     gold_from_fixtures: Path, hashed_index: Path, golden: evals.Golden
 ) -> None:
-    """Thirty out of thirty, with every query really run against dbt's warehouse.
+    """Forty out of forty, with every query really run against dbt's warehouse.
 
     The recorded turns go through the real graph, the real SQL gate and real
     DuckDB, so this fails if a mart is renamed, if a number in the fixture
@@ -1195,8 +1316,26 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 30, evals.render(report)
-    assert report.by_kind() == {evals.KIND_GOLDEN: (18, 18), evals.KIND_ADVERSARIAL: (12, 12)}
+    assert report.passed == report.total == 40, evals.render(report)
+    assert report.by_kind() == {
+        evals.KIND_GOLDEN: (18, 18),
+        evals.KIND_ADVERSARIAL: (12, 12),
+        evals.KIND_MISTAKE: (10, 10),
+    }
+    # Two, and the two are the limitation rather than a failure: both
+    # `busiest_archetype` answers say "a corpus of 10 games", which is the
+    # sum of the rows and is itself in none of them. The check knows values
+    # and not arithmetic, it reports rather than refuses, and neither
+    # question sets a `max_unverified`, so neither is failed on it.
+    assert report.unverified_numbers == 2
+    flagged = {result.question.id for result in report.results if result.unverified_numbers}
+    assert flagged == {"busiest_archetype", "busiest_archetype_shape"}
+    # Every question that does grade its numbers is clean, which is the half
+    # that matters: the eleven with facts in front of them wrote nothing the
+    # facts cannot account for.
+    for result in report.results:
+        if result.question.max_unverified is not None:
+            assert result.unverified_numbers == (), result.question.id
     assert report.model == "replay"
     # Both tools were really used. The two injection questions and the twelve
     # adversarial ones call nothing, on purpose: a model that has been told
@@ -1288,7 +1427,7 @@ def test_the_broken_prompt_drops_the_score(
             card_index=index,
             prompt_override=evals.BROKEN_PROMPT_PATH,
         )
-    assert report.passed < 30
+    assert report.passed < 40
     assert report.prompt_sha256 != _good_prompt_sha()
     assert report.prompt_override is not None
 
@@ -1310,8 +1449,9 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "30/30 passed" in printed
-    assert "18/18 golden, 12/12 adversarial" in printed
+    assert "40/40 passed" in printed
+    assert "18/18 golden, 12/12 adversarial, 10/10 mistake" in printed
+    assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
     assert "matchup_win_rate" in printed
 
 
@@ -1332,7 +1472,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 30
+    assert payload["total"] == 40
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed

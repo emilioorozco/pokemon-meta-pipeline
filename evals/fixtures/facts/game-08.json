@@ -1,0 +1,100 @@
+{
+  "case_id": "mistake_game_08",
+  "source_fixture": "game-08-173ca7b1.json",
+  "context": "The member is on their own game page, reviewing one game.",
+  "context_first_line": "Your game against Mega Starmie ex / Mega Froslass ex, you went first, lost in 14 turns.",
+  "context_game": "Your deck against Mega Starmie ex / Mega Froslass ex. You went first and lost on turn 14. You took 3 prizes and your opponent took 6. Your first attack was on turn 3. Your opponent first attacked on turn 2.",
+  "context_facts": [
+    {
+      "id": "turn_count:both",
+      "text": "The game ran 14 turns.",
+      "values": [
+        14
+      ]
+    },
+    {
+      "id": "first_attack_turn:me",
+      "text": "Your first attack was on turn 3.",
+      "values": [
+        3
+      ]
+    },
+    {
+      "id": "first_attack_turn:opponent",
+      "text": "Your opponent first attacked on turn 2.",
+      "values": [
+        2
+      ]
+    },
+    {
+      "id": "turns_without_attack:me",
+      "text": "You attacked on every turn you took.",
+      "values": []
+    },
+    {
+      "id": "turns_without_energy_attach:me",
+      "text": "You attached no energy on 1 of your turns, on turn 9.",
+      "values": [
+        1,
+        9
+      ]
+    },
+    {
+      "id": "first_prize_turn:me",
+      "text": "Your first prize came on turn 3.",
+      "values": [
+        3
+      ]
+    },
+    {
+      "id": "prizes_taken:both",
+      "text": "You took 3 prizes and your opponent took 6.",
+      "values": [
+        3,
+        6
+      ]
+    },
+    {
+      "id": "prizes_by_turn:me",
+      "text": "You had taken 1 prize by the end of turn 4, 1 by turn 6 and 1 by turn 8.",
+      "values": [
+        1,
+        4,
+        1,
+        6,
+        1,
+        8
+      ]
+    },
+    {
+      "id": "first_knockout_turn:me",
+      "text": "Your first knockout came on turn 3.",
+      "values": [
+        3
+      ]
+    },
+    {
+      "id": "knockouts:both",
+      "text": "You took 2 knockouts and your opponent took 4.",
+      "values": [
+        2,
+        4
+      ]
+    },
+    {
+      "id": "biggest_attack:me",
+      "text": "Your biggest attack dealt 230 damage, on turn 3.",
+      "values": [
+        230,
+        3
+      ]
+    },
+    {
+      "id": "energy_per_turn:me",
+      "text": "You attached 0.857 energy cards per turn you took.",
+      "values": [
+        0.857
+      ]
+    }
+  ]
+}

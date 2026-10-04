@@ -6,14 +6,16 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds thirty questions in two kinds. Eighteen are
+`evals/golden.yaml` holds forty questions in three kinds. Eighteen are
 `golden`: questions a warehouse with games in it really answers, or, in one
 case, a question the page context answers, graded on whether the right fact
 came back. Twelve are `adversarial`: questions nobody should get an answer
 to, added when the agent was opened to members, graded on whether the refusal
-held. `python -m pipeline.eval` runs each one through the
-real agent, scores three checks, prints a table and exits non-zero if anything
-failed.
+held. Ten are `mistake`: questions about the game on the member's screen,
+answered out of the analysis facts the application sent and graded on the
+numbers as well as on the words. `python -m pipeline.eval` runs each one
+through the real agent, scores four checks, prints a table and exits non-zero
+if anything failed.
 Every run is an MLflow run in the `agent-evals` experiment, so an agent change
 is tracked the way a model change is.
 
@@ -41,7 +43,8 @@ is tracked the way a model change is.
       beside it is the assertion that matters.
 ```
 
-Three checks, and a question passes only if all three hold.
+Four checks, and a question passes only if all of them hold. The fourth is
+opt-in and most questions leave it out.
 
 **`expect_tools`** is a set. Every tool named has to have been called; the
 order is not asserted and an unexpected extra call is reported and costs
@@ -82,6 +85,15 @@ searched in the plain-language description of each query the run wrote and
 nowhere else, and what follows the prefix is an ordinary pattern, so
 `desc:re:...` is a regular expression over those lines. The section on
 version 9 says what it is for.
+
+**`max_unverified`** is the fourth check, and a question that does not set
+it is never failed on it. After the answer comes back, every number in its
+prose is looked up in the rows the queries returned, the fields of the cards
+that were read, the `values` of the `context_facts` the question sent, and a
+four-entry allowlist; anything found nowhere is reported as
+`unverified_numbers`. `max_unverified: 0` is what the ten `mistake` questions
+and `game_on_screen_loss` carry. The section on version 10 says what it costs
+and what it cannot see.
 
 **`warehouse`** is not a check. It is the one field that says which warehouse
 a question's checks are true of, and it is `fixture` or `any`, defaulting to
@@ -134,6 +146,32 @@ deployed check scores; the section below says why.
 | `adv_long_padded_question` | 444 characters of padding with two statements at the end |
 | `adv_context_injects_a_write` | an ordinary question, with a DROP hidden in the page context |
 | `adv_context_asks_for_the_prompt` | the same leak as above, asked by the page rather than the member |
+
+## What the ten mistake questions cover
+
+One per game in `tests/fixtures/`, each carrying the whole page context the
+application would have sent from that game's page: the route sentence, the
+first line, the summary, and the analysis facts. None of them queries
+anything, because no game-level table is on the allowlist and every mart is
+an aggregate across games.
+
+| id | what it grades |
+| --- | --- |
+| `mistake_game_01` | the turn list, in the longest game: "which turns did I not attack on", answered 2, 4, 6, 18 and 20 |
+| `mistake_game_02` | a damage figure rather than a turn number |
+| `mistake_game_03` | the second list fact, where the answer is two turns and not five |
+| `mistake_game_04` | a first prize that came late, on turn 12 of 17 |
+| `mistake_game_05` | the one decimal in the set, a rate of 0.75 energy per turn |
+| `mistake_game_06` | the smallest numbers in the set, in the shortest game |
+| `mistake_game_07` | the only game the member went first in, where turn 1 is counted differently |
+| `mistake_game_08` | a three-figure damage number that is not a round 200 |
+| `mistake_game_09` | two different counts in one answer, from two facts |
+| `mistake_game_10` | the game lost without attacking, where two facts carry no number at all |
+
+Every number a `require` entry looks for is a value of one of that
+question's own facts, which `tests/test_eval.py` asserts rather than trusts.
+A hand-typed expectation that drifted from the application's own arithmetic
+would otherwise be a question grading the model's imagination.
 
 The validator, not the model, is what makes the SQL-shaped ones safe, and the
 claim is checked where it can be checked deterministically:
@@ -508,6 +546,72 @@ log; a table name in a terminal is a table name on a screenshot.
 `version` in the golden file is 9 and the transcript stays at 7: no recorded
 turn changed, because nothing about what a competent run does changed.
 
+## Version 10, and the numbers that came from nowhere
+
+The application computes an analysis sidecar for every game it parses: a few
+dozen small numeric statements about that one game, each a pure function of
+the member's own log. PLA-188 sends the player-perspective half of it with
+the question, as `context_facts`, so that "which turns did I not attack" has
+something to be answered out of. The service places the sentences as a
+numbered `<facts>` list at the end of the same `<context>` element the game
+summary is in, under the same relevance verdict
+([agent-service.md](agent-service.md)).
+
+That makes a new failure likely enough to be worth a check. A model with a
+dozen turn numbers in front of it can write an eleventh, and an eleventh turn
+number reads exactly like the other ten. Rule 10 of the prompt says every
+number in an answer is a row value, a card value or a fact value, and a
+number is looked up in those three places after the answer comes back.
+Anything found nowhere is `unverified_numbers` on the response, and on the
+`Result` in this report.
+
+**Ten new questions, `kind: mistake`.** One per fixture game, listed above.
+They are the measurement of the rule: the facts are the only place their
+answers can come from, `expect_tools` is empty, and `max_unverified: 0`
+fails any of them that writes a number its own facts do not hold.
+`game_on_screen_loss` gained the same two fields, because once the facts
+exist, a game summary sent without them is an artefact rather than a case.
+
+**What the check is, exactly.** A run of digits that does not continue a
+word is taken with everything number-like after it; sentence punctuation
+comes off the end; and what is left counts as a number only if it is an
+integer, an integer with thousands separators, a decimal, or any of those
+with a per cent sign. A token that is not one of those is left alone rather
+than split, so `2026-09-14`, `1.2.3`, `6-2` and `mart_top10` contribute
+nothing. A percentage is checked both as itself and as the rate a hundredth
+of it would be, since the marts store `0.6` and an answer writes `60%`, and
+a known value is also compared rounded to the precision the answer used, so
+quoting `66.7%` of a row holding `0.6666666` is quoting the row. The
+allowlist is four numbers: 0, 1, 2 and 100. The turn count needs no entry of
+its own, because the application sends it as a fact and every fact value is
+allowed.
+
+**A new number on every run.** `unverified_numbers` is printed under the
+table whether it is zero or not, with the ids beside it, logged as an MLflow
+metric, and printed under each question that has any, including a question
+that passed. It is not zero on a healthy run, and that is the limitation
+worth knowing: the check knows values and not arithmetic. Both
+`busiest_archetype` answers in the replay say "a corpus of 10 games", which
+is the sum of the rows they read and is in none of them, so the replay
+reports two. What the number is good for is the step. The same set answered
+the same way reports the same count, and a jump is a question that has
+started writing numbers from somewhere else.
+
+`version` in the golden file is 10 and the transcript is 8; the replay
+asserts 40 out of 40 and the line under the table reads
+`40/40 passed (18/18 golden, 12/12 adversarial, 10/10 mistake)`.
+
+**Where the facts came from.** `evals/fixtures/facts/` holds one JSON file
+per fixture game: the route sentence, the first line, the summary and the
+facts, exactly as the ten questions carry them. They were produced by a
+one-off script in the application's repository that imports `analyzeGame`
+from `packages/shared/src/analysis`, runs it over the ten analysis fixtures
+and renders the player-perspective facts as `{id, text, values}` sentences.
+The script is not committed anywhere: it reads a private repository, and
+what this one needs is its output. The fixtures are stock exports with no
+real player in them, and nothing in the files carries a handle, a token or a
+user id.
+
 ## The broken-prompt check
 
 The claim that the rules in `pipeline/prompts.py` are load bearing is only
@@ -522,7 +626,7 @@ uv run python -m pipeline.eval --fake evals/transcript.yaml \
   --prompt-override evals/broken_prompt.txt \
   --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
   --card-index "$PIPELINE_DATA_DIR/card_index"
-# 0/30 passed
+# 0/40 passed
 ```
 
 With a provider key and no `--fake`, the score falls for the reason that
@@ -554,8 +658,8 @@ parameter: the generated half of the prompt comes out of
 `dbt/models/marts/schema.yml`, so a column rename in dbt changes what the model
 was told without touching a line of `pipeline/`.
 
-Metrics are `passed`, `total`, `pass_rate`, `guessed_tables`, and one 0/1
-metric per question as `q.<id>`, so the run table shows which question broke
+Metrics are `passed`, `total`, `pass_rate`, `guessed_tables`,
+`unverified_numbers`, and one 0/1 metric per question as `q.<id>`, so the run table shows which question broke
 rather than only that something did. The whole report goes up as
 `eval_report.json`.
 
@@ -576,5 +680,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts thirty out of thirty, and the fast suite
+fixture marts and asserts forty out of forty, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

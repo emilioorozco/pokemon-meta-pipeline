@@ -128,6 +128,11 @@ trust. Four fields were added for that panel and none of the old ones changed.
 | `context_used` | whether a page context was really placed in front of the question, for the `about this page` chip; see **Page context** below |
 | `context_game_used` | whether the game summary in particular was placed, so a chip that names the game can be exact |
 | `context_relevance` | `relevant`, `irrelevant`, `skipped`, or null when no game was sent |
+| `unverified_numbers` | every number in the answer, as written, that no row, card, fact value or allowlisted constant can account for; a report and never a refusal, see **Page context** below |
+
+`evidence` also carries `facts`, one object per analysis fact that was
+really placed, as `{id, text, cited}`; the **Page context** section below
+says what `cited` means.
 
 `evidence.queries` is one object per statement, in the order the model wrote
 them:
@@ -344,13 +349,14 @@ without allowing for two renderings; `--json` always carries it.
 
 ### Page context
 
-`POST /ask` takes four optional fields beside `question`.
+`POST /ask` takes five optional fields beside `question`.
 
 | field | what it is |
 |---|---|
 | `context` | where the member is in the application and what is on their screen, as plain text. At most **4,000** characters; a longer one is a **422** rather than a truncation, because a summary cut in half is a summary that says something else. Plain prose, not JSON |
 | `context_game` | a redacted plain-text summary of the game the member is looking at, built by the application from that member's own log. A few hundred characters to about 1,500, at most **4,000**, and a longer one is a 422 for the same reason. This service never fetches a game |
 | `context_first_line` | one sentence describing the same game, such as `Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns`. At most **300** characters. It is the only part of the game the relevance decision is shown |
+| `context_facts` | the analysis facts the application computed from the same game, at most **60**, each `{id, text, values}`: a stable key of at most 64 characters, one plain sentence of at most 200 holding that fact's numbers, and those numbers as the application computed them. Sent only beside a `context_game`, and placed only when that summary is placed. Over any of the three ceilings is a 422 |
 | `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It changes nothing about the answer today; the per-job playbooks are a later ticket |
 
 **The relevance decision.** A game summary is only worth its place in the
@@ -404,6 +410,99 @@ second half: a label would be the project's own words inside the element rule
 dropped, it is the route sentence alone and the bytes are what they were
 before this existed.
 
+### The facts block, and rule 10
+
+When the request also carried `context_facts`, their sentences go at the end
+of the same element, as a numbered list under a `<facts>` sub-element:
+
+```
+<context>
+The member is on their own game page, reviewing one game.
+
+Your Dragapult control deck against Alakazam / Toucannon. You went second and
+won on turn 10. You took 6 prizes and your opponent took 2.
+<facts>
+1. The game ran 10 turns.
+2. You made no attack on 3 of your turns, on turns 2, 4 and 6.
+3. Your first prize came on turn 6.
+</facts>
+</context>
+<question>
+which turns did I not attack on
+</question>
+```
+
+Inside the context element and not beside it, because the facts are about
+the game that element already holds: one element for everything on the
+member's screen is what keeps rule 9 covering all of it. They are placed
+exactly when the game summary is placed and dropped when the relevance
+decision drops it, which is one decision and not a second one: a fact about
+a game that is not in front of the model is a sentence with nothing to
+attach to. The numbering is the position in what was really placed, so a
+fact dropped for being empty leaves no gap a citation could land in, and our
+own delimiters come out of each sentence first, exactly as they come out of
+the question and the context. A sentence is also collapsed onto one line, so
+a fact with a newline in it cannot become two numbered items.
+
+Rule 10 of the prompt is the other half:
+
+> Every number you write is a value from a row a query returned, a value
+> printed on a card, or a numbered fact in the `<facts>` list; a fact may be
+> cited by its number. A number that is in none of the three does not go in
+> the answer, however reasonable it would be.
+
+It cost 278 characters and `MAX_PROMPT_CHARS` went from 8,700 to 9,000 to
+hold it. The alternative was a fourth round of cuts to generated column
+descriptions that are already truncated at 46 characters, and this is the
+only one of the ten rules with a deterministic check behind it.
+
+### The numeric check, and what it cannot see
+
+After the answer comes back, every number-shaped token in the prose is
+looked up in four places: every cell of every row any query returned, the
+number and printed text of every card that was read (which is where hit
+points and damage live), the `values` of the facts that were placed, and an
+allowlist of 0, 1, 2 and 100. Anything found nowhere comes back as
+`unverified_numbers` on the response, as a list of the numbers as they were
+written.
+
+**It is a report and not a refusal.** The answer returns unchanged, nothing
+is rewritten, and no second model is asked for an opinion. The service logs
+the count and puts it on the span as `agent.unverified_numbers`, and
+`agent_unverified_numbers_total` counts it in Prometheus. A number an answer
+wrote is the answer, so none of them is ever logged.
+
+**What counts as a number.** A run of digits that does not continue a word
+is taken with everything number-like after it, sentence punctuation comes
+off the end, and what is left counts only if it is an integer, an integer
+with thousands separators, a decimal, or any of those with a per cent sign.
+A token that is none of those is left alone rather than split into parts
+nobody wrote, so `2026-09-14`, `1.2.3`, `6-2` and `mart_top10` contribute
+nothing at all. A percentage is checked both as itself and as the rate a
+hundredth of it would be, because the marts store `0.6` and an answer writes
+`60%`. A known value is also compared rounded to the precision the answer
+used, so `66.7%` against a row holding `0.6666666` is a quotation and not an
+invention. Turn words spelled out, "turn nine", are words.
+
+**Three things it cannot see.** It cannot see arithmetic: a model that adds
+two rows of 2 and 1 and says "3 games" has done nothing wrong and is
+reported here, which is why the golden replay's baseline is two rather than
+zero ([evals.md](evals.md)). It cannot see a number that is real and
+irrelevant: quoting the right figure about the wrong thing passes. And it
+cannot see a sentence that is wrong around numbers it quotes correctly. It
+is a string search, and [agent-safety.md](agent-safety.md) says so where
+somebody might otherwise read it as a guarantee.
+
+**`evidence.facts`** is the other half of the receipt: every fact that was
+placed, in order, as `{id, text, cited}`. `cited` is true when the answer
+referred to the fact by its number in the list, which rule 10 allows and
+which is read with a `fact N` pattern, or when it stated one of the fact's
+values. A fact with no values in it ("you never attacked in this game") can
+only be cited the first way, which is correct, because there is no number in
+it to find. A fact placed and not used is not a failure; ten of them on
+every question is a sign the facts are the wrong facts, which is a thing
+worth being able to count.
+
 It is never in the system blocks. Those are the cached prefix, and a prefix is
 only a prefix while it is identical from one request to the next: a sentence
 that changes per member, placed before the breakpoint, would rewrite the whole
@@ -431,7 +530,10 @@ span carry five things and no text: `context_chars`, the length of the context
 as it was placed; `context_game_chars`, the length of the game summary that
 was placed, which is zero when the judge dropped it; `context_relevance`, the
 verdict, empty when no game was sent; `relevance_ms`, the wall time of the
-decision call; and `job`. None of the four strings is ever logged, at any
+decision call; and `job`. Two more since PLA-188, and both are counts:
+`facts`, how many analysis facts were placed, and `unverified_numbers`, how
+many numbers of the answer nothing could account for. Neither a fact's
+sentence nor an unverified number is written down. None of the four strings is ever logged, at any
 level, and none is put on a span; a test asserts the absence of all of them
 from every record of a request that carried them. The response carries
 `context_used`, `context_game_used` and `context_relevance`, so the

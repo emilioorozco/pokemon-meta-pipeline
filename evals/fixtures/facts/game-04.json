@@ -1,0 +1,110 @@
+{
+  "case_id": "mistake_game_04",
+  "source_fixture": "game-04-116a649e.json",
+  "context": "The member is on their own game page, reviewing one game.",
+  "context_first_line": "Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.",
+  "context_game": "Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn 17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4. Your opponent first attacked on turn 7.",
+  "context_facts": [
+    {
+      "id": "turn_count:both",
+      "text": "The game ran 17 turns.",
+      "values": [
+        17
+      ]
+    },
+    {
+      "id": "first_attack_turn:me",
+      "text": "Your first attack was on turn 4.",
+      "values": [
+        4
+      ]
+    },
+    {
+      "id": "first_attack_turn:opponent",
+      "text": "Your opponent first attacked on turn 7.",
+      "values": [
+        7
+      ]
+    },
+    {
+      "id": "turns_without_attack:me",
+      "text": "You made no attack on 1 of your turns, on turn 2.",
+      "values": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "turns_without_energy_attach:me",
+      "text": "You attached no energy on 1 of your turns, on turn 4.",
+      "values": [
+        1,
+        4
+      ]
+    },
+    {
+      "id": "first_prize_turn:me",
+      "text": "Your first prize came on turn 12.",
+      "values": [
+        12
+      ]
+    },
+    {
+      "id": "prizes_taken:both",
+      "text": "You took 4 prizes and your opponent took 4.",
+      "values": [
+        4,
+        4
+      ]
+    },
+    {
+      "id": "prizes_by_turn:me",
+      "text": "You had taken 0 prizes by the end of turn 4, 0 by turn 6 and 0 by turn 8.",
+      "values": [
+        0,
+        4,
+        0,
+        6,
+        0,
+        8
+      ]
+    },
+    {
+      "id": "first_knockout_turn:me",
+      "text": "Your first knockout came on turn 12.",
+      "values": [
+        12
+      ]
+    },
+    {
+      "id": "knockouts:both",
+      "text": "You took 2 knockouts and your opponent took 4.",
+      "values": [
+        2,
+        4
+      ]
+    },
+    {
+      "id": "biggest_attack:me",
+      "text": "Your biggest attack dealt 200 damage, on turn 10.",
+      "values": [
+        200,
+        10
+      ]
+    },
+    {
+      "id": "energy_per_turn:me",
+      "text": "You attached 1 energy cards per turn you took.",
+      "values": [
+        1
+      ]
+    },
+    {
+      "id": "concession_turn:both",
+      "text": "The game ended in a concession on turn 17.",
+      "values": [
+        17
+      ]
+    }
+  ]
+}
