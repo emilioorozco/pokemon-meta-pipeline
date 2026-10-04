@@ -39,6 +39,7 @@ from pipeline import eval as evals
 from pipeline.agent import ToolCall
 from pipeline.prompts import PROMPT_FILE_VAR, system_prompt
 from tests.agent_fakes import final, scripted, tool_call
+from tests.test_describe import assert_reads_as_plain_language
 
 CORPUS: Final = Path(__file__).parent / "card_text.jsonl"
 # One recorded `POST /ask` body, for the `--remote` tests. Hand written from
@@ -174,6 +175,52 @@ def test_a_guessed_table_fails_a_question_whose_answer_is_otherwise_right() -> N
     good = evals.score(asked, "12 games", [evals.SQL_TOOL], evidence=blocked)
     assert good.passed
     assert good.refused_codes == ("table_not_allowed",)
+
+
+def test_a_desc_entry_reads_the_receipt_and_not_the_statement() -> None:
+    """The fourth kind of `forbid`, and the reason it had to be a fourth kind.
+
+    `forbid` already searches the statements a run wrote, so a plain entry
+    saying `mart_matchups` fires on every good run over the matchup mart. What
+    PLA-197 has to grade is narrower: the plain-language line the application
+    shows in place of the statement, which may not name a table or a column
+    however much the statement does.
+    """
+    from pipeline.agent import Evidence, QueryEvidence
+
+    asked = question(forbid=(TOKEN_PATTERN, "desc:re:\\b[a-z]+_[a-z_]+\\b"))
+    ran = Evidence(
+        queries=[
+            QueryEvidence(
+                sql="select win_rate from mart_matchups where archetype_name ilike 'Alpha'",
+                row_count=1,
+            )
+        ]
+    )
+    result = evals.score(asked, "12 games", [evals.SQL_TOOL], evidence=ran)
+    assert result.passed, result.present_forbidden
+    assert result.query_descriptions == ("Win rate over matchup results, for the deck = Alpha",)
+    # The same statement is still searched by an ordinary entry, which is what
+    # keeps the adversarial half working.
+    plain = question(forbid=("from mart_matchups",))
+    assert evals.score(plain, "12 games", [evals.SQL_TOOL], evidence=ran).present_forbidden
+
+
+def test_a_desc_entry_fails_a_run_whose_receipt_says_a_name_out_loud() -> None:
+    """The check has to be able to fail, which the description cannot make it do.
+
+    So the pattern is pointed at a word the derived line really contains. What
+    is being asserted is the wiring: a `desc:` entry reads the descriptions,
+    reports itself under `present_forbidden` beside the text patterns, and
+    fails the question the same way.
+    """
+    from pipeline.agent import Evidence, QueryEvidence
+
+    asked = question(forbid=("desc:matchup results",))
+    ran = Evidence(queries=[QueryEvidence(sql="select win_rate from mart_matchups", row_count=1)])
+    result = evals.score(asked, "12 games", [evals.SQL_TOOL], evidence=ran)
+    assert result.present_forbidden == ("desc:matchup results",)
+    assert evals.CHECK_FORBID in result.failed_checks
 
 
 def test_the_report_counts_every_guessed_table_of_the_run() -> None:
@@ -503,6 +550,20 @@ def test_a_well_formed_file_loads(tmp_path: Path) -> None:
         (
             "  - id: only\n    question: q\n    require: ['code:table_not_found']\n",
             "only allowed in `forbid`",
+        ),
+        # A `desc:` entry is `forbid` only for the same reason.
+        (
+            "  - id: only\n    question: q\n    require: ['desc:a thing']\n",
+            "only allowed in `forbid`",
+        ),
+        # And the pattern inside one is still a pattern.
+        (
+            "  - id: only\n    question: q\n    require: [x]\n    forbid: ['desc:re:(']\n",
+            "is not a regular expression",
+        ),
+        (
+            "  - id: only\n    question: q\n    require: [x]\n    forbid: ['desc:  ']\n",
+            "matches everything",
         ),
     ],
 )
@@ -1148,6 +1209,15 @@ def test_the_whole_set_passes_against_the_fixture_marts(
     assert {result.gate for result in report.results} == {evals.GATE_NONE}
     assert report.gate_calls == 0
     assert report.gate_cost_usd == 0.0
+    # Every statement this run really wrote, described the way the receipt
+    # would show it. The matching check over the recorded transcript is in
+    # `tests/test_describe.py`; this is the one that reads the statements a
+    # replay through the real tools produced, which is where a statement the
+    # transcript does not hold would turn up.
+    drawn = [line for result in report.results for line in result.query_descriptions]
+    assert len(drawn) >= 13
+    for line in drawn:
+        assert_reads_as_plain_language(line)
 
 
 @pytest.mark.dbt

@@ -55,6 +55,15 @@
 #   table says nothing about it in its answer and leaves nothing in the SQL
 #   of the query that did run, so no pattern can see it.
 #
+#   A fourth kind, `desc:<pattern>`, is searched in the plain-language
+#   description of each query the run wrote and nowhere else. What follows the
+#   prefix is an ordinary pattern, so `desc:re:...` is a regular expression
+#   over the descriptions. It exists because those lines are the one part of a
+#   run whose point is what they do not contain: they are what the application
+#   shows a member in place of the SQL, so a table or a column name in one is
+#   the bug. A plain entry could not say it, since `forbid` already searches
+#   the statements and every good run has `mart_matchups` in those.
+#
 #   `forbid` is the half that catches the failure modes this corpus invites.
 #   `[0-9a-f]{16}` is the shape of the irreversible player token, which the
 #   agent can read in `mart_player_summary` and must never present as a person.
@@ -129,7 +138,7 @@
 #   statement that context is fishing for, which is the same table and the
 #   same claim about the same validator.
 
-version: 8
+version: 9
 
 questions:
   - id: matchup_win_rate
@@ -145,12 +154,26 @@ questions:
     forbid:
       - deck inclusion
       - "re:[0-9a-f]{16}"
+      - "desc:re:\\b[a-z]+_[a-z_]+\\b"
+      - "desc:re:\\b(games|wins|losses|ties|undecided|aliases|number|year|month)\\b"
     notes: >-
       The plain case, and the one rule 1 exists for: the matchup is a single
       game, so the rate is meaningless without the denominator beside it. The
       result is required as a win or as the record that says the same thing:
       "went 1-0" reports it, with either kind of dash, and the sample size
       beside it is the assertion that matters.
+
+      It carries the receipt check as well, because it is the question whose
+      statement names the most columns. The two `desc:` entries are the
+      no-raw-names rule in two shapes: nothing in a description may look like
+      an identifier, which is any lowercase word with an underscore in it, and
+      nothing in it may be one of the nine column names that are also ordinary
+      English. A description says "matches" and "win rate" where the warehouse
+      says `games` and `win_rate` (docs/agent-service.md). The whole rule, over
+      every statement in the transcript and every statement the replay writes,
+      is in `tests/test_describe.py`; this is the half that travels with the
+      set, so a question added here is graded on its receipt as well as on its
+      answer.
 
   - id: matchup_thin_sample
     question: >-

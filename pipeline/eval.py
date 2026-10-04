@@ -60,7 +60,11 @@ avoid; two questions are written to invite exactly that and forbid the claim.
 And `mart_player_summary` is keyed by an irreversible sixteen-character token,
 so `[0-9a-f]{16}` is forbidden in every answer: an agent that hands over the
 token as an identity has crossed the boundary docs/data-handling.md draws, and
-a regular expression catches it whatever sentence it is wrapped in.
+a regular expression catches it whatever sentence it is wrapped in. A `desc:`
+entry is the same half pointed at the receipt rather than at the prose: the
+plain-language line the application shows in place of each statement may not
+name a table or a column, and that is a claim about text, which is the kind
+of claim this file is good at.
 
 **Two ways to run it, and they prove different things.** With a provider key
 and no `--fake`, this is a measurement of the model and the prompt, and it is
@@ -182,6 +186,18 @@ REGEX_PREFIX: Final = "re:"
 # statement is evidence of the guess rather than of the answer. The code is
 # the only honest handle on it.
 CODE_PREFIX: Final = "code:"
+
+# A `forbid` entry starting with this is searched in the plain-language
+# descriptions of the run's queries and nowhere else, and the rest of it is an
+# ordinary pattern, so `desc:re:...` is a regular expression over them.
+#
+# It is a fourth prefix rather than a widening of `workings` because the
+# descriptions are the one piece of a run whose whole point is what it does
+# NOT contain. `workings` already holds every statement verbatim, so a plain
+# entry forbidding `mart_matchups` would fire on the SQL of a perfectly good
+# run; narrowing the search to the descriptions is what makes "the receipt
+# never shows a table name" a check rather than a wish (PLA-197).
+DESC_PREFIX: Final = "desc:"
 
 # What the replay model says instead of playing a recorded turn whose tool the
 # system prompt never described. It contains no number and no archetype, so a
@@ -323,6 +339,10 @@ def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, 
     refusal code would be asking the agent to be refused, which no question in
     this file wants, and a misspelt code anywhere is a check that can never
     fire.
+
+    A `desc:` entry is `forbid` only for the same reason, and what follows the
+    prefix is checked as an ordinary pattern, so an unbalanced bracket inside
+    `desc:re:` is a load error too.
     """
     if raw is None:
         return ()
@@ -341,9 +361,16 @@ def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, 
                     f"{where}: {code!r} is not a refusal code ({', '.join(REFUSAL_CODES)})"
                 )
             continue
-        if pattern.startswith(REGEX_PREFIX):
+        body = pattern
+        if body.startswith(DESC_PREFIX):
+            if not allow_codes:
+                raise GoldenError(f"{where}: {pattern!r} is only allowed in `forbid`")
+            body = body[len(DESC_PREFIX) :]
+            if not body.strip():
+                raise GoldenError(f"{where}: an empty pattern matches everything")
+        if body.startswith(REGEX_PREFIX):
             try:
-                re.compile(pattern[len(REGEX_PREFIX) :])
+                re.compile(body[len(REGEX_PREFIX) :])
             except re.error as failure:
                 raise GoldenError(
                     f"{where}: {pattern!r} is not a regular expression: {failure}"
@@ -465,6 +492,11 @@ class Result:
     # Carried on the result rather than recomputed from the evidence because
     # the report totals it and the evidence is not kept past scoring.
     refused_codes: tuple[str, ...] = ()
+    # The receipt this question's run would draw: one plain-language line per
+    # query, in call order, derived from the statements. Carried here for the
+    # same reason the codes are, which is that the evidence is not kept past
+    # scoring and the report prints these under a question that failed.
+    query_descriptions: tuple[str, ...] = ()
     # What the provider said this question cost, carried through unchanged so
     # the run can sum it. Empty on a replayed or scripted model, which reports
     # no usage at all, and empty on a question that raised before it was asked.
@@ -530,6 +562,7 @@ class Result:
             "gate_calls": self.gate_calls,
             "gate_cost_usd": self.gate_cost_usd,
             "refused_codes": list(self.refused_codes),
+            "query_descriptions": list(self.query_descriptions),
             "usage": dict(self.usage),
             "answer": self.answer,
         }
@@ -585,6 +618,19 @@ def workings(answer: str, evidence: Evidence | None) -> str:
     return "\n".join(parts)
 
 
+def descriptions(evidence: Evidence | None) -> tuple[str, ...]:
+    """The plain-language line of every query of one run, in call order.
+
+    Derived from the statements and not sent by anything, so a remote run and
+    a local one produce the same lines for the same SQL. A refused query has
+    one too: it says what the lookup was for, which is the part a reader needs
+    in order to make sense of the refusal beside it.
+    """
+    if evidence is None:
+        return ()
+    return tuple(query.description for query in evidence.queries)
+
+
 def refusal_codes(evidence: Evidence | None) -> tuple[str, ...]:
     """Every refusal code of one run, in call order, repeats kept.
 
@@ -629,6 +675,8 @@ def score(
     gate, gate_calls, gate_cost = gate_summary(calls)
     searched = workings(answer, evidence)
     codes = refusal_codes(evidence)
+    lines = descriptions(evidence)
+    receipt = "\n".join(lines)
     return Result(
         question=question,
         answer=answer,
@@ -641,20 +689,29 @@ def score(
             pattern for pattern in question.require if not matches(pattern, answer)
         ),
         present_forbidden=tuple(
-            pattern
-            for pattern in question.forbid
-            if (
-                pattern[len(CODE_PREFIX) :] in codes
-                if pattern.startswith(CODE_PREFIX)
-                else matches(pattern, searched)
-            )
+            pattern for pattern in question.forbid if _forbidden(pattern, searched, receipt, codes)
         ),
         gate=gate,
         gate_calls=gate_calls,
         gate_cost_usd=gate_cost,
         refused_codes=codes,
+        query_descriptions=lines,
         usage=dict(usage or {}),
     )
+
+
+def _forbidden(pattern: str, searched: str, receipt: str, codes: Sequence[str]) -> bool:
+    """Whether one `forbid` entry is present, in whichever of the three it reads.
+
+    `code:` reads the run's refusal codes, `desc:` reads the receipt the
+    application would draw, and everything else reads the answer and the
+    statements behind it.
+    """
+    if pattern.startswith(CODE_PREFIX):
+        return pattern[len(CODE_PREFIX) :] in codes
+    if pattern.startswith(DESC_PREFIX):
+        return matches(pattern[len(DESC_PREFIX) :], receipt)
+    return matches(pattern, searched)
 
 
 @dataclass(frozen=True)
@@ -1045,6 +1102,11 @@ def query_from_response(entry: dict[str, Any]) -> QueryEvidence:
     from the validator and from the gate, opens with the word; a query DuckDB
     would not run opens with "the query failed" and is an empty result rather
     than a refusal, which is the distinction `summarize_gate` is making.
+
+    `description` is on the wire and is deliberately not read. It is derived
+    from the statement by a pure function, so recomputing it here gives the
+    same line, and a `desc:` check then grades the rule rather than whatever
+    the far end chose to send.
     """
     reason = entry.get("refused_reason")
     text = None if reason is None else str(reason)
@@ -1423,6 +1485,13 @@ def render(report: Report) -> str:
         lines.append(f"  {result.question.id}:")
         if result.error:
             lines.append(f"    error: {result.error}")
+        # The receipt first, because the question a reader of a red row asks
+        # before any other is what the run went and looked up. One line per
+        # query, in the words the application would show a member rather than
+        # in the statement's: the SQL is in the JSON report and in the service
+        # log, and a table name in a terminal is a table name on a screenshot.
+        for line in result.query_descriptions:
+            lines.append(f"    looked up: {line}")
         for tool in result.missing_tools:
             lines.append(f"    never called: {tool}")
         for pattern in result.missing_required:
