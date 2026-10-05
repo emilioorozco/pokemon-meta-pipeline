@@ -241,6 +241,52 @@ jobs:
             --golden evals/golden.yaml \
             --no-mlflow --json | tee artifacts/remote_eval_report.json
 
+      # Every question the application puts in front of a member as a chip,
+      # asked once against the same deployment. A notice and never a failure
+      # for now: nobody has measured this set, the first run is the baseline,
+      # and a step that went red on day one would be a step somebody turns
+      # off before anybody has read it. `continue-on-error` rather than
+      # `|| true` so the step is visibly amber in the run rather than
+      # silently green. Turn it into a gate once the baseline is known and
+      # the failing chips are either answerable or off the page.
+      - name: Ask the questions the application offers
+        id: offered
+        if: steps.configured.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_AGENT_URL: ${{ vars.PIPELINE_AGENT_URL }}
+          PRA_LOG_FORMAT: json
+        run: |
+          set -eu -o pipefail
+          mkdir -p artifacts
+          uv run python -m pipeline.eval \
+            --offered \
+            --remote "$PIPELINE_AGENT_URL" \
+            --json | tee artifacts/offered_eval_report.json
+
+      - name: Say how the offered questions went
+        if: always() && steps.configured.outputs.ready == 'true'
+        run: |
+          set -eu -o pipefail
+          report=artifacts/offered_eval_report.json
+          if [ ! -s "$report" ]; then
+            echo "::notice title=Offered questions::the run produced no report."
+            exit 0
+          fi
+          summary=$(jq -r '"\(.passed)/\(.total) of the questions the application offers were answered"' "$report")
+          echo "::notice title=Offered questions::$summary"
+          {
+            echo "## $summary"
+            echo
+            jq -r 'if ([.cases[] | select(.passed | not)] | length) == 0
+                   then "Every question the application offers has an answer."
+                   else "| offered on | question | why it failed |\n| --- | --- | --- |"
+                     + ([.cases[] | select(.passed | not)
+                         | "\n| \(.id) | \(.question) | \(.failures | join(",")) \(.error // "") |"]
+                        | join("")) end' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The table in the job summary, so a red week is one page rather than a
       # download. `jq` rather than a second Python run: the report is already
       # JSON on disk, the step runs whether the scoring passed or failed, and

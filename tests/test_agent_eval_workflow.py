@@ -139,3 +139,19 @@ def test_the_file_names_no_identifier(source: str) -> None:
     assert "amazonaws.com" not in source
     assert not re.search(r"\barn:aws:", source)
     assert not re.search(r"\b\d{12}\b", source)
+
+
+def test_the_offered_set_is_asked_of_the_same_deployment(workflow: dict[str, Any]) -> None:
+    """The second step of the deployed job, and the one that may not fail it yet."""
+    step = step_named(workflow, REMOTE_JOB, "Ask the questions the application offers")
+    assert step["continue-on-error"] is True
+    run = step["run"]
+    assert "--offered" in run
+    assert '--remote "$PIPELINE_AGENT_URL"' in run
+    assert "tee artifacts/offered_eval_report.json" in run
+    # Nobody has measured this set, so the first runs are a baseline and the
+    # news is a notice. A step that went red on day one is a step somebody
+    # turns off before the baseline is read.
+    report = step_named(workflow, REMOTE_JOB, "Say how the offered questions went")
+    assert report["if"].startswith("always()")
+    assert "::notice title=Offered questions::" in report["run"]

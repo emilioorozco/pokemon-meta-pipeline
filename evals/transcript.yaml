@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 11
+version: 12
 
 runs:
   matchup_win_rate:
@@ -634,6 +634,43 @@ runs:
       the record is even. The deck you have played most is Dragapult / Dusknoir, in 2 of
       those 8 games. Eight games is a thin sample, so read it as the record it is rather
       than as a rate.
+
+  job_my_record_lost_to_most:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select games, wins, losses, ties, favourite_archetype_name,
+            favourite_archetype_games from mart_player_summary where player_key =
+            '{player_token}'
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins, losses,
+            min_games_met from mart_matchups where archetype_name ilike 'Dragapult /
+            Dusknoir' order by losses desc, games desc
+    answer: >-
+      Over 8 games your record is 4 wins and 4 losses, so I can say how often you lose
+      but not to which deck: the one table here keyed by a member holds a record rather
+      than a breakdown by opponent. The nearest thing to it is the deck you play most,
+      Dragapult / Dusknoir, which is 2 games of yours, and across the league it has 1
+      game against each of Fezandipiti ex / Froakie and Applin / Celebi, winning both,
+      which is under the threshold this project calls thin.
+
+  job_my_record_going_first:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select games, wins, losses, games_first, wins_first, games_second,
+            wins_second, win_rate from mart_player_summary where player_key =
+            '{player_token}'
+    answer: >-
+      You went first in 2 games and won 1 of them, and went second in 6 games and won 3,
+      so both halves come out at 50% and going first has made no difference to your
+      record so far. Over all 8 games that is 4 wins and 4 losses. Two games is far too thin to
+      read a first-turn effect out of, so treat it as no evidence either way rather than
+      as a finding.
 
   job_card_rules_ability:
     turns:

@@ -714,6 +714,22 @@ MARTS_MODELS: Final[tuple[MartsModel, ...]] = (
                 "Seats that tied.",
             ),
             (
+                "games_first",
+                "Seats they opened the game on. A seat whose opening side the log never recorded is counted in neither half, so this and `games_second` add to `games` only for a member with no unknown side among their seats.",
+            ),
+            (
+                "wins_first",
+                "Seats they opened the game on and won.",
+            ),
+            (
+                "games_second",
+                "Seats the other player opened. The companion to `games_first`, and counted the same way: an unrecorded opening side is in neither.",
+            ),
+            (
+                "wins_second",
+                "Seats the other player opened and they won.",
+            ),
+            (
                 "win_rate",
                 "Wins divided by wins plus losses, NULL when nothing was decided.",
             ),

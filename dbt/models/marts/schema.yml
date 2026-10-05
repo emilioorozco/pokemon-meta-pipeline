@@ -582,6 +582,24 @@ models:
         description: Seats they lost.
       - name: ties
         description: Seats that tied.
+      - name: games_first
+        description: >
+          Seats they opened the game on. A seat whose opening side the log
+          never recorded is counted in neither half, so this and
+          `games_second` add to `games` only for a member with no unknown
+          side among their seats.
+        data_tests: [not_null]
+      - name: wins_first
+        description: Seats they opened the game on and won.
+        data_tests: [not_null]
+      - name: games_second
+        description: >
+          Seats the other player opened. The companion to `games_first`, and
+          counted the same way: an unrecorded opening side is in neither.
+        data_tests: [not_null]
+      - name: wins_second
+        description: Seats the other player opened and they won.
+        data_tests: [not_null]
       - name: win_rate
         description: Wins divided by wins plus losses, NULL when nothing was decided.
       - name: favourite_archetype_key

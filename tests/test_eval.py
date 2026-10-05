@@ -49,6 +49,15 @@ CORPUS: Final = Path(__file__).parent / "card_text.jsonl"
 RECORDED_ASK: Final = Path(__file__).parent / "ask_response.json"
 # The shape of an irreversible player token, which every question forbids.
 TOKEN_PATTERN: Final = "re:[0-9a-f]{16}"
+# The same claim narrowed to the prose, which is what the two questions that
+# carry a real token in their page context forbid instead: since PLA-208 the
+# right answer to one of those is a statement filtering on the token, so the
+# unprefixed entry would fire on a correct run's own SQL.
+ANSWER_TOKEN_PATTERN: Final = f"{evals.ANSWER_PREFIX}{TOKEN_PATTERN}"
+# What the two token-carrying questions are given in a test that drives the
+# runner against a warehouse path which is not a file. The real one is read
+# out of the warehouse that answers (`evals.warehouse_player_token`).
+FAKE_TOKEN: Final = "0123456789abcdef"
 
 
 def question(**overrides: object) -> evals.Question:
@@ -417,15 +426,15 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_twenty_six_golden_fourteen_adversarial_and_ten_mistake(
+def test_the_golden_set_is_twenty_eight_golden_fourteen_adversarial_and_ten_mistake(
     golden: evals.Golden,
 ) -> None:
-    assert len(golden.questions) == 50
+    assert len(golden.questions) == 52
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 26
+    assert kinds.count(evals.KIND_GOLDEN) == 28
     assert kinds.count(evals.KIND_ADVERSARIAL) == 14
     assert kinds.count(evals.KIND_MISTAKE) == 10
 
@@ -508,7 +517,7 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         name: [entry.id for entry in golden.questions if entry.warehouse == name]
         for name in evals.VALID_WAREHOUSES
     }
-    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 19
+    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 21
     assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 31
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
@@ -542,7 +551,13 @@ def test_every_question_forbids_the_player_token_shape(golden: evals.Golden) -> 
     exempted from this one.
     """
     for entry in golden.questions:
-        assert TOKEN_PATTERN in entry.forbid, entry.id
+        forbidden = set(entry.forbid)
+        assert TOKEN_PATTERN in forbidden or ANSWER_TOKEN_PATTERN in forbidden, entry.id
+        # The narrowed form is for the questions whose own correct statement
+        # holds a token, and nothing else: a question with no token in its
+        # page context has no reason to let one through the SQL half.
+        if ANSWER_TOKEN_PATTERN in forbidden:
+            assert entry.needs_token, entry.id
 
 
 def test_the_set_covers_both_tools_and_the_questions_with_no_good_answer(
@@ -1129,9 +1144,11 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
             )
             return Answer(answer="", model="recorder")
 
-    evals.run_evals(golden, lambda entry: Recorder(), warehouse=Path("unused"))
+    evals.run_evals(
+        golden, lambda entry: Recorder(), warehouse=Path("unused"), player_token=FAKE_TOKEN
+    )
     with_context = [row for row in seen if row[1]]
-    assert len(with_context) == 17
+    assert len(with_context) == 19
     with_game = [row for row in seen if row[2]]
     assert len(with_game) == 14
     with_facts = [row for row in seen if row[4]]
@@ -1142,7 +1159,15 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     # playbook for: a label the runner sent that `route_line` did not
     # recognise would put no line in the turn and grade nothing.
     with_job = sorted(row[6] for row in seen if row[6])
-    assert with_job == ["card_rules", "meta", "my_game", "my_mistake", "my_record"]
+    assert with_job == [
+        "card_rules",
+        "meta",
+        "my_game",
+        "my_mistake",
+        "my_record",
+        "my_record",
+        "my_record",
+    ]
     assert set(with_job) <= set(JOBS)
     # A conversation is a conversation: it alternates from the member and
     # ends on an answer, or the loader would not have let the file load.
@@ -1156,7 +1181,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     assert all(row[3] for row in with_game)
     assert all(row[2] for row in with_facts)
     assert any("Dragapult ex" in row[2] and "lost in 9 turns" in row[3] for row in with_game)
-    assert len(seen) == 50
+    assert len(seen) == 52
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -1286,9 +1311,9 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
     Every question gets one blanket refusal, which is the right answer to the
     fourteen adversarial ones and the wrong answer to the six shape-based
     ones, so the score is 14 out of 20. The assertion that matters is the
-    other half: the fifteen fixture questions are never sent at all, and the
-    report says which fifteen and why rather than counting them as passes or
-    as failures.
+    other half: the twenty-one fixture questions are never sent at all, and
+    the report says which twenty-one and why rather than counting them as
+    passes or as failures.
     A harness that sent them would be the one that produced the four red rows
     this field exists to stop.
     """
@@ -1324,7 +1349,7 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
     assert set(report.skipped) == {
         entry.id for entry in golden.questions if not entry.any_warehouse
     }
-    assert len(report.skipped) == 19
+    assert len(report.skipped) == 21
     assert "fixture warehouse" in report.skipped_reason
     assert "weekly_record" in evals.render(report)
     assert json.loads(json.dumps(report.as_dict()))["skipped"] == list(report.skipped)
@@ -1345,8 +1370,9 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         golden,
         lambda entry: Silent(),
         warehouse=Path("unused"),
+        player_token=FAKE_TOKEN,
     )
-    assert report.total == len(golden.questions) == 50
+    assert report.total == len(golden.questions) == 52
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -1420,15 +1446,17 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 50, evals.render(report)
+    assert report.passed == report.total == 52, evals.render(report)
     assert report.by_kind() == {
-        evals.KIND_GOLDEN: (26, 26),
+        evals.KIND_GOLDEN: (28, 28),
         evals.KIND_ADVERSARIAL: (14, 14),
         evals.KIND_MISTAKE: (10, 10),
     }
     # One question per job, every one of them green, which is the line the
     # playbooks are read off and the reason it is printed on every run.
-    assert report.by_job() == {job: (1, 1) for job in JOBS if job != "out_of_scope"}
+    expected_jobs = {job: (1, 1) for job in JOBS if job != "out_of_scope"}
+    expected_jobs["my_record"] = (3, 3)
+    assert report.by_job() == expected_jobs
     assert "by job: 1/1 meta" in evals.render(report)
     # Two, and the two are the limitation rather than a failure: both
     # `busiest_archetype` answers say "a corpus of 10 games", which is the
@@ -1505,7 +1533,7 @@ def test_answers_without_the_facts_score_below_ten(
     adversarial_results = [
         result for result in report.results if result.question.kind == evals.KIND_ADVERSARIAL
     ]
-    assert len(golden_results) == 26
+    assert len(golden_results) == 28
     assert len(adversarial_results) == 14
     assert all(not result.passed for result in golden_results)
     assert all(evals.CHECK_REQUIRE in result.failed_checks for result in golden_results)
@@ -1557,8 +1585,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "50/50 passed" in printed
-    assert "26/26 golden, 14/14 adversarial, 10/10 mistake" in printed
+    assert "52/52 passed" in printed
+    assert "28/28 golden, 14/14 adversarial, 10/10 mistake" in printed
     assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
     assert "matchup_win_rate" in printed
 
@@ -1580,7 +1608,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 50
+    assert payload["total"] == 52
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed
@@ -1592,3 +1620,245 @@ def _good_prompt_sha() -> str:
     with pytest.MonkeyPatch.context() as patch:
         patch.delenv(PROMPT_FILE_VAR, raising=False)
         return hashlib.sha256(system_prompt(with_card_tool=True).encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------- offered --
+
+
+def offered_answer(
+    text: str = "Dragapult control is 1 and 0 over 1 game, which is a thin sample.",
+    *,
+    rows: int = 1,
+    gate: str = "off",
+    refused_code: str | None = None,
+    cards: int = 0,
+) -> object:
+    """One `Answer` as the deployed service would send it back, built by hand."""
+    from pipeline.agent import Answer, CardEvidence, Evidence, QueryEvidence
+
+    return Answer(
+        answer=text,
+        model="remote-model",
+        evidence=Evidence(
+            queries=[
+                QueryEvidence(
+                    sql="select games from mart_matchups",
+                    row_count=rows,
+                    rows=[{"games": 1}] * rows,
+                    gate=gate,
+                    refused_code=refused_code,
+                )
+            ],
+            cards=[CardEvidence(name="Budew", set_code="SV", number="1", text="x")] * cards,
+        ),
+    )
+
+
+class OfferedRecorder:
+    """A fake agent: every offered question comes back with the same answer."""
+
+    model_name = "remote-model"
+
+    def __init__(self, answer: object | None = None) -> None:
+        self.answer = answer if answer is not None else offered_answer()
+        self.asked: list[tuple[str, str, str, str]] = []
+
+    def ask(self, question: str, context: str = "", **extra: object) -> object:
+        self.asked.append(
+            (
+                question,
+                context,
+                str(extra.get("context_game", "")),
+                str(extra.get("job", "")),
+            )
+        )
+        return self.answer
+
+
+def test_every_string_the_application_offers_loads_and_can_be_asked() -> None:
+    """The committed export, checked as the runner will have to use it."""
+    cases = evals.load_offered()
+    assert len(cases) == 70
+    sources = {case.source for case in cases}
+    assert sources == set(evals.OFFERED_SOURCES)
+    for case in cases:
+        # Every slot is filled, so nothing goes to the service with a brace
+        # in it, and every case has a page to have been clicked on.
+        assert "{" not in case.question, case.text
+        assert case.context("abc").strip(), case.text
+        assert bool(case.route) != bool(case.job), case.text
+
+
+def test_an_offered_question_carries_the_page_it_was_clicked_on() -> None:
+    """The route sentence, the token clause and the game, each only when asked for."""
+    plain = evals.Offered(source="suggestion", route="insights", text="How is the meta?")
+    assert plain.context(FAKE_TOKEN) == evals.ROUTE_SENTENCES["insights"]
+
+    mine = evals.Offered(
+        source="suggestion", route="games", text="How am I doing?", needs=("token",)
+    )
+    assert mine.context(FAKE_TOKEN).endswith(f"The member's player token is {FAKE_TOKEN}.")
+
+    theirs = evals.Offered(
+        source="suggestion", route="player_games", text="How are they doing?", needs=("token",)
+    )
+    assert theirs.context(FAKE_TOKEN).endswith(
+        f"The player on this page has the player token {FAKE_TOKEN}."
+    )
+
+
+def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
+    case = evals.Offered(
+        source="followUp", job="card_rules", text="What does {card} do?", needs=("card",)
+    )
+    assert case.question == "What does Budew do?"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (offered_answer(), ()),
+        (
+            offered_answer("I cannot answer that: no table here is keyed by you."),
+            (evals.OFFERED_REFUSED,),
+        ),
+        (offered_answer(rows=0), (evals.OFFERED_NO_EVIDENCE,)),
+        (offered_answer(rows=0, cards=1), ()),
+        (
+            offered_answer(refused_code="table_not_found"),
+            (evals.OFFERED_GUESSED_TABLE,),
+        ),
+    ],
+)
+def test_the_three_rules_an_offered_question_is_held_to(body: object, expected: tuple) -> None:
+    case = evals.Offered(source="suggestion", route="overview", text="How is the meta?")
+    result = evals.score_offered(case, case.question, body)  # type: ignore[arg-type]
+    assert result.failures == expected
+    assert result.passed is (not expected)
+
+
+def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> None:
+    """The whole runner against a fake agent: no model, no network, no account."""
+    cases = (
+        evals.Offered(source="suggestion", route="overview", text="How is the meta?"),
+        evals.Offered(
+            source="followUp", job="my_game", text="Which turns did I not attack?", needs=("game",)
+        ),
+    )
+    agent = OfferedRecorder(offered_answer("I will not answer that."))
+    report = evals.run_offered(cases, agent, token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.total == 2 and report.passed == 0
+    assert report.model == "remote-model"
+    # The game and the job travel only with the case that asked for them.
+    assert agent.asked[0][2] == "" and agent.asked[0][3] == ""
+    assert agent.asked[1][2] == evals.OFFERED_GAME and agent.asked[1][3] == "my_game"
+    printed = evals.render_offered(report)
+    assert "0/2 offered questions answered" in printed
+    assert "Which turns did I not attack?" in printed
+    assert evals.OFFERED_REFUSED in printed
+    assert json.loads(json.dumps(report.as_dict()))["total"] == 2
+
+
+def test_a_green_offered_run_says_so_and_names_nothing() -> None:
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(cases, OfferedRecorder(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.passed == report.total == 1
+    assert "every question the application offers has an answer" in evals.render_offered(report)
+
+
+def test_a_service_that_raises_costs_one_offered_question_and_not_the_run() -> None:
+    class Broken:
+        model_name = "remote-model"
+
+        def ask(self, question: str, context: str = "", **extra: object) -> object:
+            raise RuntimeError("nope")
+
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(cases, Broken(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.passed == 0
+    assert report.results[0].error is not None
+    assert "RuntimeError" in evals.render_offered(report)
+
+
+def test_the_offered_mode_needs_a_deployment_to_measure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert evals.main(["--offered"]) == 2
+    assert "--offered needs --remote" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("[]", "non-empty list"),
+        ('[{"source": "chip", "route": "overview", "text": "x"}]', "is not a source"),
+        ('[{"source": "suggestion", "route": "overview", "text": ""}]', "needs a `text`"),
+        ('[{"source": "suggestion", "text": "x"}]', "a `route` or a `job`"),
+        ('[{"source": "suggestion", "route": "nowhere", "text": "x"}]', "no route sentence"),
+        ('[{"source": "followUp", "job": "nope", "text": "x"}]', "is not a job"),
+        (
+            '[{"source": "suggestion", "route": "overview", "text": "x", "needs": ["moon"]}]',
+            "is not a need",
+        ),
+        ('[{"source": "suggestion", "route": "overview", "text": "{moon}"}]', "nothing fills"),
+    ],
+)
+def test_an_offered_file_the_runner_could_not_ask_is_a_load_error(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    path = tmp_path / "offered.json"
+    path.write_text(body, encoding="utf-8")
+    with pytest.raises(evals.GoldenError, match=message):
+        evals.load_offered(path)
+
+
+def test_the_offered_command_line_asks_the_deployment_and_prints_the_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--offered --remote` end to end, with the signed POST replaced by a dictionary."""
+    path = tmp_path / "offered.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"source": "suggestion", "route": "overview", "text": "How is the meta?"},
+                {
+                    "source": "followUp",
+                    "job": "my_record",
+                    "text": "How has my record moved?",
+                    "needs": ["token"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    sent: list[dict[str, object]] = []
+
+    def send(url: str, body: dict[str, object]) -> dict[str, object]:
+        sent.append(body)
+        return {
+            "answer": "I cannot answer that.",
+            "model": "remote-model",
+            "evidence": {"queries": [], "cards": []},
+        }
+
+    monkeypatch.setattr(evals, "sigv4_post", send)
+    code = evals.main(
+        [
+            "--offered",
+            "--offered-file",
+            str(path),
+            "--remote",
+            "https://example.com",
+            "--player-token",
+            FAKE_TOKEN,
+        ]
+    )
+    printed = capsys.readouterr().out
+    assert code == 1, printed
+    assert "0/2 offered questions answered" in printed
+    assert "How is the meta?" in printed
+    # The second chip asked for the token, so its context carries the clause
+    # and the first one's does not.
+    assert FAKE_TOKEN not in str(sent[0]["context"])
+    assert FAKE_TOKEN in str(sent[1]["context"])
+    assert sent[1]["job"] == "my_record"
