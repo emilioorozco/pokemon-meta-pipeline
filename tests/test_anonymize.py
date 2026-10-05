@@ -7,11 +7,17 @@ of `Ash_K`, and `Ash K` contains a space.
 
 import copy
 import re
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
-from pipeline.anonymize import anonymize, assert_no_handles, handles_in, token_for
+from pipeline.anonymize import (
+    TOKEN_HEX_LENGTH,
+    anonymize,
+    assert_no_handles,
+    handles_in,
+    token_for,
+)
 
 KEY = b"test-key-not-secret"
 OTHER_KEY = b"another-test-key"
@@ -279,3 +285,30 @@ def test_manual_game_archetype_in_players_is_not_a_handle() -> None:
     assert out["summary"]["winner"] == "Dragapult Dusknoir"
     assert out["summary"]["opponentArchetype"] == "Dragapult Dusknoir"
     assert assert_no_handles(out, {"Ash K"}) == []
+
+
+# The derivation is now shared with the web application, which sends a
+# member's token to the agent so a question about their own record has a row
+# to be about (PLA-208, docs/agent-service.md). Two codebases deriving the
+# same value from the same handle is a claim, and a claim with nothing
+# checking it is how two HMACs come to disagree on an encoding, a truncation
+# or a digest. So the two repositories pin one vector between them: this
+# handle, this key, this hex. The application asserts the same three in its
+# own test suite, and whichever side changes first turns red there rather
+# than producing rows that silently never join.
+#
+# None of it is a secret. The handle is invented, the key is twenty-one
+# characters of ASCII with "not-a-secret" written in it, and the token is what
+# anyone with both can compute in one line.
+SHARED_VECTOR_HANDLE: Final = "Fixture_Handle_Alpha_0001"
+SHARED_VECTOR_KEY: Final = b"test-key-not-a-secret"
+SHARED_VECTOR_TOKEN: Final = "1f25a4f4c5f73c39"
+
+
+def test_the_token_vector_the_application_pins_too() -> None:
+    """One handle, one key, one hex, through the real derivation."""
+    assert token_for(SHARED_VECTOR_HANDLE, SHARED_VECTOR_KEY) == SHARED_VECTOR_TOKEN
+    # The shape the warehouse stores and the prompt's `forbid` patterns look
+    # for: sixteen lowercase hex characters, which is half a sha256 digest.
+    assert len(SHARED_VECTOR_TOKEN) == TOKEN_HEX_LENGTH
+    assert re.fullmatch(r"[0-9a-f]{16}", SHARED_VECTOR_TOKEN)
