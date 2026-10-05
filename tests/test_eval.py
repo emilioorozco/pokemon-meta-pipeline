@@ -1810,3 +1810,55 @@ def test_an_offered_file_the_runner_could_not_ask_is_a_load_error(
     path.write_text(body, encoding="utf-8")
     with pytest.raises(evals.GoldenError, match=message):
         evals.load_offered(path)
+
+
+def test_the_offered_command_line_asks_the_deployment_and_prints_the_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--offered --remote` end to end, with the signed POST replaced by a dictionary."""
+    path = tmp_path / "offered.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"source": "suggestion", "route": "overview", "text": "How is the meta?"},
+                {
+                    "source": "followUp",
+                    "job": "my_record",
+                    "text": "How has my record moved?",
+                    "needs": ["token"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    sent: list[dict[str, object]] = []
+
+    def send(url: str, body: dict[str, object]) -> dict[str, object]:
+        sent.append(body)
+        return {
+            "answer": "I cannot answer that.",
+            "model": "remote-model",
+            "evidence": {"queries": [], "cards": []},
+        }
+
+    monkeypatch.setattr(evals, "sigv4_post", send)
+    code = evals.main(
+        [
+            "--offered",
+            "--offered-file",
+            str(path),
+            "--remote",
+            "https://example.com",
+            "--player-token",
+            FAKE_TOKEN,
+        ]
+    )
+    printed = capsys.readouterr().out
+    assert code == 1, printed
+    assert "0/2 offered questions answered" in printed
+    assert "How is the meta?" in printed
+    # The second chip asked for the token, so its context carries the clause
+    # and the first one's does not.
+    assert FAKE_TOKEN not in str(sent[0]["context"])
+    assert FAKE_TOKEN in str(sent[1]["context"])
+    assert sent[1]["job"] == "my_record"
