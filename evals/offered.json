@@ -1,0 +1,422 @@
+[
+  {
+    "source": "suggestion",
+    "route": "overview",
+    "text": "Which archetype has the best win rate this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "overview",
+    "text": "Which archetypes were played most last week?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "overview",
+    "text": "How has my win rate moved week by week?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "insights",
+    "text": "Which matchup has the most games recorded?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "insights",
+    "text": "Which archetype has the best win rate this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "insights",
+    "text": "How does Dragapult ex do against Gardevoir ex?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "leaderboard",
+    "text": "Which archetypes do the top players bring?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "leaderboard",
+    "text": "Which deck has the most games this season?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "leaderboard",
+    "text": "How many games are behind these standings?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "games",
+    "text": "Which archetype have I lost to most this month?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "games",
+    "text": "How does going first change my win rate?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "games",
+    "text": "Which matchup has the most games recorded?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "What happened in this game?",
+    "needs": ["game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "How does this matchup usually go?",
+    "needs": ["game", "archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "What could I have done differently?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "How did I lose this one?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "How does my deck usually do against this opponent?",
+    "needs": ["mine", "token", "opponent"]
+  },
+  {
+    "source": "suggestion",
+    "route": "game",
+    "text": "Which cards are most seen in this opponent's lists?",
+    "needs": ["opponent", "card"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player",
+    "text": "Which archetype have I lost to most this month?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player",
+    "text": "How does going first change my win rate?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player",
+    "text": "Which matchup has the most games recorded?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "player_games",
+    "text": "Which archetype have I lost to most this month?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_games",
+    "text": "How does going first change my win rate?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_games",
+    "text": "Which matchup has the most games recorded?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "What happened in this game?",
+    "needs": ["game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "How does this matchup usually go?",
+    "needs": ["game", "archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "What could I have done differently?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "How did I lose this one?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "How does my deck usually do against this opponent?",
+    "needs": ["mine", "token", "opponent"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_game",
+    "text": "Which cards are most seen in this opponent's lists?",
+    "needs": ["opponent", "card"]
+  },
+  {
+    "source": "suggestion",
+    "route": "decks",
+    "text": "Which deck has the best win rate this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "decks",
+    "text": "Which decks were played most last week?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "decks",
+    "text": "Which deck beats Dragapult ex most often?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
+    "text": "How is this deck doing this month?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
+    "text": "Which matchups does this deck lose most?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
+    "text": "What are the most seen cards in this deck's lists?",
+    "needs": ["archetype", "card"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
+    "text": "How has this deck's win rate moved week by week?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
+    "text": "Which decks beat this one most often?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "How is this deck doing this month?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "Which matchups does this deck lose most?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "What are the most seen cards in this deck's lists?",
+    "needs": ["archetype", "card"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "How has this deck's win rate moved week by week?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "Which decks beat this one most often?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "tournaments",
+    "text": "Which archetypes were played most at recent tournaments?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "tournaments",
+    "text": "Which deck won the most games this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "tournaments",
+    "text": "How many games are recorded this season?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "tournament",
+    "text": "Which archetypes were played most at recent tournaments?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "tournament",
+    "text": "Which deck won the most games this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "tournament",
+    "text": "How many games are recorded this season?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "seasons",
+    "text": "Which archetype has the best win rate this month?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "seasons",
+    "text": "Which archetypes were played most last week?",
+    "needs": []
+  },
+  {
+    "source": "suggestion",
+    "route": "seasons",
+    "text": "How has my win rate moved week by week?",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_game",
+    "text": "Which turns did I not attack?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_game",
+    "text": "How do others beat {opponent}?",
+    "needs": ["opponent", "archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_game",
+    "text": "Show my games against {opponent}",
+    "needs": ["mine", "token", "opponent"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_mistake",
+    "text": "Was I behind when I conceded?",
+    "needs": ["mine", "game"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_mistake",
+    "text": "How does my pace compare to other {archetype} players?",
+    "needs": ["mine", "game", "archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_mistake",
+    "text": "What does {card} do?",
+    "needs": ["card"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_record",
+    "text": "Which matchup has the most games this month?",
+    "needs": []
+  },
+  {
+    "source": "followUp",
+    "job": "my_record",
+    "text": "How does {archetype} do against the field this month?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_record",
+    "text": "Which deck is played most this week?",
+    "needs": []
+  },
+  {
+    "source": "followUp",
+    "job": "my_record",
+    "text": "What is the usual first attack turn for {archetype}?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "my_record",
+    "text": "Show those {games} games",
+    "needs": ["mine", "token"]
+  },
+  {
+    "source": "followUp",
+    "job": "meta",
+    "text": "How has {archetype} done week by week?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "meta",
+    "text": "What are the most seen cards in {archetype}?",
+    "needs": ["archetype", "card"]
+  },
+  {
+    "source": "followUp",
+    "job": "meta",
+    "text": "Open {archetype} on Insights",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "followUp",
+    "job": "card_rules",
+    "text": "Which decks play {card}?",
+    "needs": ["card"]
+  },
+  {
+    "source": "followUp",
+    "job": "card_rules",
+    "text": "What is {card}'s retreat cost?",
+    "needs": ["card"]
+  },
+  {
+    "source": "followUp",
+    "job": "out_of_scope",
+    "text": "Which archetype is best this month?",
+    "needs": []
+  },
+  {
+    "source": "followUp",
+    "job": "out_of_scope",
+    "text": "How did I lose my last game?",
+    "needs": ["mine", "token", "game"]
+  }
+]

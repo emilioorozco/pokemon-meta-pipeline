@@ -4,10 +4,11 @@
     op run --env-file=.env.op -- uv run python -m pipeline.eval
     uv run python -m pipeline.eval --remote "$PIPELINE_AGENT_URL"
 
-Twenty-nine questions in `evals/golden.yaml` in two kinds, each with the tools
-its answer has to call and the facts its answer has to contain. Seventeen are
-`golden`, which a warehouse with games in it answers; twelve are `adversarial`,
-which nobody should get an answer to. The command runs them through the real
+Fifty-two questions in `evals/golden.yaml` in three kinds, each with the tools
+its answer has to call and the facts its answer has to contain. Twenty-eight
+are `golden`, which a warehouse with games in it answers; fourteen are
+`adversarial`, which nobody should get an answer to; ten are `mistake`, about
+the game on the member's screen. The command runs them through the real
 `Agent`, scores three checks per question, prints a table and exits non-zero
 when anything failed. The score of a run is logged to MLflow, so a prompt
 change is tracked the way a model change is.
@@ -96,6 +97,19 @@ because the model stops citing sample sizes and starts guessing; with the
 replay model it falls because the fake refuses to query a table the prompt
 never described, which is the one respect in which it behaves like a model.
 docs/evals.md has both procedures.
+
+**A fourth way, and it measures the application.** `--offered --remote <url>`
+puts `evals/offered.json` to the same deployment instead of the golden file:
+every string the application offers a member as a chip to click, asked once
+with the route sentence it would have been clicked under. The golden set
+asks whether the agent answers the questions somebody wrote down; this asks
+the other half, whether the application only offers questions it can answer.
+It grades none of the prose, because the strings are the application's and
+nobody has checked a number in them: a case fails on a refusal, on a run
+that read nothing at all, or on a statement refused for naming a table that
+does not exist. The failing strings are printed and nothing is logged, since
+a chip that cannot be answered is a line in a backlog rather than a series
+(docs/evals.md).
 
 Exit codes are the point of a continuous-integration command: 0 when every
 question passed, 1 when any question failed, 2 when the run could not be set
@@ -1744,6 +1758,361 @@ def remote_factory(url: str, *, send: Sender | None = None) -> AgentFactory:
     return factory
 
 
+# ------------------------------------------------------------- the offered --
+
+
+OFFERED_PATH: Final = REPO_ROOT / "evals" / "offered.json"
+
+# Where an offered string came from in the application. A `suggestion` is one
+# of the three "Try asking" chips a page opens the drawer with; a `followUp`
+# is one of the up-to-three chips under an answer. They are told apart
+# because they fail differently: a suggestion that cannot be answered is a
+# page offering the wrong question, and a follow-up that cannot be answered
+# is an answer leading somewhere there is nothing.
+OFFERED_SUGGESTION: Final = "suggestion"
+OFFERED_FOLLOW_UP: Final = "followUp"
+OFFERED_SOURCES: Final[tuple[str, ...]] = (OFFERED_SUGGESTION, OFFERED_FOLLOW_UP)
+
+# What a case says it needs before it can be asked, and the whole of what the
+# runner knows how to supply. `token` is the member's player token in the
+# route sentence, `game` is a fixture game summary with its facts, and the
+# other four name a slot in the text that has to be filled with something
+# real before the question means anything.
+NEED_TOKEN: Final = "token"
+NEED_GAME: Final = "game"
+OFFERED_NEEDS: Final[tuple[str, ...]] = (
+    NEED_TOKEN,
+    NEED_GAME,
+    "mine",
+    "opponent",
+    "archetype",
+    "card",
+)
+
+# What goes into each `{slot}` of an offered string. Fixture values, because
+# the point of the run is whether the shape of the question is answerable and
+# not whether one archetype is in the warehouse: a name nobody played would
+# fail every case for the same uninteresting reason. `games` is a count the
+# application fills from the member's own row and is a slot like the others.
+OFFERED_SLOTS: Final[dict[str, str]] = {
+    "mine": "Dragapult / Dusknoir",
+    "opponent": "Alakazam / Toucannon",
+    "archetype": "Dragapult control",
+    "card": "Budew",
+    "games": "8",
+}
+_SLOT: Final = re.compile(r"\{(\w+)\}")
+
+# The route sentence the application would have sent with a question asked on
+# each page, in the shape `renderContextAddendum` renders. One per route key
+# the export uses; a key with no sentence here is a load error, because a
+# question asked with no context is a question asked on a different page.
+ROUTE_SENTENCES: Final[dict[str, str]] = {
+    "overview": "The member is looking at the community overview.",
+    "seasons": "The member is looking at the seasons page.",
+    "insights": "The member is looking at the community insights page.",
+    "leaderboard": (
+        "The member is looking at the community rankings page (the rankings "
+        "themselves are not in the warehouse; the nearest table is mart_player_summary)."
+    ),
+    "games": "The member is looking at their own games list.",
+    "game": "The member is looking at one of their own games.",
+    "player": "The member is looking at another player's page.",
+    "player_games": "The member is looking at another player's games list.",
+    "player_game": "The member is looking at another player's game.",
+    "decks": "The member is looking at the deck list.",
+    "deck": "The member is looking at one deck.",
+    "player_deck": "The member is looking at another player's deck.",
+    "tournaments": "The member is looking at the tournaments page.",
+    "tournament": "The member is looking at one tournament.",
+}
+
+# The two sentence shapes the application appends when it knows whose row the
+# page is about, copied from its own renderer so the two repositories are
+# asking the same question. Which of the two depends on the page and not on
+# the chip: on another player's page the token is theirs, and the playbook
+# answers about them as the subject rather than about the member.
+MEMBER_TOKEN_CLAUSE: Final = "The member's player token is {token}."
+SUBJECT_TOKEN_CLAUSE: Final = "The player on this page has the player token {token}."
+OTHER_PLAYER_ROUTES: Final[tuple[str, ...]] = ("player", "player_games", "player_game")
+# What a run with no `--player-token` states instead. Sixteen hex characters
+# of the right shape and nobody's: an offered question is graded on whether
+# it can be answered at all, and most of them never read a member's row, so
+# a run with no real token is still worth something. A `my_record` chip under
+# it answers "the warehouse holds no games for them", which is the playbook's
+# no-row case and not a refusal, so it passes on the evidence rule and fails
+# on nothing. Pass a real one to measure those as a member would see them.
+OFFERED_FALLBACK_TOKEN: Final = "0000000000000000"
+# What a follow-up is asked with, since a chip under an answer carries no
+# route of its own. The job is what the application routed the question as,
+# and the member is on their own page by the time any of them is offered.
+FOLLOW_UP_SENTENCE: Final = "The member is looking at their own page."
+
+# A fixture game to stand in for the one on the member's screen, the same
+# shape and the same redaction the application sends, taken from
+# `game_on_screen_loss` in the golden file so the two are one game rather
+# than two inventions.
+OFFERED_GAME: Final = (
+    "Your Dragapult ex game against Gardevoir ex. You went second and lost on "
+    "turn 9. Prize cards taken: you 2, your opponent 6. Your first attack was "
+    "on turn 3; the Gardevoir ex side attacked on turn 2 and knocked out a "
+    "benched basic on turn 4, and took its last two prizes in one turn at the end."
+)
+OFFERED_FIRST_LINE: Final = (
+    "Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns."
+)
+OFFERED_FACTS: Final[tuple[Fact, ...]] = (
+    Fact(id="turn_count:both", text="The game ran 9 turns.", values=(9.0,)),
+    Fact(
+        id="prizes_taken:both",
+        text="You took 2 prizes and your opponent took 6.",
+        values=(2.0, 6.0),
+    ),
+    Fact(id="first_attack_turn:me", text="Your first attack was on turn 3.", values=(3.0,)),
+    Fact(
+        id="first_attack_turn:opponent",
+        text="Your opponent first attacked on turn 2.",
+        values=(2.0,),
+    ),
+)
+
+# Why a case failed, in the order they are checked. Three rules and no
+# scoring of the prose: what an offered question is graded on is whether it
+# got an answer at all, because the thing being measured is the offer.
+OFFERED_REFUSED: Final = "refused"
+OFFERED_NO_EVIDENCE: Final = "no_evidence"
+OFFERED_GUESSED_TABLE: Final = "table_not_found"
+
+
+@dataclass(frozen=True)
+class Offered:
+    """One string the application puts in front of a member as a thing to click."""
+
+    source: str
+    text: str
+    needs: tuple[str, ...] = ()
+    route: str = ""
+    job: str = ""
+
+    @property
+    def id(self) -> str:
+        """How the case is named in the report: where it is offered, then its words."""
+        return f"{self.source}:{self.route or self.job}"
+
+    @property
+    def question(self) -> str:
+        """The text with every slot filled from `OFFERED_SLOTS`."""
+        return _SLOT.sub(lambda match: OFFERED_SLOTS[match.group(1)], self.text)
+
+    def context(self, token: str) -> str:
+        """The route sentence the application would have sent with this question."""
+        sentence = ROUTE_SENTENCES[self.route] if self.route else FOLLOW_UP_SENTENCE
+        if NEED_TOKEN not in self.needs:
+            return sentence
+        clause = SUBJECT_TOKEN_CLAUSE if self.route in OTHER_PLAYER_ROUTES else MEMBER_TOKEN_CLAUSE
+        return f"{sentence} {clause.format(token=token)}"
+
+
+def load_offered(path: Path = OFFERED_PATH) -> tuple[Offered, ...]:
+    """Read the offered strings. Raises `GoldenError` on anything unaskable.
+
+    The file is the application's own export, copied in unchanged so that
+    refreshing it is one command and its diff is the application's diff
+    (docs/evals.md). Everything checked here is something a case could
+    otherwise fail for a reason that is about this harness rather than about
+    the agent: a slot nothing fills would be asked with a brace in it, a
+    route with no sentence would be asked with no page under it, and a job
+    the service does not know would be dropped from the turn by `route_line`
+    and grade a question nobody was routed at.
+    """
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as failure:
+        raise GoldenError(f"{path}: {failure}") from failure
+    except json.JSONDecodeError as failure:
+        raise GoldenError(f"{path}: not valid JSON: {failure}") from failure
+    if not isinstance(parsed, list) or not parsed:
+        raise GoldenError(f"{path}: expected a non-empty list of offered questions")
+    cases: list[Offered] = []
+    for position, raw in enumerate(parsed, start=1):
+        where = f"{path}: entry {position}"
+        if not isinstance(raw, dict):
+            raise GoldenError(f"{where}: expected a mapping")
+        source = str(raw.get("source", "")).strip()
+        if source not in OFFERED_SOURCES:
+            raise GoldenError(f"{where}: {source!r} is not a source ({', '.join(OFFERED_SOURCES)})")
+        text = str(raw.get("text", "")).strip()
+        if not text:
+            raise GoldenError(f"{where}: every entry needs a `text`")
+        route = str(raw.get("route", "")).strip()
+        job = str(raw.get("job", "")).strip()
+        if bool(route) == bool(job):
+            raise GoldenError(f"{where}: an entry carries a `route` or a `job`, not both or none")
+        if route and route not in ROUTE_SENTENCES:
+            raise GoldenError(f"{where}: {route!r} has no route sentence in pipeline.eval")
+        if job and job not in JOBS:
+            raise GoldenError(f"{where}: {job!r} is not a job ({', '.join(JOBS)})")
+        raw_needs = raw.get("needs") or []
+        if not isinstance(raw_needs, list) or not all(isinstance(n, str) for n in raw_needs):
+            raise GoldenError(f"{where}: `needs` has to be a list of strings")
+        needs = tuple(str(need) for need in raw_needs)
+        for need in needs:
+            if need not in OFFERED_NEEDS:
+                raise GoldenError(f"{where}: {need!r} is not a need ({', '.join(OFFERED_NEEDS)})")
+        for slot in _SLOT.findall(text):
+            if slot not in OFFERED_SLOTS:
+                raise GoldenError(f"{where}: nothing fills the slot {{{slot}}}")
+        cases.append(Offered(source=source, text=text, needs=needs, route=route, job=job))
+    return tuple(cases)
+
+
+@dataclass(frozen=True)
+class OfferedResult:
+    """One offered string, asked, with the reasons it should not have been offered."""
+
+    case: Offered
+    question: str
+    answer: str
+    failures: tuple[str, ...] = ()
+    error: str | None = None
+
+    @property
+    def passed(self) -> bool:
+        return not self.failures and self.error is None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.case.id,
+            "source": self.case.source,
+            "route": self.case.route,
+            "job": self.case.job,
+            "text": self.case.text,
+            "question": self.question,
+            "passed": self.passed,
+            "failures": list(self.failures),
+            "error": self.error,
+            "answer": self.answer,
+        }
+
+
+def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult:
+    """Three rules, and none of them about the prose.
+
+    What a golden question grades is whether an answer is right. What this
+    grades is narrower and is the whole of what an offered string can be held
+    to: whether asking it produces an answer at all. The text was written by
+    the application, nobody has checked a number in it, and a run that
+    demanded a fact would be a run that failed on the fixtures rather than on
+    the offer.
+
+    So: a refusal is a failure, because a chip that is refused is a chip that
+    should not be on the screen. A run with no gate verdict and nothing read
+    is a failure, because an answer with no row, no card and no fact behind
+    it is prose. And a statement refused for naming a table that does not
+    exist is a failure even when the next statement found the right one,
+    because the question sent the model looking for something the warehouse
+    does not have.
+    """
+    failures: list[str] = []
+    if re.search(REFUSAL_PATTERN, answer.answer, re.IGNORECASE):
+        failures.append(OFFERED_REFUSED)
+    evidence = answer.evidence
+    read = sum(query.row_count for query in evidence.queries) + len(evidence.cards)
+    if answer.gate_summary == GATE_OFF and not read:
+        failures.append(OFFERED_NO_EVIDENCE)
+    if any(query.refused_code == REFUSED_TABLE_NOT_FOUND for query in evidence.queries):
+        failures.append(OFFERED_GUESSED_TABLE)
+    return OfferedResult(
+        case=case, question=question, answer=answer.answer, failures=tuple(failures)
+    )
+
+
+@dataclass(frozen=True)
+class OfferedReport:
+    """A whole offered run: every string the application offers, asked once."""
+
+    results: tuple[OfferedResult, ...]
+    model: str
+    path: Path
+    remote: bool = True
+
+    @property
+    def total(self) -> int:
+        return len(self.results)
+
+    @property
+    def passed(self) -> int:
+        return sum(1 for result in self.results if result.passed)
+
+    @property
+    def failed(self) -> tuple[OfferedResult, ...]:
+        return tuple(result for result in self.results if not result.passed)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "offered_path": str(self.path),
+            "model": self.model,
+            "remote": self.remote,
+            "passed": self.passed,
+            "total": self.total,
+            "pass_rate": round(self.passed / self.total, 4) if self.total else 0.0,
+            "cases": [result.as_dict() for result in self.results],
+        }
+
+
+def run_offered(
+    cases: Sequence[Offered], agent: Askable, *, token: str, remote: bool = True
+) -> OfferedReport:
+    """Ask every offered string once, with the context the application would send."""
+    results: list[OfferedResult] = []
+    model = ""
+    for case in cases:
+        question = case.question
+        game = NEED_GAME in case.needs
+        try:
+            answer = agent.ask(
+                question,
+                context=case.context(token),
+                context_game=OFFERED_GAME if game else "",
+                context_first_line=OFFERED_FIRST_LINE if game else "",
+                context_facts=OFFERED_FACTS if game else (),
+                job=case.job,
+            )
+        except Exception as failure:  # noqa: BLE001 - one bad chip must not end the run
+            logger.exception("an offered question could not be asked", extra={"case": case.id})
+            results.append(
+                OfferedResult(
+                    case=case,
+                    question=question,
+                    answer="",
+                    error=f"{type(failure).__name__}: {failure}",
+                )
+            )
+            continue
+        model = agent.model_name
+        results.append(score_offered(case, question, answer))
+    return OfferedReport(results=tuple(results), model=model, path=OFFERED_PATH, remote=remote)
+
+
+def render_offered(report: OfferedReport) -> str:
+    """The offered run as the lines the command line prints.
+
+    The failing strings and nothing else, because that is the only thing
+    anybody does with this run: the list is the application's backlog of
+    chips to take off a page or questions to make answerable.
+    """
+    lines = [f"{report.passed}/{report.total} offered questions answered"]
+    if not report.failed:
+        lines.append("every question the application offers has an answer")
+        return "\n".join(lines)
+    lines.append(f"{len(report.failed)} that do not:")
+    for result in report.failed:
+        why = ",".join(result.failures) or (result.error or "unknown")
+        lines.append(f"  [{result.case.id}] {result.question}")
+        lines.append(f"    {why}")
+    return "\n".join(lines)
+
+
 def run_question(question: Question, agent: Askable) -> Result:
     """Ask one question and score what came back.
 
@@ -2163,6 +2532,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-mlflow", action="store_true", help="score the questions and record nothing"
     )
     parser.add_argument("--json", action="store_true", help="print the report as one JSON object")
+    parser.add_argument(
+        "--offered",
+        action="store_true",
+        help="score `evals/offered.json` instead of the golden set: every question the "
+        "application puts in front of a member as a chip, asked once with the route "
+        "sentence it would have been clicked under. Needs --remote",
+    )
+    parser.add_argument(
+        "--offered-file",
+        type=Path,
+        default=OFFERED_PATH,
+        metavar="PATH",
+        help=f"the offered questions to ask (default: {OFFERED_PATH.name})",
+    )
+    parser.add_argument(
+        "--player-token",
+        default="",
+        metavar="TOKEN",
+        help="the player token an offered question's route sentence states. A real "
+        "member's token on a real deployment; anything of the right shape will do "
+        "for a question that does not read a row",
+    )
     return parser
 
 
@@ -2173,6 +2564,38 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(STAGE)
 
     remote = args.remote is not None
+    if args.offered:
+        # A deliberately narrow door. The offered set measures what the
+        # application is putting on a screen against the service that
+        # answers it, so there is nothing to measure in a run against an
+        # agent built here, and nothing to log either: a chip that cannot be
+        # answered is a line in a backlog, not a series.
+        if not remote:
+            sys.stderr.write(f"{parser.prog}: --offered needs --remote\n")
+            return 2
+        try:
+            cases = load_offered(args.offered_file)
+        except GoldenError as failure:
+            sys.stderr.write(f"{parser.prog}: {failure}\n")
+            return 2
+        offered = run_offered(
+            cases, RemoteAgent(args.remote), token=args.player_token or OFFERED_FALLBACK_TOKEN
+        )
+        if args.json:
+            sys.stdout.write(json.dumps(offered.as_dict(), indent=2) + "\n")
+        else:
+            emit_summary(
+                logger,
+                "offered summary",
+                {
+                    "offered": offered.total,
+                    "answered": offered.passed,
+                    "failed": [result.case.id for result in offered.failed],
+                },
+                text=render_offered(offered),
+            )
+        return 0 if offered.passed == offered.total else 1
+
     # Three flags that are about an agent built here, and `--remote` says the
     # agent was built somewhere else. Refusing rather than ignoring them: a
     # run that silently dropped `--prompt-override` would report a score for

@@ -1620,3 +1620,193 @@ def _good_prompt_sha() -> str:
     with pytest.MonkeyPatch.context() as patch:
         patch.delenv(PROMPT_FILE_VAR, raising=False)
         return hashlib.sha256(system_prompt(with_card_tool=True).encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------- offered --
+
+
+def offered_answer(
+    text: str = "Dragapult control is 1 and 0 over 1 game, which is a thin sample.",
+    *,
+    rows: int = 1,
+    gate: str = "off",
+    refused_code: str | None = None,
+    cards: int = 0,
+) -> object:
+    """One `Answer` as the deployed service would send it back, built by hand."""
+    from pipeline.agent import Answer, CardEvidence, Evidence, QueryEvidence
+
+    return Answer(
+        answer=text,
+        model="remote-model",
+        evidence=Evidence(
+            queries=[
+                QueryEvidence(
+                    sql="select games from mart_matchups",
+                    row_count=rows,
+                    rows=[{"games": 1}] * rows,
+                    gate=gate,
+                    refused_code=refused_code,
+                )
+            ],
+            cards=[CardEvidence(name="Budew", set_code="SV", number="1", text="x")] * cards,
+        ),
+    )
+
+
+class OfferedRecorder:
+    """A fake agent: every offered question comes back with the same answer."""
+
+    model_name = "remote-model"
+
+    def __init__(self, answer: object | None = None) -> None:
+        self.answer = answer if answer is not None else offered_answer()
+        self.asked: list[tuple[str, str, str, str]] = []
+
+    def ask(self, question: str, context: str = "", **extra: object) -> object:
+        self.asked.append(
+            (
+                question,
+                context,
+                str(extra.get("context_game", "")),
+                str(extra.get("job", "")),
+            )
+        )
+        return self.answer
+
+
+def test_every_string_the_application_offers_loads_and_can_be_asked() -> None:
+    """The committed export, checked as the runner will have to use it."""
+    cases = evals.load_offered()
+    assert len(cases) == 70
+    sources = {case.source for case in cases}
+    assert sources == set(evals.OFFERED_SOURCES)
+    for case in cases:
+        # Every slot is filled, so nothing goes to the service with a brace
+        # in it, and every case has a page to have been clicked on.
+        assert "{" not in case.question, case.text
+        assert case.context("abc").strip(), case.text
+        assert bool(case.route) != bool(case.job), case.text
+
+
+def test_an_offered_question_carries_the_page_it_was_clicked_on() -> None:
+    """The route sentence, the token clause and the game, each only when asked for."""
+    plain = evals.Offered(source="suggestion", route="insights", text="How is the meta?")
+    assert plain.context(FAKE_TOKEN) == evals.ROUTE_SENTENCES["insights"]
+
+    mine = evals.Offered(
+        source="suggestion", route="games", text="How am I doing?", needs=("token",)
+    )
+    assert mine.context(FAKE_TOKEN).endswith(f"The member's player token is {FAKE_TOKEN}.")
+
+    theirs = evals.Offered(
+        source="suggestion", route="player_games", text="How are they doing?", needs=("token",)
+    )
+    assert theirs.context(FAKE_TOKEN).endswith(
+        f"The player on this page has the player token {FAKE_TOKEN}."
+    )
+
+
+def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
+    case = evals.Offered(
+        source="followUp", job="card_rules", text="What does {card} do?", needs=("card",)
+    )
+    assert case.question == "What does Budew do?"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (offered_answer(), ()),
+        (
+            offered_answer("I cannot answer that: no table here is keyed by you."),
+            (evals.OFFERED_REFUSED,),
+        ),
+        (offered_answer(rows=0), (evals.OFFERED_NO_EVIDENCE,)),
+        (offered_answer(rows=0, cards=1), ()),
+        (
+            offered_answer(refused_code="table_not_found"),
+            (evals.OFFERED_GUESSED_TABLE,),
+        ),
+    ],
+)
+def test_the_three_rules_an_offered_question_is_held_to(body: object, expected: tuple) -> None:
+    case = evals.Offered(source="suggestion", route="overview", text="How is the meta?")
+    result = evals.score_offered(case, case.question, body)  # type: ignore[arg-type]
+    assert result.failures == expected
+    assert result.passed is (not expected)
+
+
+def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> None:
+    """The whole runner against a fake agent: no model, no network, no account."""
+    cases = (
+        evals.Offered(source="suggestion", route="overview", text="How is the meta?"),
+        evals.Offered(
+            source="followUp", job="my_game", text="Which turns did I not attack?", needs=("game",)
+        ),
+    )
+    agent = OfferedRecorder(offered_answer("I will not answer that."))
+    report = evals.run_offered(cases, agent, token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.total == 2 and report.passed == 0
+    assert report.model == "remote-model"
+    # The game and the job travel only with the case that asked for them.
+    assert agent.asked[0][2] == "" and agent.asked[0][3] == ""
+    assert agent.asked[1][2] == evals.OFFERED_GAME and agent.asked[1][3] == "my_game"
+    printed = evals.render_offered(report)
+    assert "0/2 offered questions answered" in printed
+    assert "Which turns did I not attack?" in printed
+    assert evals.OFFERED_REFUSED in printed
+    assert json.loads(json.dumps(report.as_dict()))["total"] == 2
+
+
+def test_a_green_offered_run_says_so_and_names_nothing() -> None:
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(cases, OfferedRecorder(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.passed == report.total == 1
+    assert "every question the application offers has an answer" in evals.render_offered(report)
+
+
+def test_a_service_that_raises_costs_one_offered_question_and_not_the_run() -> None:
+    class Broken:
+        model_name = "remote-model"
+
+        def ask(self, question: str, context: str = "", **extra: object) -> object:
+            raise RuntimeError("nope")
+
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(cases, Broken(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    assert report.passed == 0
+    assert report.results[0].error is not None
+    assert "RuntimeError" in evals.render_offered(report)
+
+
+def test_the_offered_mode_needs_a_deployment_to_measure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert evals.main(["--offered"]) == 2
+    assert "--offered needs --remote" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("[]", "non-empty list"),
+        ('[{"source": "chip", "route": "overview", "text": "x"}]', "is not a source"),
+        ('[{"source": "suggestion", "route": "overview", "text": ""}]', "needs a `text`"),
+        ('[{"source": "suggestion", "text": "x"}]', "a `route` or a `job`"),
+        ('[{"source": "suggestion", "route": "nowhere", "text": "x"}]', "no route sentence"),
+        ('[{"source": "followUp", "job": "nope", "text": "x"}]', "is not a job"),
+        (
+            '[{"source": "suggestion", "route": "overview", "text": "x", "needs": ["moon"]}]',
+            "is not a need",
+        ),
+        ('[{"source": "suggestion", "route": "overview", "text": "{moon}"}]', "nothing fills"),
+    ],
+)
+def test_an_offered_file_the_runner_could_not_ask_is_a_load_error(
+    tmp_path: Path, body: str, message: str
+) -> None:
+    path = tmp_path / "offered.json"
+    path.write_text(body, encoding="utf-8")
+    with pytest.raises(evals.GoldenError, match=message):
+        evals.load_offered(path)

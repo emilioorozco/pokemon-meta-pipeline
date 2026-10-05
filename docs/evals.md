@@ -798,6 +798,105 @@ asserts 52 out of 52 and the line under the table reads
 `by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
+## The `offered` set: every question the application puts on a screen
+
+The golden set asks whether the agent answers the questions somebody wrote
+down. It says nothing about the other half of the contract, which is that the
+application only offers questions the agent can answer. That half had never
+been measured, and PLA-208 started with a member clicking a chip the
+application itself had drawn and getting a refusal.
+
+`evals/offered.json` is every such string: the "Try asking" suggestions a
+page opens the drawer with, and the follow-up chips under an answer. Seventy
+of them today, 52 suggestions and 18 follow-ups.
+
+**Where the file comes from.** It is the web application's own export,
+`apps/web/src/lib/askOffered.json`, copied in unchanged. Refreshing it is one
+command and its diff is the application's diff:
+
+```sh
+git -C ../play-rough-analytics show origin/main:apps/web/src/lib/askOffered.json \
+  > evals/offered.json
+```
+
+Copying rather than deriving, because the strings live in the application's
+own tables (`SUGGESTIONS_BY_ROUTE` in `AskParts.tsx` and the per-job
+follow-up table in the API) and a second hand-written copy here would be a
+list that is right on the day it is written. A chip added there and not
+exported here is simply unmeasured; a chip exported here that this runner
+cannot ask is a load error naming the entry.
+
+**What an entry is.**
+
+```json
+{ "source": "followUp", "job": "my_mistake",
+  "text": "How does my pace compare to other {archetype} players?",
+  "needs": ["mine", "game", "archetype"] }
+```
+
+`source` is `suggestion` or `followUp`. A suggestion carries the `route` of
+the page it is offered on; a follow-up carries the `job` the answer above it
+was routed as. `needs` is what has to be arranged before the string means
+anything, and the runner supplies each:
+
+| need | what the runner does |
+| --- | --- |
+| `token` | appends the token clause to the route sentence: "The member's player token is …", or "The player on this page has the player token …" on `player`, `player_games` and `player_game` |
+| `game` | sends a fixture game summary, its first line and four facts, the same game `game_on_screen_loss` uses |
+| `mine`, `opponent`, `archetype`, `card` | fills the matching `{slot}` in the text with a fixture archetype or card name |
+
+Every case is asked with the route sentence it would have been clicked
+under, from `ROUTE_SENTENCES` in `pipeline/eval.py`, and a follow-up is asked
+with its job label so the right playbook answers it.
+
+**Three rules, and none of them about the prose.** The text was written by
+the application and nobody has checked a number in it, so a run that demanded
+a fact would fail on the fixtures rather than on the offer. A case fails
+when:
+
+1. the answer matches the refusal alternation the adversarial half uses
+   (`REFUSAL_PATTERN`, one constant now rather than fourteen copies of it),
+   because a chip that is refused is a chip that should not be on the screen;
+2. the run reports `gate_summary: off` and read nothing at all, no row and no
+   card, because an answer with nothing behind it is prose;
+3. any statement was refused `table_not_found`, even when the next one found
+   the right table, because the question sent the model looking for
+   something the warehouse does not hold.
+
+**Running it.**
+
+```sh
+op run --env-file=.env.op -- uv run python -m pipeline.eval \
+  --offered --remote "$PIPELINE_AGENT_URL" --player-token "$TOKEN"
+```
+
+`--offered` needs `--remote`: what the set measures is the application
+against the deployment that answers it, and an agent built on a laptop is
+neither. With no `--player-token` the clause states sixteen zeroes, which is
+a token of the right shape belonging to nobody; the chips that read a
+member's row then get the playbook's no-row answer, which is honest and is
+not a refusal. Nothing is logged to MLflow: a chip that cannot be answered is
+a line in a backlog, not a series.
+
+The output is the failing strings and nothing else, because that is the only
+thing anybody does with this run:
+
+```
+63/70 offered questions answered
+7 that do not:
+  [followUp:my_record] Show those 8 games
+    refused
+```
+
+**In continuous integration, as a notice.** It is the second step of the
+`prod` job in `.github/workflows/agent-eval.yml`, with
+`continue-on-error: true`, and the count goes into a `::notice` and the job
+summary. Deliberately not a gate yet: nobody has measured this set, the first
+runs are the baseline, and a check that goes red on the day it lands is a
+check somebody turns off before anybody reads it. It becomes a gate once the
+baseline is known and every failing chip is either answerable or off the
+page.
+
 ## The broken-prompt check
 
 The claim that the rules in `pipeline/prompts.py` are load bearing is only
