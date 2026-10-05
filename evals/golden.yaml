@@ -64,6 +64,25 @@
 #   the bug. A plain entry could not say it, since `forbid` already searches
 #   the statements and every good run has `mart_matchups` in those.
 #
+#   A fifth kind, `answer:<pattern>`, is the mirror image: searched in the
+#   answer's prose and nowhere else. Two questions use it, and both for one
+#   reason. `re:[0-9a-f]{16}` is the shape of a player token and is in every
+#   question's `forbid`, and since PLA-208 the right answer to a question
+#   about the member's own record is a statement filtering
+#   `mart_player_summary` on the token the page context gave it. The token
+#   is in the SQL by design there, so those two entries are narrowed to the
+#   sentence the member reads, which is where the claim always was: the key
+#   may be used, and it may not be handed back.
+#
+#   `{player_token}` inside a `context` is filled in by the runner, out of
+#   the warehouse that is about to answer: the member row with the most
+#   games, ties broken by key. The token is an HMAC under a key this
+#   repository does not hold, so it is a different string in every build of
+#   the fixture warehouse, and one typed into this file would pass on one
+#   machine and nowhere else. A question carrying the placeholder has to be
+#   `warehouse: fixture`, which the loader enforces: a remote run would send
+#   the deployed service a context naming a row it does not have.
+#
 #   `forbid` is the half that catches the failure modes this corpus invites.
 #   `[0-9a-f]{16}` is the shape of the irreversible player token, which the
 #   agent can read in `mart_player_summary` and must never present as a person.
@@ -188,7 +207,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 13
+version: 14
 
 questions:
   - id: matchup_win_rate
@@ -1981,6 +2000,88 @@ questions:
       percentage, which is what the playbook asks for on a sample this size,
       and the token shape is forbidden as everywhere else: reading a member's
       own row is no reason to hand the key back.
+
+  - id: job_my_record_lost_to_most
+    job: my_record
+    warehouse: fixture
+    context: >-
+      The member is looking at their own games list. The member's player token is
+      {player_token}.
+    question: Which deck do I lose to most?
+    expect_tools: [query_marts]
+    require:
+      - "re:8 games\\b"
+      - "re:4 losses|lost 4|4 and 4|4\\s*[-–]\\s*4"
+      - Dragapult / Dusknoir
+      - "re:2 games\\b"
+    forbid:
+      - deck inclusion
+      - "re:\\bdim_player\\b"
+      - "re:handle|username|their name is"
+      - "answer:re:[0-9a-f]{16}"
+    notes: >-
+      The question the application was offering and the agent could not
+      answer. Before PLA-208 the only thing a request carried about the
+      member was the page they were on, so "which deck do I lose to most"
+      came back as a refusal from a service that was reading the right table
+      and could not tell which row was theirs. The context now states the
+      token, rule 5 says it may go in a WHERE clause, and the `my_record`
+      playbook says to filter on `player_key` with it.
+
+      The token is `{player_token}` in the file and a real sixteen characters
+      by the time the question is asked. It is read out of the warehouse that
+      is about to answer, the member row with the most games, which is the
+      row `job_my_record_season` already describes in words; a token typed
+      into this file would be an HMAC under a key nobody kept and would pass
+      on one machine only.
+
+      What a right answer is here is partly a refusal, and that is the point.
+      The member's record is 8 games, 4 wins and 4 losses, and six of those
+      eight seats named no archetype for their own side, so no readable table
+      breaks their losses down by opposing deck: `mart_player_summary` holds
+      a record and `mart_matchups` is keyed by archetype rather than by
+      member. The honest answer gives the record, says which part the
+      warehouse cannot give, and offers the nearest thing it can, which is
+      the community record for the deck they play most: Dragapult / Dusknoir,
+      2 games of theirs, and 1 game against each of two opponents.
+
+      `forbid` carries the token shape as every question does, and narrowed
+      to the prose with `answer:`. The statement is supposed to hold the
+      token now; the sentence the member reads is not, and that was always
+      the claim being made.
+
+  - id: job_my_record_going_first
+    job: my_record
+    warehouse: fixture
+    context: >-
+      The member is looking at their own games list. The member's player token is
+      {player_token}.
+    question: Does going first matter for me?
+    expect_tools: [query_marts]
+    require:
+      - "re:2 games\\b"
+      - "re:6 games\\b"
+      - "re:50%"
+      - "re:won 1|1 win\\b|1 of (the )?2"
+      - "re:won 3|3 wins\\b|3 of (the )?6"
+    forbid:
+      - deck inclusion
+      - "re:\\bfct_game_side\\b"
+      - "answer:re:[0-9a-f]{16}"
+    notes: >-
+      The other half of the ticket, and the reason `mart_player_summary` grew
+      four columns. Who opened a game is a column of `fct_game_side`, which
+      is deliberately off the allowlist, so until the split was counted in
+      the mart this question had no answer that did not go through a table
+      the agent may not read. `games_first`, `wins_first`, `games_second` and
+      `wins_second` put it one row away.
+
+      The member went first in 2 of their 8 games and won 1, and second in 6
+      and won 3, so both halves come out at 50% and the honest answer is that
+      going first has made no difference on a sample far too small to say so
+      with. Both counts are required, because an answer that gives one rate
+      and not the other has not answered the question, and 2 games is the
+      number that makes the caveat necessary.
 
   - id: job_card_rules_ability
     job: card_rules

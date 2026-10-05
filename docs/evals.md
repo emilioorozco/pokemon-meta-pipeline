@@ -6,10 +6,10 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds fifty questions in three kinds. Twenty-six are
+`evals/golden.yaml` holds fifty-two questions in three kinds. Twenty-eight are
 `golden`: questions a warehouse with games in it really answers, or, in a few
 cases, a question the page context answers, graded on whether the right fact
-came back. Five of those twenty-six carry a `job` and grade the shape of the
+came back. Seven of those twenty-eight carry a `job` and grade the shape of the
 answer the prompt's playbook for that job asks for. Fourteen are `adversarial`: questions nobody should get an answer
 to, added when the agent was opened to members, graded on whether the refusal
 held. Ten are `mistake`: questions about the game on the member's screen,
@@ -125,7 +125,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the twenty-six golden questions cover
+## What the twenty-eight golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -153,6 +153,8 @@ with it.
 | `job_my_mistake_review` | the post-loss review: the facts that mattered, a line the member could have taken, then the matchup |
 | `job_my_game_walkthrough` | one game out of the facts, then one mart sentence placing it against the community |
 | `job_my_record_season` | the member's own row of `mart_player_summary`, reported as a record rather than as a rate |
+| `job_my_record_lost_to_most` | the question the application was offering and the agent could not answer: the member's row found by the token the page context states, and the part the warehouse cannot break down said out loud |
+| `job_my_record_going_first` | the going-first split of that row, both halves with their own counts |
 | `job_card_rules_ability` | printed card text and no mart read at all |
 | `job_meta_week` | a week of the field: the number, the sample size and the caveat |
 
@@ -751,6 +753,51 @@ asserts 50 out of 50 and the line under the table reads
 `50/50 passed (26/26 golden, 14/14 adversarial, 10/10 mistake)`. The count of
 unverified numbers is unchanged at two.
 
+## Version 14, and the member the agent could not identify
+
+The application offers a member questions to click, and one of them was
+"which deck do I lose to most". It came back as a refusal every time, and the
+refusal was correct: the agent can read `mart_player_summary`, which is keyed
+by a one-way token, and nothing in a request said which row was the member's.
+PLA-208 is the application stating the token in the route sentence it already
+sends, and this file is where the claim that it works is scored.
+
+| id | what it grades |
+| --- | --- |
+| `job_my_record_lost_to_most` | the member's row found by the token, the record given as a record, and the part no readable table can give said in words rather than guessed: six of their eight seats named no archetype of their own, so the losses do not break down by opposing deck, and the nearest honest answer is the community record for the deck they play most |
+| `job_my_record_going_first` | the four new columns of the mart, both halves with their own counts, and the caveat that two games is no evidence either way |
+
+**The token is filled in at run time.** `{player_token}` in a question's
+`context` is replaced by the runner with a real token read out of the
+warehouse that is about to answer: the member row with the most games, ties
+broken by key, which is the row `job_my_record_season` already points at in
+words. It has to work that way. The token is an HMAC of a handle under a key
+this repository does not hold, so it is a different sixteen characters in
+every build of the fixture warehouse, and a token typed into the file would
+pass on one machine and nowhere else. The same substitution runs over the
+recorded statements in `evals/transcript.yaml`, because a competent run
+writes the token into a WHERE clause. A question carrying the placeholder has
+to be `warehouse: fixture`; the loader refuses anything else, since a remote
+run would otherwise send the deployed service a context naming a row it does
+not have.
+
+**And it is forbidden in the prose, not in the run.** Every question in the
+file forbids `re:[0-9a-f]{16}`, and until this version no correct run could
+produce one anywhere. Now the right answer to these two is a statement
+filtering on the token, so the shape is in the SQL by design and the
+unprefixed entry would fail a correct run. The two of them carry
+`answer:re:[0-9a-f]{16}` instead, a fifth `forbid` prefix searched in the
+prose and nowhere else, which is where the claim always was: the key may be
+used, and it may not be handed back. The receipt does not carry it either:
+`player_key` is in `describe.VALUELESS_COLUMNS`, so the line reads "for the
+member" and stops.
+
+`version` in the golden file is 14 and the transcript is 12; the replay
+asserts 52 out of 52 and the line under the table reads
+`52/52 passed (28/28 golden, 14/14 adversarial, 10/10 mistake)`, with
+`by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
+under it. The count of unverified numbers is unchanged at two.
+
 ## The broken-prompt check
 
 The claim that the rules in `pipeline/prompts.py` are load bearing is only
@@ -819,5 +866,5 @@ and a red build for it teaches people to ignore red builds.
 
 The pull-request gate is still `ci.yml`, which covers the harness for free:
 `pytest -m dbt` runs the whole set with the replay model against the same
-fixture marts and asserts fifty out of fifty, and the fast suite
+fixture marts and asserts fifty-two out of fifty-two, and the fast suite
 covers the scorer, the shape of the question set and the prompt override.

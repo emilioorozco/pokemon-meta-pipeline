@@ -652,8 +652,8 @@ boolean. The token is not a field of the request, it is not promoted to one,
 and no line of `pipeline.serve` or `pipeline.agent` writes it. The one place
 it can reach a log is the SQL of a query the model wrote, which is logged and
 is returned in `evidence.queries[].sql`; the receipt line beside it is built
-by `pipeline.describe` out of a fixed vocabulary and says "for the member",
-never the value. That is the same exposure `player_key` has had since the
+by `pipeline.describe` out of a fixed vocabulary and says "for the member"
+with no value after it, because `player_key` is in its `VALUELESS_COLUMNS`. That is the same exposure `player_key` has had since the
 mart existed, and it is the reason the golden set forbids the token's shape
 in every answer it grades.
 

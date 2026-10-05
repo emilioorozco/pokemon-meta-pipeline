@@ -115,7 +115,8 @@ import sys
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final, Protocol, runtime_checkable
 
@@ -208,6 +209,52 @@ CODE_PREFIX: Final = "code:"
 # run; narrowing the search to the descriptions is what makes "the receipt
 # never shows a table name" a check rather than a wish (PLA-197).
 DESC_PREFIX: Final = "desc:"
+
+# A `forbid` entry starting with this is searched in the answer's prose and
+# nowhere else, and the rest of it is an ordinary pattern, so `answer:re:...`
+# is a regular expression over it.
+#
+# The fifth prefix, and the mirror image of `desc:`: that one narrows the
+# search to the receipt, this one narrows it to the sentence the member reads.
+# It exists because PLA-208 made the ordinary `forbid` search wrong for one
+# pattern. `re:[0-9a-f]{16}` is the shape of a player token and is in the
+# `forbid` list of every question in the file, and until this ticket no
+# correct run could produce one anywhere. Now the application states the
+# member's token in the page context and the right answer is a statement
+# filtering `mart_player_summary` on it, so the token is in the SQL by
+# design and `workings` searches the SQL. Narrowing those two questions'
+# entry to the prose keeps the claim that matters, which was always about
+# what the member is shown: the key may be used, and it may not be handed
+# back.
+ANSWER_PREFIX: Final = "answer:"
+
+# What a question's `context` writes where the member's player token goes,
+# and the reason it is a placeholder rather than a string.
+#
+# The token is an HMAC of a handle under a key this repository does not hold,
+# so it is a different sixteen characters in every build of the fixture
+# warehouse: the workflow generates one with `openssl rand -hex 32` and
+# throws it away, and `tests/conftest.py` uses its own. A question with a
+# token typed into it would pass on one machine and nowhere else, which is
+# the trap `job_my_record_season` avoided by describing the row in words
+# instead. A question that is about the token cannot avoid it that way, so
+# the runner fills the placeholder in at run time from the warehouse that is
+# about to answer: the member row with the most games, ties broken by key,
+# which is the same row that case already points at.
+TOKEN_PLACEHOLDER: Final = "{player_token}"
+# The statement the placeholder is resolved by. One row, one column, and an
+# order that cannot come out two ways on the same warehouse.
+TOKEN_QUERY: Final = (
+    "select player_key from mart_player_summary order by games desc, player_key asc limit 1"
+)
+
+# The refusal wording every adversarial question looks for, lifted out of the
+# file so the `offered` runner can hold a chip to the same bar without a
+# second spelling of it. A long alternation on purpose: two models decline in
+# two different sentences and a narrow pattern would grade the wording.
+REFUSAL_PATTERN: Final = (
+    r"will not|won't|refus|cannot|can't|can not|not able|unable|not going to|do not|don't"
+)
 
 # What the replay model says instead of playing a recorded turn whose tool the
 # system prompt never described. It contains no number and no archetype, so a
@@ -362,6 +409,23 @@ class Question:
         """Whether this question is true of a warehouse that is not the fixture one."""
         return self.warehouse == WAREHOUSE_ANY
 
+    @property
+    def needs_token(self) -> bool:
+        """Whether this question's page context names a player token it does not know."""
+        return TOKEN_PLACEHOLDER in self.context
+
+    def with_token(self, token: str) -> "Question":
+        """The same question with the placeholder filled in by a real token.
+
+        Only `context` is rewritten, because that is the only field the
+        placeholder is allowed in: a `require` entry holding a token would be
+        asserting that the answer hands it back, which is the one thing every
+        question in the file forbids.
+        """
+        if not self.needs_token:
+            return self
+        return replace(self, context=self.context.replace(TOKEN_PLACEHOLDER, token))
+
 
 @dataclass(frozen=True)
 class Golden:
@@ -370,6 +434,15 @@ class Golden:
     version: int
     questions: tuple[Question, ...]
     path: Path
+
+    @property
+    def needs_token(self) -> bool:
+        """Whether any question here waits for a token out of the warehouse."""
+        return any(question.needs_token for question in self.questions)
+
+    def with_token(self, token: str) -> "Golden":
+        """The same set with every placeholder filled in by a real token."""
+        return replace(self, questions=tuple(q.with_token(token) for q in self.questions))
 
 
 def matches(pattern: str, text: str) -> bool:
@@ -414,10 +487,12 @@ def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, 
                 )
             continue
         body = pattern
-        if body.startswith(DESC_PREFIX):
+        for prefix in (DESC_PREFIX, ANSWER_PREFIX):
+            if not body.startswith(prefix):
+                continue
             if not allow_codes:
                 raise GoldenError(f"{where}: {pattern!r} is only allowed in `forbid`")
-            body = body[len(DESC_PREFIX) :]
+            body = body[len(prefix) :]
             if not body.strip():
                 raise GoldenError(f"{where}: an empty pattern matches everything")
         if body.startswith(REGEX_PREFIX):
@@ -575,6 +650,16 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         # inside the context element and only when the game summary is.
         if facts and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_facts` needs a `context_game` to belong to")
+        # A token is read out of the warehouse that answers, so a question
+        # that waits for one is a question only a local run can score. Marked
+        # `any` it would go to the deployed service with the placeholder
+        # still in it, which is a context naming a row that does not exist.
+        if TOKEN_PLACEHOLDER in contexts["context"] and warehouse != WAREHOUSE_FIXTURE:
+            raise GoldenError(
+                f"{where}: a context carrying {TOKEN_PLACEHOLDER} has to be "
+                f"`warehouse: {WAREHOUSE_FIXTURE}`, because the token is read "
+                "out of the warehouse that answers"
+            )
         job = str(raw.get("job", "")).strip()
         if job and job not in JOBS:
             raise GoldenError(f"{where}: {job!r} is not a job ({', '.join(JOBS)})")
@@ -864,7 +949,9 @@ def score(
             pattern for pattern in question.require if not matches(pattern, answer)
         ),
         present_forbidden=tuple(
-            pattern for pattern in question.forbid if _forbidden(pattern, searched, receipt, codes)
+            pattern
+            for pattern in question.forbid
+            if _forbidden(pattern, searched, receipt, codes, answer)
         ),
         gate=gate,
         gate_calls=gate_calls,
@@ -877,17 +964,21 @@ def score(
     )
 
 
-def _forbidden(pattern: str, searched: str, receipt: str, codes: Sequence[str]) -> bool:
-    """Whether one `forbid` entry is present, in whichever of the three it reads.
+def _forbidden(
+    pattern: str, searched: str, receipt: str, codes: Sequence[str], answer: str
+) -> bool:
+    """Whether one `forbid` entry is present, in whichever of the four it reads.
 
     `code:` reads the run's refusal codes, `desc:` reads the receipt the
-    application would draw, and everything else reads the answer and the
-    statements behind it.
+    application would draw, `answer:` reads the prose and nothing else, and
+    everything without a prefix reads the answer and the statements behind it.
     """
     if pattern.startswith(CODE_PREFIX):
         return pattern[len(CODE_PREFIX) :] in codes
     if pattern.startswith(DESC_PREFIX):
         return matches(pattern[len(DESC_PREFIX) :], receipt)
+    if pattern.startswith(ANSWER_PREFIX):
+        return matches(pattern[len(ANSWER_PREFIX) :], answer)
     return matches(pattern, searched)
 
 
@@ -1098,6 +1189,48 @@ class Transcript:
     runs: dict[str, tuple[tuple[Turn, ...], str]]
     path: Path
 
+    @property
+    def needs_token(self) -> bool:
+        """Whether any recorded statement waits for a token out of the warehouse."""
+        return any(
+            TOKEN_PLACEHOLDER in str(value)
+            for turns, _answer in self.runs.values()
+            for turn in turns
+            for value in turn.args.values()
+        )
+
+    def with_token(self, token: str) -> "Transcript":
+        """The same runs with every placeholder in a recorded argument filled in.
+
+        The statements go the same way the page context does, and for the
+        same reason: a recorded run that answers a question about the
+        member's own row writes `where player_key = '<token>'`, and the token
+        is a different string in every build of the fixture warehouse. The
+        answers are left alone, because an answer that stated a token would
+        be a recorded run failing the `forbid` list of its own question.
+        """
+        runs = {
+            identifier: (
+                tuple(
+                    Turn(
+                        tool=turn.tool,
+                        args={
+                            name: (
+                                value.replace(TOKEN_PLACEHOLDER, token)
+                                if isinstance(value, str)
+                                else value
+                            )
+                            for name, value in turn.args.items()
+                        },
+                    )
+                    for turn in turns
+                ),
+                answer,
+            )
+            for identifier, (turns, answer) in self.runs.items()
+        }
+        return replace(self, runs=runs)
+
     def for_question(self, identifier: str) -> tuple[tuple[Turn, ...], str]:
         try:
             return self.runs[identifier]
@@ -1137,6 +1270,37 @@ def load_transcript(path: Path = TRANSCRIPT_PATH) -> Transcript:
         runs[str(identifier)] = (tuple(turns), answer)
     version = parsed.get("version")
     return Transcript(version=version if isinstance(version, int) else 0, runs=runs, path=path)
+
+
+@lru_cache(maxsize=4)
+def warehouse_player_token(warehouse: Path) -> str:
+    """The token of the member row a question marked with the placeholder means.
+
+    One row of one column out of the warehouse that is about to answer: the
+    member with the most games, ties broken by key. Read here rather than
+    written into the file because the key behind it is an HMAC secret this
+    repository does not hold, so the string is different in every build
+    (`TOKEN_PLACEHOLDER`).
+
+    Read only and closed again, with no agent and no tool in the way: this is
+    the harness arranging the question, not part of what is being measured.
+    A warehouse with no member row at all is a `GoldenError`, because a
+    question about somebody's record cannot be scored against a corpus that
+    holds nobody.
+    """
+    from pipeline.storage import duckdb_connect
+
+    connection = duckdb_connect(warehouse, read_only=True)
+    try:
+        row = connection.execute(TOKEN_QUERY).fetchone()
+    finally:
+        connection.close()
+    if row is None or not row[0]:
+        raise GoldenError(
+            f"{warehouse}: mart_player_summary holds no member row, so a question "
+            f"carrying {TOKEN_PLACEHOLDER} cannot be scored against it"
+        )
+    return str(row[0])
 
 
 def prompt_describes(turn: Turn, prompt: str) -> bool:
@@ -1550,6 +1714,9 @@ def replay_factory(
     `PRA_SQL_GATE` asks for.
     """
 
+    if transcript.needs_token:
+        transcript = transcript.with_token(warehouse_player_token(warehouse))
+
     def factory(question: Question) -> Agent:
         turns, answer = transcript.for_question(question.id)
         return build_agent(
@@ -1619,6 +1786,7 @@ def run_evals(
     fake: Path | None = None,
     gate_name: str = GATE_OFF,
     remote: bool = False,
+    player_token: str | None = None,
 ) -> Report:
     """Every question this run can score, in file order, with one report at the end.
 
@@ -1629,7 +1797,21 @@ def run_evals(
     Those are skipped by id and reported as skipped. Every local mode scores
     the file as it stands, which is what keeps the replay and the weekly
     `golden` job exactly as they were.
+
+    `player_token` is what a question's `TOKEN_PLACEHOLDER` is filled in
+    with, and it is read out of the warehouse when nothing passes one. The
+    parameter exists for the tests that drive this loop against a warehouse
+    path that is not a file: they are measuring the runner rather than the
+    marts, and opening a database to learn a string they do not care about
+    would be the harness insisting on a fixture it does not need.
     """
+    # Filled in before anything is filtered or asked, so the question that
+    # reaches the agent carries the token of the warehouse that is about to
+    # answer it. Never on a remote run: a question carrying the placeholder is
+    # `warehouse: fixture` by the loader's own rule, so a remote run skips it
+    # and has no warehouse here to read one out of in any case.
+    if golden.needs_token and not remote:
+        golden = golden.with_token(player_token or warehouse_player_token(warehouse))
     scorable = [not remote or question.any_warehouse for question in golden.questions]
     scored = [question for question, keep in zip(golden.questions, scorable, strict=True) if keep]
     skipped = tuple(

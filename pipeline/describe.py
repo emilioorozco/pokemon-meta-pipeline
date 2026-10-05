@@ -177,6 +177,20 @@ COLUMN_WORDS: Final[dict[str, str]] = {
     "last_played": "last played",
 }
 
+# The columns whose filter value never reaches the line, so `player_key =
+# '<token>'` reads as "for the member" and stops there.
+#
+# One entry, and it is the only person-shaped column the agent can filter on.
+# Since PLA-208 the page context states the member's player token and the
+# right answer to a question about their own record is a statement filtering
+# on it, so this is now an ordinary line on an ordinary receipt rather than
+# a statement nobody writes. The value adds nothing a reader of their own
+# receipt wants: it is sixteen characters of hex that identify the row they
+# are already looking at, and on another player's page it is somebody else's.
+# A filter here is described by its words alone rather than dropped, because
+# "for the member" is the part that makes the lookup make sense.
+VALUELESS_COLUMNS: Final[frozenset[str]] = frozenset({"player_key"})
+
 # The columns a filter on is a time window rather than an equality, and the
 # word the window opens with.
 DATE_COLUMNS: Final[dict[str, str]] = {
@@ -504,6 +518,9 @@ def _conditions(sql: str, blanked: str) -> tuple[list[str], list[str]]:
             continue
         words = column_words(column)
         if not words:
+            continue
+        if column in VALUELESS_COLUMNS:
+            phrases.append(words)
             continue
         phrases.append(f"{words} {_OPERATOR_WORDS.get(operator, '=')} {value}")
     window = _window(dates)
