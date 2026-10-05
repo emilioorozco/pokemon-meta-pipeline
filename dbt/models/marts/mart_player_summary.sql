@@ -7,6 +7,16 @@
 --
 -- The favourite archetype is the one with the most seats, ties broken by name
 -- so a rebuild produces the same row twice.
+--
+-- The four going-first columns are the same record split by which side opened
+-- the game. They are counted here rather than left to a query because "does
+-- going first matter for me" is a question about one member, and the only
+-- table keyed by a member is this one: without them the answer would need
+-- `fct_game_side`, which is deliberately off the agent's allowlist. A seat
+-- whose opening side the log never recorded is counted in neither half, so
+-- the two add to `games` only for a member with no unknown side among their
+-- seats; `assert_player_summary_sides_account_for_every_seat` is that
+-- statement written out.
 with scoped as (
     select *
     from {{ ref('fct_game_side') }}
@@ -22,6 +32,10 @@ records as (
         count(*) filter (where is_win) as wins,
         count(*) filter (where is_loss) as losses,
         count(*) filter (where is_tie) as ties,
+        count(*) filter (where went_first) as games_first,
+        count(*) filter (where went_first and is_win) as wins_first,
+        count(*) filter (where not went_first) as games_second,
+        count(*) filter (where not went_first and is_win) as wins_second,
         min(date_key) as first_seen,
         max(date_key) as last_seen
     from scoped
@@ -49,6 +63,10 @@ select
     r.wins,
     r.losses,
     r.ties,
+    r.games_first,
+    r.wins_first,
+    r.games_second,
+    r.wins_second,
     r.wins / nullif(cast(r.wins + r.losses as double), 0) as win_rate,
     f.archetype_key as favourite_archetype_key,
     a.archetype_name as favourite_archetype_name,

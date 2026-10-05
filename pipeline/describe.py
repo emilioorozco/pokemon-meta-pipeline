@@ -136,6 +136,14 @@ COLUMN_WORDS: Final[dict[str, str]] = {
     "wins": "matches won",
     "losses": "matches lost",
     "ties": "drawn matches",
+    # The going-first split of a member's record. Named by hand rather than
+    # borrowed from the schema, because the generated sentences for these four
+    # open on "seats", which is the warehouse's word for a side of a game and
+    # not a member's, and the receipt says "matches" everywhere else.
+    "games_first": "matches going first",
+    "wins_first": "matches won going first",
+    "games_second": "matches going second",
+    "wins_second": "matches won going second",
     "undecided": "matches with no result",
     "win_rate": "win rate",
     "seen_rate": "how often a card was seen",

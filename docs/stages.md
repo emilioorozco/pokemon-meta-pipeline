@@ -654,11 +654,14 @@ Six dimensions:
   decklist card. Both are lower bounds; the model description says which is
   which and the two are never averaged together.
 - `mart_player_summary`: one row per member, their record and the archetype
-  they play most. Members only, again by construction.
+  they play most. Members only, again by construction. The record is also
+  split by which side opened the game, `games_first`, `wins_first`,
+  `games_second` and `wins_second`, because "does going first matter for me"
+  is a question about one member and this is the only mart keyed by one.
 
 ### Tests
 
-121 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+126 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
 `unique` and `not_null` on every primary key, the fact's `game_side_key`, each
 dimension's key and each mart's grain key; `relationships` from every foreign
 key on the fact to its dimension, with the `player_key` one scoped to the
