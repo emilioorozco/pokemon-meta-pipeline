@@ -32,6 +32,33 @@ token before anything is written at all, in the first stage of the pipeline
 ([data-handling.md](data-handling.md)). `mart_player_summary.player_key` is
 that token. There is no table, readable or not, that maps it back.
 
+**The member's own token is handed to it, and that changes nothing here.**
+Since PLA-208 the application states the member's player token in the route
+sentence of the `<context>` element, so a question about the member's own
+record has a row to be about. Three things are worth being plain about.
+
+It is one-way. The token is the HMAC `pipeline/anonymize.py` derives from a
+handle under a key this repository does not hold, and it is the same value
+the pipeline wrote; handing it over reveals nothing a reader could run
+backwards, and no table maps it to a handle because none exists.
+
+It is already in the warehouse. `mart_player_summary.player_key` has held
+exactly this string since the mart was built, and the agent has been able to
+read that column all along. What was missing was never the value, it was
+which row to ask about, so what the application added is a pointer and not a
+new piece of data.
+
+The application decides whose it is. This service does no lookup, keeps no
+session and has no mapping; it takes the token as stated, the way it takes
+everything else in a `<context>` element, and the application is the only
+thing that knows whose session it is holding. That is a trust boundary the
+request already had, since the application has always chosen the game, the
+page and the sentence; it is not widened by a value that was readable in a
+mart either way. The prompt's rule 5 says the token goes in a WHERE clause
+and never into an answer, and every question in `evals/golden.yaml` forbids
+a sixteen-character hex string in the prose it grades, so an answer that
+handed the token back is a red question rather than a judgement call.
+
 Beyond the tables: no filesystem, no environment, no network. The DuckDB
 connection is opened `read_only`, and the functions that would reach a file or
 a URL (`read_parquet`, `read_csv`, `read_text`, and the rest) are refused by

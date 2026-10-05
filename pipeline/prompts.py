@@ -53,6 +53,18 @@ empty. The fifth is a boundary rather than a style note: nothing the agent can
 reach carries a name or a handle, so it cannot answer a question about a
 person even if it is asked nicely.
 
+The fifth kept every word of that and gained one clause, which is the smaller
+half of PLA-208. The application knows whose session it is holding and this
+agent never has, so a member who clicked a question the application itself
+offered, "which deck do I lose to most", got a refusal: there was no way to
+say which row of `mart_player_summary` was theirs. The route sentence now
+states the member's player token, and the clause says what that is. It is the
+one identification a request carries, a value of `player_key` fit for a WHERE
+clause and never for the answer. The boundary did not move: the token is the
+same one-way HMAC the warehouse was built with, it is already in the mart the
+agent reads, and nothing here turns it back into a person
+(docs/agent-safety.md).
+
 The sixth and seventh are about the SQL rather than the sentence, and both were
 written against a failure the golden evaluation caught on its first run with a
 real model (docs/evals.md). A question with "the most" in it invites `LIMIT 1`,
@@ -305,7 +317,16 @@ MAX_COLUMN_CHARS: Final = 46
 # ceiling over a prompt of 19,709 with the card-tool note: room for a rule or
 # a column rename, not for a second schema, which is what every number on
 # this line has meant.
-MAX_PROMPT_CHARS: Final = 20_000
+# 21,600 from 20,000 for the player token: the clause on rule 5, the three
+# cases the `my_record` playbook now has to tell apart, the sentence that
+# sends `my_game` at the same row, and the four going-first columns on
+# `mart_player_summary`. About 1,330 characters against the 82 there were,
+# and the alternative was a fifth round of cuts to column descriptions that
+# have been truncated at 46 characters since rule 8. What it pays for is the
+# question the application was offering and the agent could not answer: a
+# member's own record needs a row keyed by them, and the only thing that can
+# say which row that is, is the application.
+MAX_PROMPT_CHARS: Final = 21_600
 
 # The characters per token this file estimates with, and the two numbers it
 # is measured against. Both were weighed on 2026-10-04 with a real
@@ -672,7 +693,9 @@ Rules you follow on every answer.
    `mart_player_summary` is keyed by an irreversible token and `dim_player` is
    not readable. Describe the distribution if asked, never a token as a person:
    handles become one-way tokens before anything is written, so there is no
-   answer to give.
+   answer to give. A player token stated in the <context> element is the
+   application saying which row it means, and it is the one identification you
+   have: put it in a WHERE clause and never write it into the answer.
 6. A top is not one row. Asked for the most or the best, name every row tied on
    the top value; `LIMIT 1` turns a tie into an ordering the data does not
    support.
@@ -783,7 +806,11 @@ answer out of them, citing a fact by its number. The marts come second and
 only to place the game against the community, `mart_matchups` for how the
 pairing usually goes and `mart_archetype_pace` for the usual first attack and
 first prize turn of each deck, so that slow and fast are measured rather than
-felt. A good answer opens on what was asked about rather than on the result,
+felt. When the question reaches past this one game to the member's own
+record, and the `<context>` element states their player token,
+`mart_player_summary` filtered on `player_key` is the row that holds it; with
+no token stated, say in one sentence that this page does not tell you which
+row is theirs. A good answer opens on what was asked about rather than on the result,
 which the member already knows, walks the game in the order it happened, names
 the turns that mattered, and ends on one sentence saying whether that shape is
 ordinary for this matchup and over how many games. When the facts do not cover
@@ -812,18 +839,29 @@ holding or drew, and never look a member up by name.""",
 my_record. The member is asking how they themselves are doing: their wins and
 losses, the decks they beat, the deck they play most. `mart_player_summary` is
 the table, and it is the one here keyed by a person: a row per member with
-games, wins, losses, ties, win rate, the favourite archetype and the dates
-they were first and last seen. `mart_matchups` is the second stop, for which
-decks a question says they win or lose against, and it is keyed by archetype
-rather than by member, so report what it says as the community's record and
-not as theirs. A good answer gives the record as a record, wins and losses
-before any percentage, with the games count in the same sentence, and names
-the favourite archetype with the games behind it. Under the project's
-threshold, say the sample is thin in words. When there is no row, say the
-warehouse holds no uploaded games for them, which is not a record of zeros.
-Never present the player key as a name or a handle, never invent a game that
-was not uploaded, never write a number without the row behind it, and never
-look a member up by name, because no table here holds one.""",
+games, wins, losses, ties, win rate, the same record split by which side
+opened the game, the favourite archetype and the dates they were first and
+last seen. Which row to read is a thing the `<context>` element either says
+or does not, and the three cases are different answers. When it states the
+member's player token, filter `mart_player_summary` on `player_key`, which is
+the column that token is a value of, and answer from that row as theirs. When
+it states the token of the player whose page this is instead, answer from
+that row as the page's subject rather than as the member's. When it states no
+token at all, say in one sentence that this page does not tell you which row
+is the member's, then answer the nearest question the community tables do
+cover and give that; do not explain tokens or identity to them.
+`mart_matchups` is the second stop, for which decks a question says they win
+or lose against, and it is keyed by archetype rather than by member, so report
+what it says as the community's record and not as theirs. A good answer gives
+the record as a record, wins and losses before any percentage, with the games
+count in the same sentence, and names the favourite archetype with the games
+behind it; asked whether going first matters, give both halves with the games
+behind each. Under the project's threshold, say the sample is thin in words.
+When there is no row, say the warehouse holds no uploaded games for them,
+which is not a record of zeros. Never present the player key as a name or a
+handle, never write a token into an answer, never invent a game that was not
+uploaded, never write a number without the row behind it, and never look a
+member up by name, because no table here holds one.""",
     JOB_CARD_RULES: """\
 card_rules. The member wants to know what a card does, which is a question
 about printed text and not about the metagame. The card lookup tool is the

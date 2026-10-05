@@ -560,7 +560,7 @@ do not look a member up by name.
 |---|---|---|
 | `my_mistake` | the game summary and the `<facts>` list, then `mart_matchups` and `mart_archetype_pace` | the two or three facts that mattered, one line the member could have taken, how the matchup usually goes, in that order, under 180 words |
 | `my_game` | the same two, then the same two marts | the game in the order it happened, ending on one sentence placing it against the community |
-| `my_record` | `mart_player_summary`, then `mart_matchups` | the record as a record, wins and losses before any percentage, with the games count and the favourite archetype |
+| `my_record` | `mart_player_summary`, filtered on the player token the context states, then `mart_matchups` | the record as a record, wins and losses before any percentage, with the games count and the favourite archetype; both halves with their own counts when the question is about going first |
 | `card_rules` | the card tool and `dim_card`, and no mart unless the member asked which decks play it | the printed text first, then at most one sentence of context |
 | `meta` | `mart_archetype_weekly`, `mart_matchups`, `mart_archetype_pace`, `mart_cards_seen` | the number, the sample size, and the caveat when `min_games_met` is false |
 | `out_of_scope` | nothing | one sentence saying what the agent does cover |
@@ -597,6 +597,65 @@ free text to fill.
 Where a playbook and a rule disagree, the rule wins, and the playbook block
 says so in its own first paragraph. The eleven rules are what is true of
 every answer; a playbook is what is true of one kind.
+
+### The player token, and which row is the member's
+
+The agent has one table keyed by a person, `mart_player_summary`, and until
+PLA-208 it had no way at all to tell which row was the member's. Nothing in a
+request carried identity: the application knows whose session it is holding,
+the service holds none, and the key in the mart is an HMAC that cannot be run
+backwards. So every question about the member's own record was answered as a
+refusal, including the ones the application itself had put on screen as a
+chip to click.
+
+The application now states the token in the route sentence it already sends,
+inside the `<context>` element:
+
+```
+The member is looking at their own games list. The member's player token is
+<sixteen hex characters>.
+```
+
+and, on a page about somebody else,
+
+```
+The player on this page has the player token <sixteen hex characters>.
+```
+
+It is the same token `pipeline/anonymize.py` derives, under the same key the
+pipeline anonymized the lake with, so it is already the value of
+`mart_player_summary.player_key` for that member. The application does the
+deriving; this service does no lookup, keeps no mapping and has no second
+spelling of the rule.
+
+**What the prompt does with it.** Rule 5 keeps every word it had and gained
+one clause: a token stated in the `<context>` element is the application
+saying which row it means, it goes in a WHERE clause, and it never goes in
+the answer. The `my_record` playbook spells out the three cases, because they
+are three different answers:
+
+| the context states | the answer |
+|---|---|
+| the member's own token | filter `mart_player_summary` on `player_key` and answer from that row as theirs |
+| another player's token | answer from that row as the subject of the page they are looking at, said as such |
+| no token | one sentence that this page does not say which row is theirs, then the nearest question the community tables do cover, answered |
+
+The third case is a sentence and not a lecture. A member who asked how they
+are doing does not want to be told about one-way tokens; they want the
+nearest thing the warehouse can give them, which is usually the community
+number for the deck or the week they were looking at.
+
+**What is logged: nothing of the token.** The token is a value inside
+`context`, and `context` has never been written down: the request log carries
+`context_chars`, a length, and the response carries `context_used`, a
+boolean. The token is not a field of the request, it is not promoted to one,
+and no line of `pipeline.serve` or `pipeline.agent` writes it. The one place
+it can reach a log is the SQL of a query the model wrote, which is logged and
+is returned in `evidence.queries[].sql`; the receipt line beside it is built
+by `pipeline.describe` out of a fixed vocabulary and says "for the member",
+never the value. That is the same exposure `player_key` has had since the
+mart existed, and it is the reason the golden set forbids the token's shape
+in every answer it grades.
 
 ### The image ships without the dbt tree
 
