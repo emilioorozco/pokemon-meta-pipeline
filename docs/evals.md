@@ -834,7 +834,7 @@ application itself had drawn and getting a refusal.
 
 `evals/offered.json` is every such string: the "Try asking" suggestions a
 page opens the drawer with, and the follow-up chips under an answer.
-Seventy one of them today, 53 suggestions and 18 follow-ups.
+Seventy of them today, 54 suggestions and 16 follow-ups.
 
 **Where the file comes from.** It is the web application's own export,
 `apps/web/src/lib/askOffered.json`, copied in unchanged. Refreshing it is one

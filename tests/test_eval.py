@@ -1681,7 +1681,7 @@ class OfferedRecorder:
 def test_every_string_the_application_offers_loads_and_can_be_asked() -> None:
     """The committed export, checked as the runner will have to use it."""
     cases = evals.load_offered()
-    assert len(cases) == 71
+    assert len(cases) == 70
     sources = {case.source for case in cases}
     assert sources == set(evals.OFFERED_SOURCES)
     for case in cases:

@@ -218,6 +218,12 @@
   {
     "source": "suggestion",
     "route": "deck",
+    "text": "Should I go first or second with this deck?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
+    "route": "deck",
     "text": "How has this deck's win rate moved week by week?",
     "needs": ["archetype"]
   },
@@ -225,12 +231,6 @@
     "source": "suggestion",
     "route": "deck",
     "text": "Which decks beat this one most often?",
-    "needs": ["archetype"]
-  },
-  {
-    "source": "suggestion",
-    "route": "deck",
-    "text": "Should I go first or second with this deck?",
     "needs": ["archetype"]
   },
   {
@@ -250,6 +250,12 @@
     "route": "player_deck",
     "text": "What are the most seen cards in this deck's lists?",
     "needs": ["archetype", "card"]
+  },
+  {
+    "source": "suggestion",
+    "route": "player_deck",
+    "text": "Should I go first or second with this deck?",
+    "needs": ["archetype"]
   },
   {
     "source": "suggestion",
@@ -356,26 +362,14 @@
   {
     "source": "followUp",
     "job": "my_record",
-    "text": "Which matchup has the most games this month?",
-    "needs": []
+    "text": "Which deck do I lose to most?",
+    "needs": ["mine", "token"]
   },
   {
     "source": "followUp",
     "job": "my_record",
-    "text": "How does {archetype} do against the field this month?",
-    "needs": ["archetype"]
-  },
-  {
-    "source": "followUp",
-    "job": "my_record",
-    "text": "Which deck is played most this week?",
-    "needs": []
-  },
-  {
-    "source": "followUp",
-    "job": "my_record",
-    "text": "What is the usual first attack turn for {archetype}?",
-    "needs": ["archetype"]
+    "text": "Does going first matter for me?",
+    "needs": ["mine", "token"]
   },
   {
     "source": "followUp",
