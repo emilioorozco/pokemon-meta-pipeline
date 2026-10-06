@@ -836,6 +836,54 @@ provider's timeout moves a mean and nothing in the mean says that it did.
 keys, and the MLflow run logs `latency_p50_ms` and `latency_p95_ms`. No
 question changed, so `version` in the golden file is unchanged.
 
+## Scoring a model that thinks
+
+`--model` hands a name to `pipeline.agent` and has done since the harness
+existed, and that was enough while every model under test was the small one.
+It is not enough for a comparison: the larger models run adaptive thinking,
+which is billed as output on every call of every question and is slower, and
+a run of them at their defaults against a sixty-second client is a run that
+measures the timeout.
+
+`--effort low|medium|high|xhigh|max` is the flag for it, and it is a surface
+on `PRA_AGENT_EFFORT` the way `--prompt-override` is a surface on the prompt
+variable: one hook, so a run is reproducible by hand with an exported
+variable. Unset, nothing reaches the client and the agent built here is the
+deployed one. `PRA_AGENT_TIMEOUT_S` raises the client's ceiling for the same
+run and has no flag, because a timeout is a property of the machine the run
+is on rather than of the experiment. `--effort` is refused with `--remote`,
+beside `--model`, `--fake` and `--prompt-override`, for the reason those are:
+the deployed service builds its own client and a flag that reached nothing
+would be a score filed under an experiment that never happened.
+
+`--golden <path>` scores a file of its own instead of `evals/golden.yaml`,
+which is how `evals/golden_competitive.yaml` is run and priced apart from the
+fifty-two every run in the tracking store shares.
+
+## The competitive set
+
+`evals/golden_competitive.yaml` is ten questions, `N01` to `N10`, written for
+the model comparison in `docs/research/ask-competitive-spike.md` and not part
+of the fifty-two. They are the questions where a weighing, an inference or a
+refusal is the hard part rather than the lookup, which is where a bigger
+model would earn its price if it earns it anywhere.
+
+All ten are `warehouse: any`. They have to be: `--model` and `--remote` are
+two different runs, so a model comparison is local against the ten fixture
+games, and a question asserting a production number would be grading the
+corpus. What they require is a shape, a rate with its sample size or a turn
+number with a caveat beside it, which the fixtures satisfy as readily as two
+hundred real games.
+
+Each one carries `expected_points`, which is new and is not a check. It is
+the expert's statement, written before anybody saw an answer, of what a good
+answer contains, and it is there for the four-axis hand rubric the spike
+scores these with. The loader ignores fields it does not know, so the list
+travels with the question and costs the harness nothing.
+
+The file is not in the weekly job and is not in `pytest -m dbt`. It is run on
+demand, with `--golden`, and its version is its own.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

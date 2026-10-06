@@ -2046,6 +2046,53 @@ def test_the_provider_key_names_the_same_variable_the_serving_app_checks() -> No
     assert PROVIDER_KEY_VAR == agent.API_KEY_VAR
 
 
+def test_the_client_asks_for_no_thinking_and_waits_a_minute_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The deployed client, which is every run but a model comparison's."""
+    monkeypatch.delenv(agent.EFFORT_VAR, raising=False)
+    monkeypatch.delenv(agent.TIMEOUT_VAR, raising=False)
+
+    assert agent.client_options() == {
+        "model": agent.DEFAULT_MODEL,
+        "timeout": float(agent.DEFAULT_TIMEOUT_S),
+        "stop": None,
+    }
+
+
+def test_an_effort_and_a_longer_wait_reach_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two variables a comparison against a thinking model sets."""
+    monkeypatch.setenv(agent.EFFORT_VAR, "low")
+    monkeypatch.setenv(agent.TIMEOUT_VAR, "180")
+
+    assert agent.client_options("claude-sonnet-5") == {
+        "model": "claude-sonnet-5",
+        "timeout": 180.0,
+        "stop": None,
+        "reasoning_effort": "low",
+    }
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        (agent.EFFORT_VAR, "thorough"),
+        (agent.TIMEOUT_VAR, "a while"),
+        (agent.TIMEOUT_VAR, "0"),
+    ],
+)
+def test_a_misspelt_setting_is_refused_rather_than_ignored(
+    monkeypatch: pytest.MonkeyPatch, variable: str, value: str
+) -> None:
+    """A silently dropped setting is a run that measured something else."""
+    monkeypatch.delenv(agent.EFFORT_VAR, raising=False)
+    monkeypatch.delenv(agent.TIMEOUT_VAR, raising=False)
+    monkeypatch.setenv(variable, value)
+
+    with pytest.raises(ValueError, match=variable):
+        agent.client_options()
+
+
 # ------------------------------------------------- the facts and the numbers --
 #
 # The block and the check in the agent rather than in `pipeline.facts`: what

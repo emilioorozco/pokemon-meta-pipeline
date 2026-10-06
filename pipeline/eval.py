@@ -144,6 +144,8 @@ from langchain_core.runnables import Runnable
 
 from pipeline.agent import (
     CARD_TOOL,
+    EFFORT_VAR,
+    EFFORTS,
     REFUSAL_CODES,
     REFUSED_TABLE_NOT_FOUND,
     SQL_TOOL,
@@ -2622,6 +2624,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=f"replace the system prompt with this file (sets ${PROMPT_FILE_VAR})",
     )
+    parser.add_argument(
+        "--effort",
+        default=None,
+        choices=EFFORTS,
+        help=f"how hard the model is asked to think (sets ${EFFORT_VAR}). Unset is the "
+        "deployed default, which asks for nothing and is what the small model wants; "
+        "`low` is what a comparison against a thinking model should use",
+    )
     parser.add_argument("--experiment", default=DEFAULT_EXPERIMENT, help="MLflow experiment name")
     parser.add_argument(
         "--tracking-uri",
@@ -2705,6 +2715,7 @@ def main(argv: list[str] | None = None) -> int:
         ("--fake", args.fake),
         ("--prompt-override", args.prompt_override),
         ("--model", args.model),
+        ("--effort", args.effort),
     ):
         if remote and value is not None:
             sys.stderr.write(f"{parser.prog}: {name} and --remote are two different runs\n")
@@ -2718,6 +2729,11 @@ def main(argv: list[str] | None = None) -> int:
         # second mechanism: one hook, so what the evaluation measures is what a
         # person reproducing it by hand would get.
         os.environ[PROMPT_FILE_VAR] = str(args.prompt_override)
+
+    if args.effort is not None:
+        # The same one hook, for the same reason. Unset, nothing is sent and
+        # the client is the deployed one.
+        os.environ[EFFORT_VAR] = args.effort
 
     card_index = default_card_index(args.card_index)
     if args.card_index is not None and card_index is None:

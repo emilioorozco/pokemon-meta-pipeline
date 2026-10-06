@@ -28,6 +28,7 @@ nothing when it is off" is a measurement rather than a claim.
 """
 
 import json
+import os
 import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -1449,14 +1450,93 @@ def test_a_service_that_will_not_answer_costs_one_question_and_not_the_run(
     assert "403" in str(report.results[0].error)
 
 
-@pytest.mark.parametrize("flag", ["--fake", "--prompt-override", "--model"])
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--fake", "x"),
+        ("--prompt-override", "x"),
+        ("--model", "x"),
+        ("--effort", "low"),
+    ],
+)
 def test_remote_and_a_locally_built_agent_are_two_different_runs(
-    flag: str, capsys: pytest.CaptureFixture[str]
+    flag: str, value: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Refused rather than ignored: a dropped flag is a score for another experiment."""
-    code = evals.main(["--remote", "https://example.com", flag, "x"])
+    code = evals.main(["--remote", "https://example.com", flag, value])
     assert code == 2
     assert "two different runs" in capsys.readouterr().err
+
+
+def test_an_effort_reaches_the_agent_through_the_one_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One hook, so a run is reproducible by hand with an exported variable."""
+    # Set rather than deleted, so monkeypatch takes the variable back at the
+    # end of the test: `main` writes it through `os.environ` and a leaked
+    # effort would reach every client built after this test.
+    monkeypatch.setenv(evals.EFFORT_VAR, "")
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION)
+    # Exit 2 on the warehouse, which is after the flag has been read and
+    # before anything would ask a provider for an answer.
+    assert evals.main(["--golden", str(path), "--effort", "low", "--warehouse", "no.duckdb"]) == 2
+    assert os.environ[evals.EFFORT_VAR] == "low"
+
+
+def test_a_question_set_of_its_own_is_scored_alone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--golden` is how a file beside the fifty-two is run without them.
+
+    The competitive set is a file of its own so that it can be scored, and
+    priced, apart from the set every run in the tracking store shares.
+    """
+    path = write_golden(
+        tmp_path / "competitive.yaml",
+        "  - id: solo\n    question: how many games\n    expect_tools: []\n"
+        '    require: ["re:\\\\b12 games"]\n',
+    )
+    transcript = tmp_path / "t.yaml"
+    transcript.write_text("version: 1\nruns:\n  solo:\n    answer: over 12 games\n", "utf-8")
+    warehouse = tmp_path / "meta.duckdb"
+    warehouse.write_bytes(b"")
+
+    code = evals.main(
+        [
+            "--golden",
+            str(path),
+            "--fake",
+            str(transcript),
+            "--warehouse",
+            str(warehouse),
+            "--no-mlflow",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["golden_path"] == str(path)
+    assert [entry["id"] for entry in payload["questions"]] == ["solo"]
+
+
+def test_a_question_set_that_is_not_there_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A typo in the path is a run that scored nothing, not a run that passed."""
+    warehouse = tmp_path / "meta.duckdb"
+    warehouse.write_bytes(b"")
+    code = evals.main(["--golden", str(tmp_path / "gone.yaml"), "--warehouse", str(warehouse)])
+    assert code == 2
+    assert "gone.yaml" in capsys.readouterr().err
+
+
+def test_a_run_with_no_effort_flag_leaves_the_deployed_client_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(evals.EFFORT_VAR, raising=False)
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION)
+    assert evals.main(["--golden", str(path), "--warehouse", "no.duckdb"]) == 2
+    assert evals.EFFORT_VAR not in os.environ
 
 
 # ------------------------------------------------------------------- dbt --

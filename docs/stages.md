@@ -1108,6 +1108,20 @@ Anthropic through `langchain-anthropic`, default model
 runs without it. The size of model is the job: write one SELECT over seven
 tables and read a dozen rows back.
 
+Two more variables exist for the one run that puts a bigger model to the same
+job, and both are unset everywhere else. `PRA_AGENT_EFFORT` is the provider's
+effort level, `low` through `max`, which on a model that thinks is the depth
+of the thinking and the token spend with it; the default model does none
+unless it is asked, so leaving it unset is the deployed client exactly as it
+was. `PRA_AGENT_TIMEOUT_S` raises the client's sixty-second ceiling, which a
+thinking model can otherwise turn into the thing being measured. A value
+neither understands is refused when the client is built rather than dropped:
+a setting that went nowhere is a run that measured something else and said
+nothing about it. Neither is offered as a way to switch thinking off, because
+a model asked not to think has two documented failure modes, a tool call
+written into the visible text and internal tags leaking into the prose, and
+both would score here as the model being bad at this job.
+
 The model is injected, exactly as the serving stage injects its model loader,
 so the tests pass a scripted chat model that returns pre-written `AIMessage`s
 with real `tool_calls` on them. The loop, the tool, the SQL validation and the
