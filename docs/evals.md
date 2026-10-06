@@ -798,6 +798,44 @@ asserts 52 out of 52 and the line under the table reads
 `by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
+## How long a question took
+
+The harness measured what a run cost and never measured what it took. That
+was fine while there was one model: the deployed service puts `latency_ms` in
+the `/ask` body, and nobody was choosing between two agents on a laptop. A
+model comparison is a latency decision as much as a cost one, so `Result`
+carries `elapsed_ms` now, and the run reports two percentiles of it.
+
+**What the clock is around.** The one `ask` call and nothing else, so every
+model call, every tool call and every gate verdict of that question is inside
+the number, and none of the scoring is. A monotonic clock, because what is
+being measured is a duration. A question that raised is timed too: a provider
+timeout is a duration, and recording it as nothing would hide the one case
+the field exists to find.
+
+**One more line on a run**, beside the gate cost and the two counts, printed
+whether or not anything was timed:
+
+```
+52/52 passed (28/28 golden, 14/14 adversarial, 10/10 mistake)
+by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules
+gate cost: $0.000000 (0 calls, 0 refused), under a cent
+guessed tables: 0
+unverified numbers: 2 in busiest_archetype, busiest_archetype_shape
+latency: p50 0 ms, p95 0 ms
+```
+
+Zeros there because that is a replay, and a replay's duration is a fact about
+the laptop it ran on. The percentiles are nearest rank rather than
+interpolated: at sixty-two questions the 95th is the third slowest, and a
+number interpolated between two of them is a duration no question took. A
+median and a tail rather than a mean, because one question that hit the
+provider's timeout moves a mean and nothing in the mean says that it did.
+
+`latency_ms` is in the JSON report beside `usage_totals`, with the same two
+keys, and the MLflow run logs `latency_p50_ms` and `latency_p95_ms`. No
+question changed, so `version` in the golden file is unchanged.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

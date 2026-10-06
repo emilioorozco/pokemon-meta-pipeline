@@ -887,6 +887,53 @@ def test_the_report_totals_are_zeros_rather_than_missing_on_a_run_with_no_usage(
     assert report.usage_totals() == dict.fromkeys(evals.USAGE_TOTAL_KEYS, 0)
 
 
+def test_a_question_carries_how_long_it_took_into_the_report() -> None:
+    """The field a model comparison is a latency decision on as well as a cost one."""
+    report = report_of(
+        evals.score(question(id="quick"), "12 games", [evals.SQL_TOOL], elapsed_ms=1_200),
+        evals.score(question(id="slow"), "12 games", [evals.SQL_TOOL], elapsed_ms=9_800),
+    )
+    payload = json.loads(json.dumps(report.as_dict()))
+    assert [entry["elapsed_ms"] for entry in payload["questions"]] == [1_200, 9_800]
+    assert payload["latency_ms"] == {"p50": 1_200, "p95": 9_800}
+    assert "latency: p50 1200 ms, p95 9800 ms" in evals.render(report)
+
+
+def test_the_tail_percentile_is_a_duration_a_question_really_took() -> None:
+    """Nearest rank, so the 95th of twenty questions is the slowest of them.
+
+    An interpolated percentile over a set this small reports a number no
+    question took, which is a figure nobody can go and look at.
+    """
+    timings = sorted(range(100, 2_100, 100))
+    assert evals.percentile_ms(timings, 50) == 1_000
+    assert evals.percentile_ms(timings, 95) == 1_900
+    assert evals.percentile_ms([], 50) == 0
+    assert evals.percentile_ms([7], 95) == 7
+
+
+def test_a_question_that_raised_is_timed_too() -> None:
+    """A provider timeout is a duration, and reporting it as nothing hides it."""
+
+    from pipeline.agent import Answer
+
+    class Refuses:
+        model_name = "unreachable"
+
+        def ask(self, question: str, context: str = "", **extra: object) -> Answer:
+            raise RuntimeError("the provider timed out")
+
+    result = evals.run_question(question(id="timed_out"), Refuses())
+    assert result.error is not None and not result.passed
+    assert result.elapsed_ms >= 0
+
+
+def test_a_run_that_timed_nothing_reports_the_zeros() -> None:
+    """A replay's duration is a fact about a laptop, and a missing key is a gap."""
+    report = report_of(evals.score(question(id="one"), "12 games", [evals.SQL_TOOL]))
+    assert report.latency_ms() == {"p50": 0, "p95": 0}
+
+
 def test_the_report_advisory_count_is_in_the_json_and_does_not_touch_passed() -> None:
     asked = question(
         id="adv",
