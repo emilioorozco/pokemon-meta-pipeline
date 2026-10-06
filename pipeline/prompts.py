@@ -221,7 +221,7 @@ DBT_MODELS_DIR: Final = REPO_ROOT / "dbt" / "models"
 PROMPT_FILE_VAR: Final = "PRA_AGENT_SYSTEM_PROMPT_FILE"
 
 # The tables the SQL tool will run against, and therefore the only ones the
-# prompt describes: the five marts of the gold layer, and the three dimensions
+# prompt describes: the six marts of the gold layer, and the three dimensions
 # a mart's keys join to.
 #
 # `fct_game_side` is absent because the marts already aggregate it and a fact
@@ -239,6 +239,7 @@ PROMPT_FILE_VAR: Final = "PRA_AGENT_SYSTEM_PROMPT_FILE"
 # prompt to one schema file and inside its token budget.
 ALLOWED_TABLES: Final[tuple[str, ...]] = (
     "mart_matchups",
+    "mart_archetype_turn_order",
     "mart_archetype_weekly",
     "mart_archetype_pace",
     "mart_cards_seen",
@@ -326,7 +327,18 @@ MAX_COLUMN_CHARS: Final = 46
 # question the application was offering and the agent could not answer: a
 # member's own record needs a row keyed by them, and the only thing that can
 # say which row that is, is the application.
-MAX_PROMPT_CHARS: Final = 21_600
+# 23,700 from 21,600 for the turn-order mart: 1,024 characters of schema for
+# its fifteen columns and about 1,000 of playbook under `meta` and
+# `my_record`, against the 350 there were. The same trade as
+# `mart_archetype_pace` and answered the same way: a table's lines are a name
+# and a sentence each, and the columns are the two keys, the side of the
+# table, the record, the rate, the two bounds and the thin-cell flag, so
+# there is nothing in the block to cut that would not leave the agent
+# guessing at a column. The playbook half is longer than a table usually
+# earns because this is the one answer the prompt has to forbid as well as
+# describe: every other mart would happily hand over a turn-order-shaped
+# number that is not one.
+MAX_PROMPT_CHARS: Final = 23_700
 
 # The characters per token this file estimates with, and the two numbers it
 # is measured against. Both were weighed on 2026-10-04 with a real
@@ -796,7 +808,18 @@ no row at all, say the warehouse holds no games for it, which is a different
 fact from a win rate of zero, and offer the nearest thing it does hold.
 Never fill a gap with a number from outside these
 tables, never invent a turn or a game the rows do not show, never speculate
-about what an opponent was holding, and never look a member up by name.""",
+about what an opponent was holding, and never look a member up by name.
+
+Going first or second is `mart_archetype_turn_order` and nothing else. One
+row per deck, per opponent and per side of the table, with the deck's whole
+record on that side under the opponent key `all`, so a pairing and a deck in
+general are two rows rather than two queries. Give both sides or you have not
+answered the question: each side's games, each side's win rate, and the
+interval beside each rate. Say in words that there are too few games to tell
+when the two intervals overlap or either side is under the project's
+threshold, which on this corpus is nearly always. No other table records who
+opened a game, so never read a first-or-second answer out of `mart_matchups`,
+out of `mart_archetype_weekly` or out of a pace average.""",
     JOB_MY_GAME: """\
 my_game. The member is looking at one of their own games and wants to
 understand what happened in it, which is a question about description before
@@ -861,7 +884,13 @@ When there is no row, say the warehouse holds no uploaded games for them,
 which is not a record of zeros. Never present the player key as a name or a
 handle, never write a token into an answer, never invent a game that was not
 uploaded, never write a number without the row behind it, and never look a
-member up by name, because no table here holds one.""",
+member up by name, because no table here holds one.
+
+Their own going-first record is `mart_player_summary` and the four columns
+above; the deck's is `mart_archetype_turn_order`, which is everybody who
+played it and not them. Say which of the two a number is, give both sides
+with the games behind each, and never offer one of the two in place of the
+other.""",
     JOB_CARD_RULES: """\
 card_rules. The member wants to know what a card does, which is a question
 about printed text and not about the metagame. The card lookup tool is the

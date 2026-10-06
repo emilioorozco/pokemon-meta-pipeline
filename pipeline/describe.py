@@ -83,6 +83,7 @@ MAX_VALUE_CHARS: Final = 48
 # "the calendar" rather than "one row per play date".
 MART_PHRASES: Final[dict[str, str]] = {
     "mart_matchups": "matchup results",
+    "mart_archetype_turn_order": "how each deck does going first and going second",
     "mart_archetype_weekly": "how each deck did week by week",
     "mart_archetype_pace": "how fast each deck plays",
     "mart_cards_seen": "which cards showed up",
@@ -145,6 +146,16 @@ COLUMN_WORDS: Final[dict[str, str]] = {
     "games_second": "matches going second",
     "wins_second": "matches won going second",
     "undecided": "matches with no result",
+    # The turn-order mart's own four. `went_first` is the side of the table
+    # and reads as the thing itself, because a receipt saying "for going
+    # first" is what the member asked for; the two bounds are named as the
+    # ends of a range rather than as an interval, which is a word a member
+    # should not have to have met.
+    "went_first": "going first",
+    "decided_games": "matches with a result",
+    "ci_low": "the low end of the range",
+    "ci_high": "the high end of the range",
+    "is_all_opponents": "against every opponent",
     "win_rate": "win rate",
     "seen_rate": "how often a card was seen",
     "inclusion_rate": "how often a card was in a shared deck",
