@@ -798,6 +798,92 @@ asserts 52 out of 52 and the line under the table reads
 `by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
+## How long a question took
+
+The harness measured what a run cost and never measured what it took. That
+was fine while there was one model: the deployed service puts `latency_ms` in
+the `/ask` body, and nobody was choosing between two agents on a laptop. A
+model comparison is a latency decision as much as a cost one, so `Result`
+carries `elapsed_ms` now, and the run reports two percentiles of it.
+
+**What the clock is around.** The one `ask` call and nothing else, so every
+model call, every tool call and every gate verdict of that question is inside
+the number, and none of the scoring is. A monotonic clock, because what is
+being measured is a duration. A question that raised is timed too: a provider
+timeout is a duration, and recording it as nothing would hide the one case
+the field exists to find.
+
+**One more line on a run**, beside the gate cost and the two counts, printed
+whether or not anything was timed:
+
+```
+52/52 passed (28/28 golden, 14/14 adversarial, 10/10 mistake)
+by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules
+gate cost: $0.000000 (0 calls, 0 refused), under a cent
+guessed tables: 0
+unverified numbers: 2 in busiest_archetype, busiest_archetype_shape
+latency: p50 0 ms, p95 0 ms
+```
+
+Zeros there because that is a replay, and a replay's duration is a fact about
+the laptop it ran on. The percentiles are nearest rank rather than
+interpolated: at sixty-two questions the 95th is the third slowest, and a
+number interpolated between two of them is a duration no question took. A
+median and a tail rather than a mean, because one question that hit the
+provider's timeout moves a mean and nothing in the mean says that it did.
+
+`latency_ms` is in the JSON report beside `usage_totals`, with the same two
+keys, and the MLflow run logs `latency_p50_ms` and `latency_p95_ms`. No
+question changed, so `version` in the golden file is unchanged.
+
+## Scoring a model that thinks
+
+`--model` hands a name to `pipeline.agent` and has done since the harness
+existed, and that was enough while every model under test was the small one.
+It is not enough for a comparison: the larger models run adaptive thinking,
+which is billed as output on every call of every question and is slower, and
+a run of them at their defaults against a sixty-second client is a run that
+measures the timeout.
+
+`--effort low|medium|high|xhigh|max` is the flag for it, and it is a surface
+on `PRA_AGENT_EFFORT` the way `--prompt-override` is a surface on the prompt
+variable: one hook, so a run is reproducible by hand with an exported
+variable. Unset, nothing reaches the client and the agent built here is the
+deployed one. `PRA_AGENT_TIMEOUT_S` raises the client's ceiling for the same
+run and has no flag, because a timeout is a property of the machine the run
+is on rather than of the experiment. `--effort` is refused with `--remote`,
+beside `--model`, `--fake` and `--prompt-override`, for the reason those are:
+the deployed service builds its own client and a flag that reached nothing
+would be a score filed under an experiment that never happened.
+
+`--golden <path>` scores a file of its own instead of `evals/golden.yaml`,
+which is how `evals/golden_competitive.yaml` is run and priced apart from the
+fifty-two every run in the tracking store shares.
+
+## The competitive set
+
+`evals/golden_competitive.yaml` is ten questions, `N01` to `N10`, written for
+the model comparison in `docs/research/ask-competitive-spike.md` and not part
+of the fifty-two. They are the questions where a weighing, an inference or a
+refusal is the hard part rather than the lookup, which is where a bigger
+model would earn its price if it earns it anywhere.
+
+All ten are `warehouse: any`. They have to be: `--model` and `--remote` are
+two different runs, so a model comparison is local against the ten fixture
+games, and a question asserting a production number would be grading the
+corpus. What they require is a shape, a rate with its sample size or a turn
+number with a caveat beside it, which the fixtures satisfy as readily as two
+hundred real games.
+
+Each one carries `expected_points`, which is new and is not a check. It is
+the expert's statement, written before anybody saw an answer, of what a good
+answer contains, and it is there for the four-axis hand rubric the spike
+scores these with. The loader ignores fields it does not know, so the list
+travels with the question and costs the harness nothing.
+
+The file is not in the weekly job and is not in `pytest -m dbt`. It is run on
+demand, with `--golden`, and its version is its own.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

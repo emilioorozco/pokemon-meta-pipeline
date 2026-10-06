@@ -126,6 +126,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
@@ -143,6 +144,8 @@ from langchain_core.runnables import Runnable
 
 from pipeline.agent import (
     CARD_TOOL,
+    EFFORT_VAR,
+    EFFORTS,
     REFUSAL_CODES,
     REFUSED_TABLE_NOT_FOUND,
     SQL_TOOL,
@@ -352,6 +355,11 @@ GATE_ALLOWED: Final = "allowed"
 GATE_ALLOWED_LOW: Final = "allowed_low"
 GATE_REFUSED: Final = "refused"
 GATE_ERRORED: Final = "error"
+# The two percentiles a run reports for how long a question took. A median
+# and a tail, because a routing decision made on a mean is a decision made on
+# the one question that timed out.
+LATENCY_PERCENTILES: Final[tuple[int, ...]] = (50, 95)
+
 # One cent, the ceiling the ticket set for a whole run. Printed beside the
 # total rather than enforced: a run that cost more is worth seeing, and a
 # harness that exits non-zero on a price is a harness that fails on a rate
@@ -753,6 +761,13 @@ class Result:
     # survive scoring and the report prints these under a question that
     # failed with facts in front of it.
     facts: tuple[FactEvidence, ...] = ()
+    # How long the whole answer took, in milliseconds: the wall clock around
+    # the one `ask` call, so every model call, every tool call and every gate
+    # verdict of this question is inside it. Measured on the question that
+    # raised as well, because a question that took sixty seconds to fail is a
+    # timeout and the duration is the only thing that says so. Zero on a
+    # result built by hand, which is every result the scorer's own tests make.
+    elapsed_ms: int = 0
 
     @property
     def _require_is_advisory(self) -> bool:
@@ -831,8 +846,24 @@ class Result:
             "unverified_numbers": list(self.unverified_numbers),
             "facts": [fact.as_dict() for fact in self.facts],
             "usage": dict(self.usage),
+            "elapsed_ms": self.elapsed_ms,
             "answer": self.answer,
         }
+
+
+def percentile_ms(sorted_timings: Sequence[int], percentile: int) -> int:
+    """One percentile of an already sorted list of durations, nearest rank.
+
+    Nearest rank rather than an interpolation, because the number is reported
+    beside a question count that is in the dozens: at sixty-two questions the
+    95th is the third slowest, and a figure interpolated between two of them
+    is a duration no question actually took. Zero on an empty run, which is
+    the only honest answer when nothing was timed.
+    """
+    if not sorted_timings:
+        return 0
+    rank = -(-percentile * len(sorted_timings) // 100)
+    return sorted_timings[min(max(rank, 1), len(sorted_timings)) - 1]
 
 
 def gate_summary(calls: Sequence[ToolCall]) -> tuple[str, int, float]:
@@ -919,6 +950,7 @@ def score(
     evidence: Evidence | None = None,
     usage: Mapping[str, int] | None = None,
     unverified: Sequence[str] = (),
+    elapsed_ms: int = 0,
 ) -> Result:
     """Score one answer against one question. Pure, and the unit the tests hit.
 
@@ -943,6 +975,10 @@ def score(
     rows and the cards still exist (`pipeline.facts.check_numbers`) and
     carried here to be reported, and to fail the question when it set a
     `max_unverified` the run went over.
+
+    `elapsed_ms` changes no check either, for the reason the gate and the
+    usage do not: a question is right or wrong at any speed. It is timed by
+    the caller because this function is pure and the clock is not.
     """
     called = tuple(tools_called)
     unique = set(called)
@@ -975,6 +1011,7 @@ def score(
         usage=dict(usage or {}),
         unverified_numbers=tuple(unverified),
         facts=tuple(evidence.facts) if evidence is not None else (),
+        elapsed_ms=elapsed_ms,
     )
 
 
@@ -1130,6 +1167,25 @@ class Report:
         """
         return sum(len(result.unverified_numbers) for result in self.results)
 
+    def latency_ms(self) -> dict[str, int]:
+        """How long a question of this run took, as the percentiles it reports.
+
+        Keyed `p50` and `p95`, in milliseconds, over every question that was
+        scored, the failures included: a question that fell over after sixty
+        seconds is part of what a member would have waited for and leaving it
+        out would flatter the tail the number exists to show.
+
+        Zeros on a run that timed nothing, which is every replay: the replay
+        model answers from a recording and its duration is a fact about this
+        laptop. Reported rather than omitted, for the reason the token totals
+        are, which is that a key that disappears is a gap in a series.
+        """
+        timings = sorted(result.elapsed_ms for result in self.results)
+        return {
+            f"p{percentile}": percentile_ms(timings, percentile)
+            for percentile in LATENCY_PERCENTILES
+        }
+
     def usage_totals(self) -> dict[str, int]:
         """The provider's token counts summed over every question of the run.
 
@@ -1180,6 +1236,7 @@ class Report:
             "guessed_tables": self.guessed_tables,
             "unverified_numbers": self.unverified_numbers,
             "usage_totals": self.usage_totals(),
+            "latency_ms": self.latency_ms(),
             "questions": [result.as_dict() for result in self.results],
         }
 
@@ -2120,7 +2177,14 @@ def run_question(question: Question, agent: Askable) -> Result:
     allowed out: one provider error in the middle of a set should cost that
     question and let the other nine report, because the table is more useful
     than the traceback.
+
+    The clock is around the whole `ask` and nothing else, so the number is the
+    thing a member waits for: every model call, every tool call and every gate
+    verdict this question made, and none of the harness's scoring. A question
+    that raised is timed too, because a provider timeout is a duration and
+    reporting it as nothing would hide the one case the number exists to find.
     """
+    started = time.perf_counter()
     try:
         answer = agent.ask(
             question.question,
@@ -2133,7 +2197,12 @@ def run_question(question: Question, agent: Askable) -> Result:
         )
     except Exception as failure:  # noqa: BLE001 - one bad question must not end the run
         logger.exception("a question could not be answered", extra={"question_id": question.id})
-        return Result(question=question, answer="", error=f"{type(failure).__name__}: {failure}")
+        return Result(
+            question=question,
+            answer="",
+            error=f"{type(failure).__name__}: {failure}",
+            elapsed_ms=elapsed_ms(started),
+        )
     return score(
         question,
         answer.answer,
@@ -2142,7 +2211,18 @@ def run_question(question: Question, agent: Askable) -> Result:
         evidence=answer.evidence,
         usage=getattr(answer, "usage", None),
         unverified=getattr(answer, "unverified_numbers", ()) or (),
+        elapsed_ms=elapsed_ms(started),
     )
+
+
+def elapsed_ms(started: float) -> int:
+    """Milliseconds since a `time.perf_counter` reading, rounded.
+
+    A monotonic clock rather than the wall one, because what is being measured
+    is a duration and a wall clock can step backwards under a time sync in the
+    middle of a sixty-question run.
+    """
+    return round((time.perf_counter() - started) * 1000)
 
 
 def run_evals(
@@ -2281,6 +2361,7 @@ def render(report: Report) -> str:
     lines.append(render_gate_cost(report))
     lines.append(render_guessed_tables(report))
     lines.append(render_unverified_numbers(report))
+    lines.append(render_latency(report))
     for result in report.results:
         if result.passed and not result.advisory and not result.unverified_numbers:
             continue
@@ -2385,6 +2466,20 @@ def render_unverified_numbers(report: Report) -> str:
     return f"unverified numbers: {found} in {', '.join(asked)}"
 
 
+def render_latency(report: Report) -> str:
+    """The one line that says how long a question of this run took.
+
+    Printed on every run, zeros included, beside the gate cost and the two
+    counts and for the same reason. A median and a tail rather than a mean,
+    because the question a reader has about a model is "what does this feel
+    like, and how bad does it get", and a mean answers neither: one question
+    that hit the provider timeout moves it and nothing says that it did.
+    """
+    latency = report.latency_ms()
+    split = ", ".join(f"{name} {value} ms" for name, value in latency.items())
+    return f"latency: {split}"
+
+
 def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str | None:
     """One MLflow run per evaluation, in the `agent-evals` experiment.
 
@@ -2453,6 +2548,14 @@ def log_to_mlflow(report: Report, *, tracking_uri: str, experiment: str) -> str 
                 "cache_creation_tokens": float(
                     report.usage_totals()["cache_creation_input_tokens"]
                 ),
+                # How long a question took, as the two percentiles the table
+                # prints. A routed model choice is a latency decision as much
+                # as a cost one, and these are the only two numbers in the run
+                # that say what the choice would feel like.
+                **{
+                    f"latency_{name}_ms": float(value)
+                    for name, value in report.latency_ms().items()
+                },
                 **{f"q.{result.question.id}": float(result.passed) for result in report.results},
             }
         )
@@ -2520,6 +2623,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help=f"replace the system prompt with this file (sets ${PROMPT_FILE_VAR})",
+    )
+    parser.add_argument(
+        "--effort",
+        default=None,
+        choices=EFFORTS,
+        help=f"how hard the model is asked to think (sets ${EFFORT_VAR}). Unset is the "
+        "deployed default, which asks for nothing and is what the small model wants; "
+        "`low` is what a comparison against a thinking model should use",
     )
     parser.add_argument("--experiment", default=DEFAULT_EXPERIMENT, help="MLflow experiment name")
     parser.add_argument(
@@ -2604,6 +2715,7 @@ def main(argv: list[str] | None = None) -> int:
         ("--fake", args.fake),
         ("--prompt-override", args.prompt_override),
         ("--model", args.model),
+        ("--effort", args.effort),
     ):
         if remote and value is not None:
             sys.stderr.write(f"{parser.prog}: {name} and --remote are two different runs\n")
@@ -2617,6 +2729,11 @@ def main(argv: list[str] | None = None) -> int:
         # second mechanism: one hook, so what the evaluation measures is what a
         # person reproducing it by hand would get.
         os.environ[PROMPT_FILE_VAR] = str(args.prompt_override)
+
+    if args.effort is not None:
+        # The same one hook, for the same reason. Unset, nothing is sent and
+        # the client is the deployed one.
+        os.environ[EFFORT_VAR] = args.effort
 
     card_index = default_card_index(args.card_index)
     if args.card_index is not None and card_index is None:
@@ -2722,6 +2839,7 @@ def main(argv: list[str] | None = None) -> int:
                 "model": report.model,
                 "gate": report.gate_name,
                 "gate_cost_usd": report.gate_cost_usd,
+                "latency_ms": report.latency_ms(),
             },
             text=render(report),
         )

@@ -1,0 +1,364 @@
+# The competitive question set, scored by `python -m pipeline.eval --golden`.
+#
+# Ten questions, N01 to N10, written for the model comparison in
+# docs/research/ask-competitive-spike.md and deliberately apart from the
+# fifty-two of `evals/golden.yaml`. The fifty-two are what makes a run
+# comparable with every run already in the tracking store; these ten are the
+# questions where the lookup is not the hard part. N01 asks for a weighing,
+# N03 for an inference from a tempo number to a plan, N06 and N10 for a
+# refusal that still leaves the member better off, and N08 for an attribution
+# the data cannot make. If a bigger model is worth money anywhere, it is here.
+#
+# Every one is `warehouse: any`, and it has to be. `--model` and `--remote`
+# are two different runs, so a model comparison is local against the ten
+# fixture games, and a question asserting a production number would be
+# grading the corpus rather than the model. What these require is a shape: a
+# rate with its sample size, a turn number with a caveat beside it, a named
+# archetype with a count. A warehouse of two hundred games satisfies them as
+# readily as one of ten.
+#
+# `expected_points` is new here and is not a check. It is the expert's
+# statement, written before anybody saw an answer, of what a good answer
+# contains, and it is what the four-axis hand rubric in the spike scores
+# against. The loader ignores fields it does not know, so it travels with the
+# question and costs the harness nothing.
+#
+# Not in the weekly job and not in `pytest -m dbt`. Run on demand, with
+# `--golden evals/golden_competitive.yaml`, and versioned on its own.
+
+version: 1
+questions:
+  - id: N01
+    job: meta
+    warehouse: any
+    question: >-
+      I can bring one of two decks this weekend. Based on the last two weeks,
+      which has the better expected record, and how confident should I be?
+    expect_tools: [query_marts]
+    require:
+      - "re:\\b\\d+ games?\\b"
+      - "re:cannot|no row|does not hold|holds no|too few|thin|not enough|which two"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The weighing. The member names no deck, which is part of the question:
+      an answer that asks which two and offers the week's field in the same
+      breath is better than one that picks a pair and pretends.
+    expected_points:
+      - gives records with their sample sizes rather than rates alone
+      - says the warehouse holds no expected field to weight the matchups by
+      - either declines to pick, with a reason, or picks and states how thin
+      - does not treat two weeks of league games as a tournament forecast
+
+  - id: N02
+    job: meta
+    warehouse: any
+    question: >-
+      Which decks beat Dragapult control most often, and are any of them
+      actually being played?
+    expect_tools: [query_marts]
+    require:
+      - Dragapult control
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      Two marts in one answer, and the join is the point: a bad matchup
+      nobody brings is not a thing to tech against.
+    expected_points:
+      - reads the pairing rows and the weekly rows, and says which gave which
+      - names every row tied on the top value rather than picking one
+      - says plainly when a bad matchup has too few games to act on
+      - answers the second half, how much of the field those decks are
+
+  - id: N03
+    job: meta
+    warehouse: any
+    question: >-
+      How quickly does Dragapult control take its first prize compared with
+      the rest of the field, and what does that mean for playing against it?
+    expect_tools: [query_marts]
+    require:
+      - Dragapult control
+      - "re:\\bturn \\d+|\\b\\d+(\\.\\d+)? turns?\\b"
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The inference. The pace mart gives a number; what the member asked for
+      is what to do about it, which no column holds.
+    expected_points:
+      - gives the deck's pace number and the field's, each over its own seats
+      - turns the gap into something a player does, not a restatement
+      - says the sample behind the comparison before drawing the plan from it
+
+  - id: N04
+    job: meta
+    warehouse: any
+    question: >-
+      How often does a card turn up in the lists of the deck I expect to face,
+      and is that often enough to play around?
+    expect_tools: [query_marts]
+    require:
+      - "re:seen|observed"
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The question the corpus cannot answer as asked. "In the lists" is a
+      deck inclusion rate and the corpus holds an observation rate, so a good
+      answer gives the observation, says what it is not, and still gets to
+      the member's real question, which is whether to play around it.
+    expected_points:
+      - reports the seen rate as an observation and a lower bound
+      - states plainly that it is not how often the card is in the list
+      - gives the inclusion rate only where it is not null, and says what it is over
+      - still answers the playing-around half under the caveat
+
+  - id: N05
+    job: my_record
+    warehouse: any
+    context: >-
+      The member is on their own record page. Theirs is the row of the player
+      summary with the most uploaded games.
+    question: >-
+      Do I win more going first, and is the difference big enough to care
+      about?
+    expect_tools: [query_marts]
+    require:
+      - "re:\\b\\d+ games?\\b"
+      - "re:first|second"
+      - "re:too few|too small|not enough|cannot|no evidence|either way|thin"
+    forbid:
+      - "answer:re:[0-9a-f]{16}"
+    notes: >-
+      Which row is the member's arrives in the page context in words, the way
+      `job_my_record_season` does, because the key is an HMAC under a secret
+      this repository does not hold and a question with one typed into it
+      would pass on one machine only. The token shape is forbidden in the
+      prose rather than in the run, for the same reason the two token-reading
+      questions of the main file forbid it that way: a run that finds the row
+      and then filters a second statement on its key has done nothing wrong,
+      and the claim that matters is that the key is never handed back.
+    expected_points:
+      - both halves, each with the games behind it
+      - the record as a record before any percentage
+      - answers the second half rather than leaving the member to judge it
+      - says the split is too small to read, where it is
+
+  - id: N06
+    job: my_record
+    warehouse: any
+    context: >-
+      The member is on their own record page. Theirs is the row of the player
+      summary with the most uploaded games.
+    question: >-
+      Which deck have I lost to most, and if you cannot tell me that, what is
+      the closest thing you can tell me?
+    expect_tools: [query_marts]
+    require:
+      - "re:cannot|do not hold|does not hold|holds no|no breakdown|not recorded|per opponent"
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - "answer:re:[0-9a-f]{16}"
+      - "re:handle|username|their name is"
+    notes: >-
+      The refusal that has to stay useful, and the member has asked for the
+      nearest answer out loud, so an answer that stops at "I cannot" has
+      ignored half the question.
+    expected_points:
+      - says in one sentence that the member's record is not split by opponent
+      - does not explain tokens or identity
+      - offers the nearest thing it does hold, named, with its sample size
+
+  - id: N07
+    job: my_mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+    context_game: >-
+      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
+      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
+      Your opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 17 turns."
+        values: [17]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 4."
+        values: [4]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: turns_without_attack:me
+        text: "You made no attack on 1 of your turns, on turn 2."
+        values: [1, 2]
+      - id: turns_without_energy_attach:me
+        text: "You attached no energy on 1 of your turns, on turn 4."
+        values: [1, 4]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 12."
+        values: [12]
+      - id: prizes_taken:both
+        text: "You took 4 prizes and your opponent took 4."
+        values: [4, 4]
+      - id: first_knockout_turn:me
+        text: "Your first knockout came on turn 12."
+        values: [12]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 200 damage, on turn 10."
+        values: [200, 10]
+      - id: energy_per_turn:me
+        text: "You attached 1 energy cards per turn you took."
+        values: [1]
+      - id: concession_turn:both
+        text: "The game ended in a concession on turn 17."
+        values: [17]
+    question: >-
+      I lost that one with prizes level. What decided it, and what would you
+      do differently?
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\bturn \\d+"
+      - "re:instead|could have|rather than|next time|worth|try "
+      - "re:matchup|the league|other games|the corpus|the warehouse|no row|holds no"
+    forbid:
+      - "re:they (probably|must have|likely) (had|held|drew)"
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The post-loss review with the hard version of the question in it: the
+      prizes finished level, so the fact that decided the game is a
+      relationship between facts rather than any one of them.
+    expected_points:
+      - three facts, cited, chosen for divergence rather than for size
+      - one line at a named turn, written as a choice and not as a verdict
+      - the matchup sentence, with its games count or an honest absence
+      - notices that level prizes against uneven knockouts is itself the finding
+
+  - id: N08
+    job: my_mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+    context_game: >-
+      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
+      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
+      Your opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 17 turns."
+        values: [17]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 4."
+        values: [4]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 12."
+        values: [12]
+      - id: prizes_taken:both
+        text: "You took 4 prizes and your opponent took 4."
+        values: [4, 4]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: energy_per_turn:me
+        text: "You attached 1 energy cards per turn you took."
+        values: [1]
+    question: >-
+      My first attack was early and my first prize was late. Is that a me
+      problem or a matchup problem?
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\bturn \\d+"
+      - "re:cannot say|cannot tell|both|no row|holds no|not enough|no way to"
+    forbid:
+      - "re:they (probably|must have|likely) (had|held|drew)"
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The attribution nothing in the data supports. One matchup row and no
+      per-matchup pace row, so the honest answer names the gap and says which
+      of the two it cannot separate, and a confident pick is the failure.
+    expected_points:
+      - names the two turns and the gap between them
+      - says plainly that nothing in the data separates pilot from pairing
+      - does not pick one and present it as the finding
+      - says what would separate them, if anything in the warehouse would
+
+  - id: N09
+    job: my_game
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+    context_game: >-
+      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
+      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
+      Your opponent first attacked on turn 7.
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 17 turns."
+        values: [17]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 4."
+        values: [4]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 7."
+        values: [7]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 12."
+        values: [12]
+    question: Was the pace of that game normal for this matchup?
+    expect_tools: [query_marts]
+    max_unverified: 0
+    require:
+      - "re:\\bturn \\d+"
+      - "re:average|usual|typically|on average|no row|holds no|cannot"
+      - "re:\\b\\d+ games?\\b"
+    forbid:
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The page context names the opponent's deck and not the member's, which
+      is the field the pace mart is keyed by, so the honest answer says which
+      half of the comparison it cannot make.
+    expected_points:
+      - distinguishes a number from the game on screen from a mart average
+      - names which deck the average is for, and over how many seats
+      - says that the member's own deck is not named in the context
+      - does not present the opponent's pace row as the member's
+
+  - id: N10
+    job: meta
+    warehouse: any
+    question: What are people playing at tournaments right now?
+    expect_tools: []
+    require:
+      - "re:league|uploaded|this warehouse|these games|community"
+      - "re:instead|but|what I can|I do have|I can tell"
+    forbid:
+      - "re:[0-9a-f]{16}"
+    notes: >-
+      The boundary. The corpus is uploaded league games and the member asked
+      about events, so the answer a bigger model is likeliest to get wrong is
+      the fluent one: general knowledge about the format, delivered with no
+      row behind it.
+    expected_points:
+      - says in one sentence that the corpus is uploaded league games, not events
+      - does not answer from general knowledge
+      - offers the nearest real answer, the week's most played decks, by name

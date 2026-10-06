@@ -197,6 +197,28 @@ DEFAULT_MODEL: Final = "claude-haiku-4-5-20251001"
 MODEL_VAR: Final = "PRA_AGENT_MODEL"
 API_KEY_VAR: Final = "ANTHROPIC_API_KEY"
 
+# How hard the model is asked to think, and how long the client waits. Both
+# are unset in every deployment and both exist for the same run: a comparison
+# against a model that thinks. The default model does not think at all unless
+# it is asked, so neither variable changes anything about what members get.
+#
+# `PRA_AGENT_EFFORT` is the provider's effort level, which on a thinking model
+# is the depth of the thinking and the overall token spend, and `low` is what
+# a comparison against this agent's workload should use: every question here
+# is "write one SELECT against seven tables and read a dozen rows back", and
+# the money saved by a shallower answer is the money the comparison is about.
+# Not offered as "off". Disabling thinking on the larger models has two
+# documented failure modes, a tool call written into the visible text and
+# internal tags leaking into the answer, and both would be scored here as the
+# model being bad at the job rather than as the flag being a bad idea.
+#
+# `PRA_AGENT_TIMEOUT_S` is the client's own ceiling. A thinking model is
+# slower, and a run against the deployed sixty seconds measures the timeout.
+EFFORT_VAR: Final = "PRA_AGENT_EFFORT"
+EFFORTS: Final[tuple[str, ...]] = ("low", "medium", "high", "xhigh", "max")
+TIMEOUT_VAR: Final = "PRA_AGENT_TIMEOUT_S"
+DEFAULT_TIMEOUT_S: Final = 60
+
 SQL_TOOL: Final = "query_marts"
 CARD_TOOL: Final = "lookup_cards"
 # Why there is no card tool, when nothing asked for one. The other reason is
@@ -1328,13 +1350,57 @@ def chat_model(model: str | None = None) -> BaseChatModel:
     `ChatAnthropic` reads `ANTHROPIC_API_KEY` itself and raises when it is
     missing, which is the right moment to find out: building the agent is what
     the command line does before it has a question to ask.
+
+    `PRA_AGENT_EFFORT` and `PRA_AGENT_TIMEOUT_S` are both unset everywhere
+    this runs today and the client built without them is byte for byte the
+    one that was built before they existed. They are here for a model
+    comparison, which is the only run that asks a model that thinks.
     """
     from langchain_anthropic import ChatAnthropic
 
+    return ChatAnthropic(**client_options(model))
+
+
+def client_options(model: str | None = None) -> dict[str, Any]:
+    """Every argument the provider client is built with, read off the environment.
+
+    Apart from `chat_model` so that what a setting does to the client can be
+    asserted without importing the provider library: the serving tests hold
+    the line that a warm Lambda never imported it, and a test that built a
+    real client would quietly break that.
+    """
     name = model or os.environ.get(MODEL_VAR, "").strip() or DEFAULT_MODEL
     # `model` rather than `model_name`: the field carries that alias, and it is
     # the name the provider's own documentation and its type signature use.
-    return ChatAnthropic(model=name, timeout=60, stop=None)
+    options: dict[str, Any] = {"model": name, "timeout": client_timeout_s(), "stop": None}
+    effort = os.environ.get(EFFORT_VAR, "").strip().lower()
+    if effort:
+        if effort not in EFFORTS:
+            raise ValueError(f"{EFFORT_VAR}={effort!r} is not an effort ({', '.join(EFFORTS)})")
+        # The provider's `output_config.effort`, which the client carries
+        # under this name. It is rejected by the models that do not think, so
+        # a run that sets it has chosen a model that does.
+        options["reasoning_effort"] = effort
+    return options
+
+
+def client_timeout_s() -> float:
+    """How long the provider client waits, in seconds. Sixty unless overridden.
+
+    A whole number of seconds is all anybody has ever wanted here, and a
+    value that is not one is a typo in an environment rather than a request
+    for sub-second precision, so it is refused rather than rounded.
+    """
+    raw = os.environ.get(TIMEOUT_VAR, "").strip()
+    if not raw:
+        return float(DEFAULT_TIMEOUT_S)
+    try:
+        seconds = float(raw)
+    except ValueError:
+        raise ValueError(f"{TIMEOUT_VAR}={raw!r} is not a number of seconds") from None
+    if seconds <= 0:
+        raise ValueError(f"{TIMEOUT_VAR}={raw!r} has to be more than zero")
+    return seconds
 
 
 class Agent:

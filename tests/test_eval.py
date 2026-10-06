@@ -28,6 +28,7 @@ nothing when it is off" is a measurement rather than a claim.
 """
 
 import json
+import os
 import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -560,6 +561,33 @@ def test_every_question_forbids_the_player_token_shape(golden: evals.Golden) -> 
             assert entry.needs_token, entry.id
 
 
+def test_the_competitive_set_is_ten_shapes_and_no_fixture_facts() -> None:
+    """The file the model comparison runs, held to the one rule that makes it run.
+
+    Every question has to be `warehouse: any`: `--model` and `--remote` are
+    two different runs, so a comparison is local against the fixture games,
+    and a question asserting a production number would be grading the corpus.
+    `expected_points` is the hand rubric's and is ignored by the loader, so
+    the assertion that it is there is an assertion about the file.
+    """
+    import yaml
+
+    path = evals.GOLDEN_PATH.with_name("golden_competitive.yaml")
+    competitive = evals.load_golden(path)
+    assert [entry.id for entry in competitive.questions] == [
+        f"N{index:02d}" for index in range(1, 11)
+    ]
+    for entry in competitive.questions:
+        assert entry.warehouse == evals.WAREHOUSE_ANY, entry.id
+        assert entry.job in JOBS, entry.id
+        forbidden = set(entry.forbid)
+        assert TOKEN_PATTERN in forbidden or ANSWER_TOKEN_PATTERN in forbidden, entry.id
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for entry in raw["questions"]:
+        assert entry["expected_points"], entry["id"]
+
+
 def test_the_set_covers_both_tools_and_the_questions_with_no_good_answer(
     golden: evals.Golden,
 ) -> None:
@@ -885,6 +913,53 @@ def test_the_report_totals_are_zeros_rather_than_missing_on_a_run_with_no_usage(
     """A replay run asks no provider anything, and a hole in a chart is not a zero."""
     report = report_of(evals.score(question(id="one"), "12 games", [evals.SQL_TOOL]))
     assert report.usage_totals() == dict.fromkeys(evals.USAGE_TOTAL_KEYS, 0)
+
+
+def test_a_question_carries_how_long_it_took_into_the_report() -> None:
+    """The field a model comparison is a latency decision on as well as a cost one."""
+    report = report_of(
+        evals.score(question(id="quick"), "12 games", [evals.SQL_TOOL], elapsed_ms=1_200),
+        evals.score(question(id="slow"), "12 games", [evals.SQL_TOOL], elapsed_ms=9_800),
+    )
+    payload = json.loads(json.dumps(report.as_dict()))
+    assert [entry["elapsed_ms"] for entry in payload["questions"]] == [1_200, 9_800]
+    assert payload["latency_ms"] == {"p50": 1_200, "p95": 9_800}
+    assert "latency: p50 1200 ms, p95 9800 ms" in evals.render(report)
+
+
+def test_the_tail_percentile_is_a_duration_a_question_really_took() -> None:
+    """Nearest rank, so the 95th of twenty questions is the slowest of them.
+
+    An interpolated percentile over a set this small reports a number no
+    question took, which is a figure nobody can go and look at.
+    """
+    timings = sorted(range(100, 2_100, 100))
+    assert evals.percentile_ms(timings, 50) == 1_000
+    assert evals.percentile_ms(timings, 95) == 1_900
+    assert evals.percentile_ms([], 50) == 0
+    assert evals.percentile_ms([7], 95) == 7
+
+
+def test_a_question_that_raised_is_timed_too() -> None:
+    """A provider timeout is a duration, and reporting it as nothing hides it."""
+
+    from pipeline.agent import Answer
+
+    class Refuses:
+        model_name = "unreachable"
+
+        def ask(self, question: str, context: str = "", **extra: object) -> Answer:
+            raise RuntimeError("the provider timed out")
+
+    result = evals.run_question(question(id="timed_out"), Refuses())
+    assert result.error is not None and not result.passed
+    assert result.elapsed_ms >= 0
+
+
+def test_a_run_that_timed_nothing_reports_the_zeros() -> None:
+    """A replay's duration is a fact about a laptop, and a missing key is a gap."""
+    report = report_of(evals.score(question(id="one"), "12 games", [evals.SQL_TOOL]))
+    assert report.latency_ms() == {"p50": 0, "p95": 0}
 
 
 def test_the_report_advisory_count_is_in_the_json_and_does_not_touch_passed() -> None:
@@ -1402,14 +1477,93 @@ def test_a_service_that_will_not_answer_costs_one_question_and_not_the_run(
     assert "403" in str(report.results[0].error)
 
 
-@pytest.mark.parametrize("flag", ["--fake", "--prompt-override", "--model"])
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--fake", "x"),
+        ("--prompt-override", "x"),
+        ("--model", "x"),
+        ("--effort", "low"),
+    ],
+)
 def test_remote_and_a_locally_built_agent_are_two_different_runs(
-    flag: str, capsys: pytest.CaptureFixture[str]
+    flag: str, value: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Refused rather than ignored: a dropped flag is a score for another experiment."""
-    code = evals.main(["--remote", "https://example.com", flag, "x"])
+    code = evals.main(["--remote", "https://example.com", flag, value])
     assert code == 2
     assert "two different runs" in capsys.readouterr().err
+
+
+def test_an_effort_reaches_the_agent_through_the_one_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One hook, so a run is reproducible by hand with an exported variable."""
+    # Set rather than deleted, so monkeypatch takes the variable back at the
+    # end of the test: `main` writes it through `os.environ` and a leaked
+    # effort would reach every client built after this test.
+    monkeypatch.setenv(evals.EFFORT_VAR, "")
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION)
+    # Exit 2 on the warehouse, which is after the flag has been read and
+    # before anything would ask a provider for an answer.
+    assert evals.main(["--golden", str(path), "--effort", "low", "--warehouse", "no.duckdb"]) == 2
+    assert os.environ[evals.EFFORT_VAR] == "low"
+
+
+def test_a_question_set_of_its_own_is_scored_alone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--golden` is how a file beside the fifty-two is run without them.
+
+    The competitive set is a file of its own so that it can be scored, and
+    priced, apart from the set every run in the tracking store shares.
+    """
+    path = write_golden(
+        tmp_path / "competitive.yaml",
+        "  - id: solo\n    question: how many games\n    expect_tools: []\n"
+        '    require: ["re:\\\\b12 games"]\n',
+    )
+    transcript = tmp_path / "t.yaml"
+    transcript.write_text("version: 1\nruns:\n  solo:\n    answer: over 12 games\n", "utf-8")
+    warehouse = tmp_path / "meta.duckdb"
+    warehouse.write_bytes(b"")
+
+    code = evals.main(
+        [
+            "--golden",
+            str(path),
+            "--fake",
+            str(transcript),
+            "--warehouse",
+            str(warehouse),
+            "--no-mlflow",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["golden_path"] == str(path)
+    assert [entry["id"] for entry in payload["questions"]] == ["solo"]
+
+
+def test_a_question_set_that_is_not_there_is_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A typo in the path is a run that scored nothing, not a run that passed."""
+    warehouse = tmp_path / "meta.duckdb"
+    warehouse.write_bytes(b"")
+    code = evals.main(["--golden", str(tmp_path / "gone.yaml"), "--warehouse", str(warehouse)])
+    assert code == 2
+    assert "gone.yaml" in capsys.readouterr().err
+
+
+def test_a_run_with_no_effort_flag_leaves_the_deployed_client_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(evals.EFFORT_VAR, raising=False)
+    path = write_golden(tmp_path / "g.yaml", ONE_QUESTION)
+    assert evals.main(["--golden", str(path), "--warehouse", "no.duckdb"]) == 2
+    assert evals.EFFORT_VAR not in os.environ
 
 
 # ------------------------------------------------------------------- dbt --
