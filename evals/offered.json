@@ -229,6 +229,12 @@
   },
   {
     "source": "suggestion",
+    "route": "deck",
+    "text": "Should I go first or second with this deck?",
+    "needs": ["archetype"]
+  },
+  {
+    "source": "suggestion",
     "route": "player_deck",
     "text": "How is this deck doing this month?",
     "needs": ["archetype"]
