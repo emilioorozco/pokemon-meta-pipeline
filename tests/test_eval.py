@@ -561,6 +561,33 @@ def test_every_question_forbids_the_player_token_shape(golden: evals.Golden) -> 
             assert entry.needs_token, entry.id
 
 
+def test_the_competitive_set_is_ten_shapes_and_no_fixture_facts() -> None:
+    """The file the model comparison runs, held to the one rule that makes it run.
+
+    Every question has to be `warehouse: any`: `--model` and `--remote` are
+    two different runs, so a comparison is local against the fixture games,
+    and a question asserting a production number would be grading the corpus.
+    `expected_points` is the hand rubric's and is ignored by the loader, so
+    the assertion that it is there is an assertion about the file.
+    """
+    import yaml
+
+    path = evals.GOLDEN_PATH.with_name("golden_competitive.yaml")
+    competitive = evals.load_golden(path)
+    assert [entry.id for entry in competitive.questions] == [
+        f"N{index:02d}" for index in range(1, 11)
+    ]
+    for entry in competitive.questions:
+        assert entry.warehouse == evals.WAREHOUSE_ANY, entry.id
+        assert entry.job in JOBS, entry.id
+        forbidden = set(entry.forbid)
+        assert TOKEN_PATTERN in forbidden or ANSWER_TOKEN_PATTERN in forbidden, entry.id
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for entry in raw["questions"]:
+        assert entry["expected_points"], entry["id"]
+
+
 def test_the_set_covers_both_tools_and_the_questions_with_no_good_answer(
     golden: evals.Golden,
 ) -> None:
