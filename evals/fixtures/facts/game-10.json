@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your game against Festival Lead, you went second, lost in 4 turns.",
   "context_game": "Your deck against Festival Lead. You went second and lost on turn 4. You took 0 prizes and your opponent took 2. You never attacked in this game. Your opponent first attacked on turn 3.",
+  "context_archetypes": {
+    "mine": null,
+    "theirs": "Festival Lead"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

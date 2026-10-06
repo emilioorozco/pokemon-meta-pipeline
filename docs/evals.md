@@ -634,8 +634,8 @@ started writing numbers from somewhere else.
 41 out of 41.
 
 **Where the facts came from.** `evals/fixtures/facts/` holds one JSON file
-per fixture game: the route sentence, the first line, the summary and the
-facts, exactly as the ten questions carry them. They were produced by a
+per fixture game: the route sentence, the first line, the summary, the two
+archetypes and the facts, exactly as the ten questions carry them. They were produced by a
 one-off script in the application's repository that imports `analyzeGame`
 from `packages/shared/src/analysis`, runs it over the ten analysis fixtures
 and renders the player-perspective facts as `{id, text, values}` sentences.
@@ -796,6 +796,88 @@ member" and stops.
 asserts 52 out of 52 and the line under the table reads
 `52/52 passed (28/28 golden, 14/14 adversarial, 10/10 mistake)`, with
 `by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
+under it. The count of unverified numbers is unchanged at two.
+
+## Version 15, and the deck the member was playing
+
+A page context named the opponent's archetype and called the member's own
+"your deck", so a post-loss review could read one row of
+`mart_archetype_pace` and not the other: it could say how fast Crustle /
+Mega Kangaskhan ex usually is and nothing about how fast the member's own
+deck usually is. PLA-212 sends the second name. `context_archetypes` is one
+optional request field, `{mine, theirs}`, either of which may be absent
+([agent-service.md](agent-service.md)); the service places it as one
+sentence between the game summary and the facts, and the `my_game` and
+`my_mistake` playbooks say what to do with each case.
+
+A new field in a request is a new way for a run to go wrong, so the set grew
+by two and two questions changed.
+
+**`job_my_mistake_review` now names both decks.** It carried `context_game`,
+`context_first_line` and the facts of fixture game 4 and graded three parts;
+the third part, how the matchup usually goes, could only ever come back as
+"the warehouse holds no row for this pairing". With both decks named the
+third part is a comparison, so the question requires both names and the seat
+count behind each pace row: Dragapult / Dusknoir first attacks on turn 2
+over the 2 seats the mart holds for it, Crustle / Mega Kangaskhan ex on turn
+7 over 1, and the member first attacked on turn 4 and took no prize until
+turn 12, so the slow half of the game was theirs. `expect_tools` went from
+`[]` to `[query_marts]`, because the comparison is a row and not a fact, and
+`max_unverified: 0` stayed, so both counts have to come out of the mart.
+
+It also stopped being `warehouse: any`. Two seats for one deck and one for
+the other are facts of these ten games and of no other, so a remote run
+would score them against a warehouse they are not true of. The deck names in
+its context are the context's rather than the warehouse's, for a reason
+worth writing down: no game in the fixture corpus is both a loss for the
+uploading seat and a seat whose anonymized export names an archetype, so a
+question that graded the comparison could not also be an extract of one row.
+What it grades is the comparison, over two pace rows that really are in the
+mart.
+
+**`job_my_game_walkthrough` names both and states nothing new.** Fixture
+game 9 is Dragapult control against Alakazam / Toucannon on both sides of
+the warehouse, so naming them in the context says only what `fct_game_side`
+already holds. Two entries were added, the member's own deck by name and the
+2 seats behind its pace row; the `1 game` that was already there is the
+matchups row and is also the seat count behind the opponent's pace row, so
+one entry covers either reading of a correct answer.
+
+**`job_my_mistake_no_deck_named` is the other half, and the ordinary one.**
+Fixture game 8 is a loss whose uploading seat the export never named, so the
+application can send `theirs` and not `mine`, which is the shape the field
+has to survive. What it grades is that the third part degrades to one clause
+rather than to a guess: the required entry is an alternation over the honest
+ways of saying "this page did not name your deck", because that part of the
+answer is a statement about what the context holds and there is no number in
+it to anchor on. Three `answer:` entries forbid the two failures the clause
+exists to prevent, which are asserting a deck for the member and comparing a
+pace they were never given. They are `answer:` and not plain so that a query
+reading the opponent's pace row alone is not scored as a comparison: the
+playbook still allows that row, and what is forbidden is the sentence.
+
+**`comp_pace_against_the_field` is the question the field was added for.** A
+member on their own game page asks whether the deck they just played is fast
+or slow next to the rest of the field. The question names no deck and the
+summary used to call it "your deck", so before this version it was
+unanswerable; now it is one read of `mart_archetype_pace` over the whole
+table. It requires the member's deck by name, the 2 seats behind its row,
+its average first attack on turn 2, and at least one archetype that is in
+the mart and not in the page context, which an answer can only have by
+reading the table rather than the summary.
+
+**The fixtures name both.** Each file under `evals/fixtures/facts/` carries a
+`context_archetypes` object beside its summary, and the ten `mistake`
+questions carry the same pair. Four of the ten name the member's deck and
+six do not, which is the corpus as it is rather than a gap: a game whose
+archetype the anonymized export never identified is the ordinary case at
+this size, and a set where every question had both names would not have
+measured the half that matters.
+
+`version` in the golden file is 15 and the transcript is 13; the replay
+asserts 54 out of 54 and the line under the table reads
+`54/54 passed (30/30 golden, 14/14 adversarial, 10/10 mistake)`, with
+`by job: 1/1 meta, 2/2 my_game, 2/2 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
 ## The `offered` set: every question the application puts on a screen

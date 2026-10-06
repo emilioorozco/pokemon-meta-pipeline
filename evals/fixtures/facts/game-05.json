@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your Dragapult / Dusknoir game against Fezandipiti ex / Froakie, you went second, won in 10 turns.",
   "context_game": "Your Dragapult / Dusknoir deck against Fezandipiti ex / Froakie. You went second and won on turn 10. You took 2 prizes and your opponent took 0. Your first attack was on turn 2. Your opponent first attacked on turn 3.",
+  "context_archetypes": {
+    "mine": "Dragapult / Dusknoir",
+    "theirs": "Fezandipiti ex / Froakie"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

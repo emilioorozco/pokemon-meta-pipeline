@@ -326,7 +326,16 @@ MAX_COLUMN_CHARS: Final = 46
 # question the application was offering and the agent could not answer: a
 # member's own record needs a row keyed by them, and the only thing that can
 # say which row that is, is the application.
-MAX_PROMPT_CHARS: Final = 21_600
+# 22,300 from 21,600 for the member's own deck: the clauses on the `my_game`
+# and `my_mistake` playbooks saying what to do when the `<context>` element
+# names both decks and what to do when it names only the opponent's. About
+# 630 characters, and they are the whole of what the new request field buys.
+# Without them the field arrives, the sentence is placed, and the review goes
+# on comparing nothing, because nothing in the prompt told it there were now
+# two pace rows to read. 22,300 is a ceiling over a prompt of 21,969 with the
+# card-tool note: room for a rule or a column rename, not for a second
+# schema, which is what every number on this line has meant.
+MAX_PROMPT_CHARS: Final = 22_300
 
 # The characters per token this file estimates with, and the two numbers it
 # is measured against. Both were weighed on 2026-10-04 with a real
@@ -392,6 +401,22 @@ CONTEXT_CLOSE: Final = "</context>"
 # the member is looking at" keeps rule 9 covering all of it.
 FACTS_OPEN: Final = "<facts>"
 FACTS_CLOSE: Final = "</facts>"
+# The one sentence naming the two decks, inside the `<context>` element and
+# between the game text and the facts, built by `render_decks`. Plain prose
+# rather than an element of its own: two archetype names are not a structure,
+# and a fourth tag is a fourth thing for a page's text to try to forge.
+#
+# It exists because the summary the application writes names the opponent's
+# deck and calls the member's own "your deck", which is the whole of PLA-212.
+# The game record holds both sides' archetypes, so the member's is a field the
+# application can send rather than a thing the model has to do without, and a
+# review that knows both can read both rows of `mart_archetype_pace`.
+MY_DECK_SENTENCE: Final = "You played {name}."
+THEIR_DECK_SENTENCE: Final = "Your opponent played {name}."
+# A deck name is a short label, not prose. The ceiling is generous against
+# the longest archetype anyone has registered and small enough that a
+# paragraph pasted into the field is a 422 rather than a second summary.
+MAX_ARCHETYPE_CHARS: Final = 120
 # Any spelling of any of the three elements' tags, including a self-closing
 # one, so text that writes `</QUESTION >` cannot end the block it is inside
 # and text that writes `<context>` cannot open a second one. All three are
@@ -416,6 +441,32 @@ MAX_HISTORY_TURNS: Final = 6
 MAX_HISTORY_QUESTION_CHARS: Final = 500
 MAX_HISTORY_ANSWER_CHARS: Final = 1_500
 MAX_HISTORY_CHARS: Final = 6_000
+
+
+@dataclass(frozen=True)
+class Archetypes:
+    """The two decks of the game on the member's screen, as the application knows them.
+
+    Two optional names and nothing else, because that is the whole contract:
+    the application reads both sides' archetypes off the game record it
+    already holds and sends them beside the summary. `mine` is the member's
+    own deck, `theirs` is what they were up against, and either may be empty
+    for a game whose deck that side played was never identified, which on a
+    small corpus is most of them.
+
+    Empty rather than `None` for a missing name, so there is one absent value
+    and not two, and so every caller can ask `if decks.mine` without first
+    asking whether it is a string.
+    """
+
+    mine: str = ""
+    theirs: str = ""
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {"mine": self.mine or None, "theirs": self.theirs or None}
+
+
+NO_ARCHETYPES: Final = Archetypes()
 
 
 class HistoryError(ValueError):
@@ -806,7 +857,11 @@ answer out of them, citing a fact by its number. The marts come second and
 only to place the game against the community, `mart_matchups` for how the
 pairing usually goes and `mart_archetype_pace` for the usual first attack and
 first prize turn of each deck, so that slow and fast are measured rather than
-felt. When the question reaches past this one game to the member's own
+felt. The `<context>` element names the decks the application could name:
+with both named, read the pace row of each and set the two side by side,
+giving each row's seat count; with only the opponent's named, say so in a
+clause, compare nothing and name no deck for them.
+When the question reaches past this one game to the member's own
 record, and the `<context>` element states their player token,
 `mart_player_summary` filtered on `player_key` is the row that holds it; with
 no token stated, say in one sentence that this page does not tell you which
@@ -831,6 +886,12 @@ Answer in three parts and in this order: the two or three facts that actually
 decided it, cited by their numbers; one line the member could have taken
 instead, written as a choice rather than as a verdict; then how the matchup
 usually goes, with its games count. Keep the whole answer under 180 words.
+The third part is where the decks are compared, and the `<context>` element
+says which of them the application could name. With both named, put their
+two `mart_archetype_pace` rows side by side, each with its seat count, and
+call a row under the project's minimum a thin sample in those words. With
+only the opponent's named, say in one clause that this page did not name the
+member's own deck, and leave it there: no comparison and no guess at theirs.
 When the facts are few or the pairing has no row, say which part you cannot
 give and give the others. Never invent a turn, never write a number without
 naming the fact or the row behind it, never guess at what the opponent was
@@ -1053,6 +1114,45 @@ def render_facts(facts: Sequence[str]) -> str:
     return "\n".join((FACTS_OPEN, *lines, FACTS_CLOSE))
 
 
+def clean_archetype(name: str | None) -> str:
+    """One deck name as it will be placed: delimiters out, one line, trimmed.
+
+    The same stripping `clean_fact_text` does and for the same two reasons.
+    The name is written into a sentence of ours in the middle of the
+    `<context>` element, so a name holding `</context>` would close the
+    element early, and a name holding a newline would break the sentence in
+    half. Empty for a name that was nothing but delimiters, which the caller
+    then treats as no name at all.
+    """
+    return _WHITESPACE.sub(" ", _ELEMENT_TAG.sub(" ", name or "")).strip()
+
+
+def render_decks(decks: Archetypes | None) -> str:
+    """The sentence naming the two decks, or empty when neither is known.
+
+    Four cases and three sentences. With both names it is "You played X. Your
+    opponent played Y."; with only one of them it is that half on its own,
+    which for the opponent alone is what the application's own summary has
+    always said; with neither it is nothing at all, and the turn is the bytes
+    it was before this field existed. That last case is the one the backward
+    compatibility rests on: a request that sends no archetypes has to produce
+    the prompt it produced yesterday.
+
+    Written as a statement of what the game record holds and never as "the
+    member says". The names are data the application read off its own row,
+    the same place the game summary came from, and the prompt's rule 9 covers
+    the whole element either way.
+    """
+    mine = clean_archetype(decks.mine if decks else "")
+    theirs = clean_archetype(decks.theirs if decks else "")
+    parts = []
+    if mine:
+        parts.append(MY_DECK_SENTENCE.format(name=mine))
+    if theirs:
+        parts.append(THEIR_DECK_SENTENCE.format(name=theirs))
+    return " ".join(parts)
+
+
 def route_line(job: str | None) -> str:
     """The `Routed as: my_mistake` line for a known job, and empty for anything else.
 
@@ -1073,6 +1173,7 @@ def wrap_turn(
     context: str | None = None,
     facts: Sequence[str] = (),
     job: str | None = None,
+    decks: Archetypes | None = None,
 ) -> str:
     """The whole human turn: the job, the page context when there is one, then the question.
 
@@ -1103,6 +1204,7 @@ def wrap_turn(
         ...
 
         ...the game summary...
+        You played Dragapult control. Your opponent played Gardevoir ex.
         <facts>
         1. ...
         2. ...
@@ -1111,6 +1213,16 @@ def wrap_turn(
         <question>
         ...
         </question>
+
+    The deck sentence sits between the summary and the facts, which is where
+    it is read in the light of the game and in front of the numbers it is
+    about. It is written only when the application sent a name, and with
+    neither name the turn is byte for byte the turn it was before the field
+    existed (`render_decks`). The summary itself has always named the
+    opponent's deck and called the member's own "your deck", because the
+    application wrote it that way; the field is how the member's own side
+    gets a name, which is what lets a review read both rows of
+    `mart_archetype_pace` instead of one.
 
     The facts are inside the context element and after the game text because
     they are about that game: one element for everything the member is
@@ -1134,8 +1246,13 @@ def wrap_turn(
     wrapped = wrap_question(question)
     body = clean_context(context)
     if body:
+        inner = body
+        named = render_decks(decks)
+        if named:
+            inner = f"{inner}\n{named}"
         listed = render_facts(facts)
-        inner = f"{body}\n{listed}" if listed else body
+        if listed:
+            inner = f"{inner}\n{listed}"
         wrapped = f"{CONTEXT_OPEN}\n{inner}\n{CONTEXT_CLOSE}\n{wrapped}"
     routed = route_line(job)
     return f"{routed}\n{wrapped}" if routed else wrapped

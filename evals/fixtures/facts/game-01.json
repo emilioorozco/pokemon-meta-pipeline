@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your game against Dudunsparce / Kadabra, you went second, won in 23 turns.",
   "context_game": "Your deck against Dudunsparce / Kadabra. You went second and won on turn 23. You took 5 prizes and your opponent took 4. Your first attack was on turn 8. Your opponent first attacked on turn 7.",
+  "context_archetypes": {
+    "mine": null,
+    "theirs": "Dudunsparce / Kadabra"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

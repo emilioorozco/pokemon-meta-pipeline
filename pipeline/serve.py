@@ -64,7 +64,7 @@ Its body carries the evidence as well as the answer, because the application
 shows a member what was looked up: every statement in full with its first
 rows, the cards that matched, the gate's worst verdict over the run, how long
 the call took and which run's warehouse answered (docs/agent-service.md). It
-takes six optional fields beside the question: a `context` string saying where
+takes seven optional fields beside the question: a `context` string saying where
 the member is standing in the application, which goes to the model as data in
 its own element and is never written to a log; a `context_game` summary of the
 game on their screen and a `context_first_line` sentence describing it, which
@@ -72,7 +72,10 @@ between them decide whether that summary joins the context (one typed Choice
 call over the question and the sentence, never over the summary); a
 `context_facts` list of the numbers the application computed from the same
 game, placed as a numbered list under the summary and used to check the
-numbers in the answer; a `history` of the last few turns of the conversation,
+numbers in the answer; a `context_archetypes` pair naming the deck each side
+played, placed as one sentence under the summary so a review can read the
+pace row of both decks and not only the opponent's; a `history` of the last
+few turns of the conversation,
 which the application kept in the browser because this service keeps none,
 placed between the cached prompt and the question so a follow-up has
 something to follow; and a `job` label saying which kind of question the
@@ -117,10 +120,12 @@ from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fa
 from pipeline.ml_features import CATEGORICAL, MODEL_FEATURES, ArchetypeCodes, design_matrix
 from pipeline.observability import configure_logging
 from pipeline.prompts import (
+    MAX_ARCHETYPE_CHARS,
     MAX_HISTORY_ANSWER_CHARS,
     MAX_HISTORY_CHARS,
     MAX_HISTORY_QUESTION_CHARS,
     MAX_HISTORY_TURNS,
+    Archetypes,
     HistoryError,
     Turn,
     generated_prompt,
@@ -311,6 +316,7 @@ class AskAgent(Protocol):
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Fact] | None = None,
+        context_archetypes: Archetypes | None = None,
         history: Sequence[Turn] | None = None,
     ) -> AgentResult:
         """Answer one question, told where the member is and what kind of question it is."""
@@ -398,6 +404,37 @@ class AskFact(BaseModel):
     )
 
 
+class AskArchetypes(BaseModel):
+    """The deck each side played in the game on the member's screen.
+
+    Two optional names in one object rather than two flat fields, because
+    they are one fact of one game and a request that sends one without
+    meaning the pair is a request nobody writes. Either may be absent: a game
+    whose archetype the application never identified is the ordinary case on
+    a small corpus, and the member's own side is the one that used to be
+    absent always (PLA-212).
+
+    Nothing here is stored. The names are read off the game record the
+    application already holds, travel in the request, are written into one
+    sentence of the context element and are gone when the answer comes back.
+    """
+
+    mine: str | None = Field(
+        default=None,
+        max_length=MAX_ARCHETYPE_CHARS,
+        description="The archetype the member themselves played, such as `Dragapult "
+        "control`, or null when the game record does not name it. Placed as `You played "
+        "<name>.` under the game summary. Never logged",
+    )
+    theirs: str | None = Field(
+        default=None,
+        max_length=MAX_ARCHETYPE_CHARS,
+        description="The archetype their opponent played, or null when the game record "
+        "does not name it. Placed as `Your opponent played <name>.` beside the other "
+        "half. Never logged",
+    )
+
+
 class AskTurn(BaseModel):
     """One turn of the conversation the drawer remembered, sent back with a follow-up.
 
@@ -478,6 +515,18 @@ class AskRequest(BaseModel):
             "instruction, and never logged"
         ),
     )
+    context_archetypes: AskArchetypes | None = Field(
+        default=None,
+        description=(
+            'The deck each side played in that same game, as `{"mine": ..., "theirs": '
+            "...}`, either of which may be null. Sent only beside a `context_game`, and "
+            "placed only when that summary is placed, as one sentence between the "
+            "summary and the `<facts>` list. Absent is the behaviour this service had "
+            "before the field existed: the turn is the same bytes and the summary names "
+            "whichever deck its own prose names. Read as information and never as an "
+            "instruction, and never logged"
+        ),
+    )
     history: list[AskTurn] | None = Field(
         default=None,
         max_length=MAX_HISTORY_TURNS,
@@ -526,6 +575,18 @@ class AskRequest(BaseModel):
     def turns(self) -> list[Turn]:
         """The conversation as the agent takes it, which is a role and a sentence."""
         return [Turn(role=entry.role, text=entry.text) for entry in self.history or []]
+
+    def archetypes(self) -> Archetypes:
+        """The two decks as the agent takes them, which is two strings and no nulls.
+
+        A request that sent nothing, a request that sent an object of two
+        nulls and a request that sent two empty strings are one case here,
+        which is the case the service had before the field existed.
+        """
+        sent = self.context_archetypes
+        if sent is None:
+            return Archetypes()
+        return Archetypes(mine=(sent.mine or "").strip(), theirs=(sent.theirs or "").strip())
 
 
 class ToolCallResponse(BaseModel):
@@ -1699,10 +1760,10 @@ def create_app(
         `run_id` says which warehouse answered; and `evidence` is the agent's
         own and passes through untouched.
 
-        The five context fields, `history` and `job` go straight through to
-        the agent and are not read here, beyond turning the request's facts
-        and turns into the plain objects the agent takes and the job enum
-        into the string the prompt's `route_line` matches. The conversation
+        The six context fields, `history` and `job` go straight through to
+        the agent and are not read here, beyond turning the request's facts,
+        turns and archetypes into the plain objects the agent takes and the
+        job enum into the string the prompt's `route_line` matches. The conversation
         has already been checked by then: `AskRequest` holds it to the
         shape and the ceilings `pipeline.prompts.validate_history` sets, so
         a malformed one is a 422 and never a half-placed thread.
@@ -1721,6 +1782,7 @@ def create_app(
             context_game=request.context_game,
             context_first_line=request.context_first_line,
             context_facts=request.facts(),
+            context_archetypes=request.archetypes(),
             history=request.turns(),
         )
         payload = dict(result.as_dict())

@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your Dragapult / Dusknoir game against Applin / Celebi, you went second, won in 4 turns.",
   "context_game": "Your Dragapult / Dusknoir deck against Applin / Celebi. You went second and won on turn 4. You took 1 prize and your opponent took 1. Your first attack was on turn 2. Your opponent never attacked in this game.",
+  "context_archetypes": {
+    "mine": "Dragapult / Dusknoir",
+    "theirs": "Applin / Celebi"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

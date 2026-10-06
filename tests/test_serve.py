@@ -447,6 +447,7 @@ class StubAgent:
         self.games: list[str | None] = []
         self.first_lines: list[str | None] = []
         self.facts: list[tuple[Any, ...]] = []
+        self.decks: list[Any] = []
         self.histories: list[tuple[Any, ...]] = []
 
     def ask(
@@ -457,6 +458,7 @@ class StubAgent:
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Any] | None = None,
+        context_archetypes: Any = None,
         history: Sequence[Any] | None = None,
     ) -> "StubAgent":
         self.asked.append(question)
@@ -465,6 +467,7 @@ class StubAgent:
         self.games.append(context_game)
         self.first_lines.append(context_first_line)
         self.facts.append(tuple(context_facts or ()))
+        self.decks.append(context_archetypes)
         self.histories.append(tuple(history or ()))
         return self
 
@@ -792,6 +795,89 @@ def test_a_facts_list_the_service_will_not_place_is_a_422(
 
     assert response.status_code == 422
     assert agent.facts == []
+
+
+@pytest.mark.parametrize(
+    ("sent", "expected"),
+    [
+        (
+            {"mine": "Dragapult control", "theirs": "Gardevoir ex"},
+            ("Dragapult control", "Gardevoir ex"),
+        ),
+        ({"theirs": "Gardevoir ex"}, ("", "Gardevoir ex")),
+        ({"mine": "Dragapult control"}, ("Dragapult control", "")),
+        ({"mine": None, "theirs": None}, ("", "")),
+        ({"mine": "  ", "theirs": ""}, ("", "")),
+    ],
+)
+def test_the_two_decks_reach_the_agent_as_two_plain_names(
+    registry: Registry, sent: dict[str, Any], expected: tuple[str, str]
+) -> None:
+    """The sixth context field, carried through rather than read and dropped.
+
+    Either name may be absent, and the four ways of saying "no name" are one
+    case by the time the agent sees it: an empty string. Whether the
+    sentence is placed at all is the agent's decision and not the handler's.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask",
+            json={
+                "question": "what should I have done",
+                "context_game": GAME_SUMMARY,
+                "context_first_line": GAME_FIRST_LINE,
+                "context_archetypes": sent,
+            },
+        )
+
+    assert response.status_code == 200
+    (decks,) = agent.decks
+    assert (decks.mine, decks.theirs) == expected
+
+
+def test_a_request_with_no_archetypes_asks_for_neither_deck(registry: Registry) -> None:
+    """Absent is the behaviour the service had before the field existed.
+
+    The agent is handed the same empty pair a request of two nulls produces,
+    so there is one absent value on this path and not two.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post("/ask", json={"question": "how many games are there"})
+
+    assert response.status_code == 200
+    (decks,) = agent.decks
+    assert (decks.mine, decks.theirs) == ("", "")
+
+
+@pytest.mark.parametrize(
+    "archetypes",
+    [
+        {"mine": "D" * (serve.MAX_ARCHETYPE_CHARS + 1)},
+        {"theirs": "G" * (serve.MAX_ARCHETYPE_CHARS + 1)},
+        {"mine": ["Dragapult control"]},
+    ],
+)
+def test_an_archetype_the_service_will_not_place_is_a_422(
+    registry: Registry, archetypes: dict[str, Any]
+) -> None:
+    """A deck name is a short label, and a paragraph in the field is a refusal.
+
+    Refused rather than truncated, for the reason the other ceilings are: a
+    name cut in half is a name that says something else.
+    """
+    agent = StubAgent(ANSWER)
+    app = serve.create_app(registry, agent_factory=lambda: agent)
+    with TestClient(app) as started:
+        response = started.post(
+            "/ask", json={"question": "anything", "context_archetypes": archetypes}
+        )
+
+    assert response.status_code == 422
+    assert agent.decks == []
 
 
 EXCHANGE: Final[list[dict[str, str]]] = [
