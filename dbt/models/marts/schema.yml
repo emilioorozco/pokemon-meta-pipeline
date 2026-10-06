@@ -353,6 +353,79 @@ models:
       - name: last_played
         description: Play date of the most recent one.
 
+  - name: mart_archetype_turn_order
+    description: >
+      Going first against going second, one row per (archetype, opponent
+      archetype, side of the table), plus an all-opponents row per archetype
+      and side under the literal opponent key `all`. The split is the one
+      thing no public source records: a site that publishes matchup tables
+      does not know who opened, and every seat row in this warehouse does.
+      Both sides are always present, so a pairing played only from one seat
+      carries a row of zeros on the other rather than no row at all, because
+      a side with 0 games is an answer and a missing row is not. A seat
+      whose opening side the log never recorded is in neither half, the way
+      `mart_player_summary` counts it. The interval is Wilson at 95% over the
+      decided games, which is the one that stays inside 0 and 1 and does not
+      collapse to zero width on a clean sweep; two seats whose intervals
+      overlap have not been told apart by this corpus.
+    columns:
+      - name: turn_order_key
+        description: Surrogate key, the two archetype keys and the side of the table. The grain of this table.
+        data_tests: [unique, not_null]
+      - name: archetype_key
+        description: The archetype the row is written from the point of view of.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+      - name: archetype_name
+        description: Its canonical display name.
+      - name: opponent_archetype_key
+        description: >
+          The archetype it was facing, or the literal `all` on the
+          all-opponents row. The relationship test below is scoped to the
+          pair rows for that reason; the literal cannot collide with a real
+          key, which is a 26 character identifier or a `name:` prefixed
+          label.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_archetype')
+                field: archetype_key
+              config:
+                where: "not is_all_opponents"
+      - name: opponent_archetype_name
+        description: The opponent archetype's canonical display name, or `All opponents` on the all-opponents row.
+      - name: is_all_opponents
+        description: This row is the archetype's whole record on this side of the table rather than one pairing. Summing the pair rows and this one together counts every game twice.
+        data_tests: [not_null]
+      - name: went_first
+        description: This side of the table opened the game. The third key of the grain.
+        data_tests: [not_null]
+      - name: games
+        description: Games the archetype played from this side against this opponent. Zero on a side it has never been seated on.
+        data_tests: [not_null]
+      - name: wins
+        description: Games it won from this side.
+        data_tests: [not_null]
+      - name: losses
+        description: Games it lost from this side.
+        data_tests: [not_null]
+      - name: decided_games
+        description: Wins plus losses, the denominator of the rate and of the interval. Ties and unresolved seats are out of it for the reason they are out of `mart_matchups`, because neither is evidence either way.
+        data_tests: [not_null]
+      - name: win_rate
+        description: Wins divided by `decided_games`, NULL when nothing was settled and on a side with no games.
+      - name: ci_low
+        description: Lower bound of the Wilson 95% interval on `win_rate` over `decided_games`, NULL when there is no rate. Wide on a thin sample, which is the honest reading of one.
+      - name: ci_high
+        description: Upper bound of the same interval. Two sides whose intervals overlap are two sides this corpus cannot tell apart.
+      - name: min_games_met
+        description: This side alone has at least `min_games` games. A pairing can meet it on one side and not on the other, which is the case the flag exists for here.
+
   - name: mart_archetype_weekly
     description: >
       One row per archetype per International Organization for Standardization

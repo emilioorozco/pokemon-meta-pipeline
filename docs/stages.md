@@ -628,6 +628,22 @@ Six dimensions:
   archetypes, so the same game lands once as (A, B) and once as (B, A) and the
   application can look up either direction. A mirror row counts each mirror
   game twice, once per seat.
+- `mart_archetype_turn_order`: going first against going second, one row per
+  (archetype, opponent archetype, side of the table), plus an all-opponents
+  row per archetype and side under the literal opponent key `all`. `games`,
+  `wins`, `losses`, `decided_games`, `win_rate` over the decided games, and
+  `ci_low` and `ci_high`, the Wilson 95% interval around that rate. The split
+  is the one thing no public source records: a site that publishes matchup
+  tables does not know who opened, and every seat row here does. Both sides
+  are always present, so a pairing played from one seat only carries a row of
+  zeros on the other, because "0 games going first" is an answer and a
+  missing row is not. A seat whose opening side the log never recorded is in
+  neither half, the way `mart_player_summary` counts it. Wilson rather than
+  the rate plus or minus two standard errors, because the corpus is small and
+  the normal approximation is wrong exactly there: at four games and four
+  wins it gives an interval of zero width around 100%. Two sides whose
+  intervals overlap are two sides this corpus cannot tell apart, and on a
+  corpus this size that is nearly all of them.
 - `mart_archetype_weekly`: one row per archetype per ISO week. `games` counts
   seat rows, which is the right numerator for a win rate because a win belongs
   to a seat. `week_games` counts games once each, taken from the uploader seats
@@ -661,17 +677,22 @@ Six dimensions:
 
 ### Tests
 
-126 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
+140 of them today, run by `dbt test` and therefore by `python -m pipeline.gold`.
 `unique` and `not_null` on every primary key, the fact's `game_side_key`, each
 dimension's key and each mart's grain key; `relationships` from every foreign
 key on the fact to its dimension, with the `player_key` one scoped to the
 non-null rows because a stranger has no key; `accepted_values` on `seat`
 (0 and 1, the seat numbering silver takes from the contract's `players`
-array), on `result_for_seat` and on `export_variant`. Two singular tests carry
-the invariants a generic test cannot state: `assert_two_sides_per_game`, which
-repeats silver's reconciliation on the other side of the join, and
+array), on `result_for_seat` and on `export_variant`. Four singular tests
+carry the invariants a generic test cannot state: `assert_two_sides_per_game`,
+which repeats silver's reconciliation on the other side of the join;
 `assert_matchups_symmetric`, which checks that A vs B and B vs A exist as a
-pair, agree on games, and mirror wins against losses.
+pair, agree on games, and mirror wins against losses;
+`assert_turn_order_sides_account_for_every_seat`, which counts the two sides
+of each pairing out of the fact rather than out of another mart and insists
+both sides have a row; and `assert_turn_order_interval_contains_the_rate`,
+which holds every rate and every bound inside 0 and 1 and the interval around
+its own rate.
 
 `tests/test_gold.py` (marker `dbt`, skipped by the default `pytest` run) builds
 silver from the committed fixtures, runs the whole thing through `run_gold`,
@@ -1046,11 +1067,11 @@ unit tested with no database behind it. It refuses, naming the rule:
 | read only | anything not starting with `SELECT` or `WITH` |
 | no side effects | `ATTACH`, `DETACH`, `COPY`, `INSTALL`, `LOAD`, `PRAGMA`, `SET`, `CREATE`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, and the rest of the statement keywords |
 | no file access | `read_parquet`, `read_csv`, `read_json`, `glob` and the other table functions that leave the warehouse |
-| allowlist | any table other than the eight below |
+| allowlist | any table other than the nine below |
 
-The allowlist is `mart_matchups`, `mart_archetype_weekly`,
-`mart_archetype_pace`, `mart_cards_seen`, `mart_player_summary`,
-`dim_archetype`, `dim_card` and `dim_date`. Two absences
+The allowlist is `mart_matchups`, `mart_archetype_turn_order`,
+`mart_archetype_weekly`, `mart_archetype_pace`, `mart_cards_seen`,
+`mart_player_summary`, `dim_archetype`, `dim_card` and `dim_date`. Two absences
 are deliberate. `fct_game_side` is off it because the marts aggregate it
 correctly and a model writing its own group-by over a two-rows-per-game fact is
 where double counting starts. `dim_player`, the member roster, is off it

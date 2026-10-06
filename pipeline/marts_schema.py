@@ -430,6 +430,72 @@ MARTS_MODELS: Final[tuple[MartsModel, ...]] = (
         ),
     ),
     (
+        "mart_archetype_turn_order",
+        "Going first against going second, one row per (archetype, opponent archetype, side of the table), plus an all-opponents row per archetype and side under the literal opponent key `all`. The split is the one thing no public source records: a site that publishes matchup tables does not know who opened, and every seat row in this warehouse does. Both sides are always present, so a pairing played only from one seat carries a row of zeros on the other rather than no row at all, because a side with 0 games is an answer and a missing row is not. A seat whose opening side the log never recorded is in neither half, the way `mart_player_summary` counts it. The interval is Wilson at 95% over the decided games, which is the one that stays inside 0 and 1 and does not collapse to zero width on a clean sweep; two seats whose intervals overlap have not been told apart by this corpus.",
+        (
+            (
+                "turn_order_key",
+                "Surrogate key, the two archetype keys and the side of the table. The grain of this table.",
+            ),
+            (
+                "archetype_key",
+                "The archetype the row is written from the point of view of.",
+            ),
+            (
+                "archetype_name",
+                "Its canonical display name.",
+            ),
+            (
+                "opponent_archetype_key",
+                "The archetype it was facing, or the literal `all` on the all-opponents row. The relationship test below is scoped to the pair rows for that reason; the literal cannot collide with a real key, which is a 26 character identifier or a `name:` prefixed label.",
+            ),
+            (
+                "opponent_archetype_name",
+                "The opponent archetype's canonical display name, or `All opponents` on the all-opponents row.",
+            ),
+            (
+                "is_all_opponents",
+                "This row is the archetype's whole record on this side of the table rather than one pairing. Summing the pair rows and this one together counts every game twice.",
+            ),
+            (
+                "went_first",
+                "This side of the table opened the game. The third key of the grain.",
+            ),
+            (
+                "games",
+                "Games the archetype played from this side against this opponent. Zero on a side it has never been seated on.",
+            ),
+            (
+                "wins",
+                "Games it won from this side.",
+            ),
+            (
+                "losses",
+                "Games it lost from this side.",
+            ),
+            (
+                "decided_games",
+                "Wins plus losses, the denominator of the rate and of the interval. Ties and unresolved seats are out of it for the reason they are out of `mart_matchups`, because neither is evidence either way.",
+            ),
+            (
+                "win_rate",
+                "Wins divided by `decided_games`, NULL when nothing was settled and on a side with no games.",
+            ),
+            (
+                "ci_low",
+                "Lower bound of the Wilson 95% interval on `win_rate` over `decided_games`, NULL when there is no rate. Wide on a thin sample, which is the honest reading of one.",
+            ),
+            (
+                "ci_high",
+                "Upper bound of the same interval. Two sides whose intervals overlap are two sides this corpus cannot tell apart.",
+            ),
+            (
+                "min_games_met",
+                "This side alone has at least `min_games` games. A pairing can meet it on one side and not on the other, which is the case the flag exists for here.",
+            ),
+        ),
+    ),
+    (
         "mart_archetype_weekly",
         "One row per archetype per International Organization for Standardization (ISO) week. Two different counts live here and they are named apart on purpose. `games` counts seat rows, every appearance of the archetype on either side of the table, which is the right numerator for a win rate because a win belongs to a seat. `week_games` counts games once each, taken from the uploader seats only: exactly one seat per game is the uploader, so counting those rows counts each game exactly once without a distinct over the whole fact. `share_of_week` divides the first by the second, so it reads as the share of the week's games this archetype was one of the two decks in, and the column sums to roughly two across a week rather than one.",
         (

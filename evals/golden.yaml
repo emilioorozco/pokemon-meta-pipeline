@@ -207,7 +207,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 14
+version: 15
 
 questions:
   - id: matchup_win_rate
@@ -2134,3 +2134,75 @@ questions:
       reason `week_coverage` is in the set: the per-archetype column counts
       seats. The `desc:` entry holds the receipt to the same bar
       `matchup_win_rate` does.
+
+  - id: turn_order_both_seats
+    job: meta
+    warehouse: any
+    question: >-
+      Should I go first or second with Dragapult control, and how sure can you
+      be either way?
+    expect_tools: [query_marts]
+    require:
+      - "re:(going|went) first[^.]{0,80}\\b\\d+ games?\\b|\\b\\d+ games?\\b[^.]{0,50}(going|went) first"
+      - "re:(going|went) second[^.]{0,80}\\b\\d+ games?\\b|\\b\\d+ games?\\b[^.]{0,50}(going|went) second"
+      - "re:\\d+(\\.\\d+)?\\s?%|\\b\\d\\.\\d+"
+      - "re:\\d+(\\.\\d+)?\\s?%\\s*(to|and|through|–|-)\\s*\\d+(\\.\\d+)?\\s?%|between \\d"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+      - "re:from mart_matchups"
+      - "re:from mart_player_summary"
+      - "re:from fct_game_side"
+    notes: >-
+      The question `mart_archetype_turn_order` was built for, and the half of
+      it that is a shape rather than a fact: whatever the two sides of the
+      table did, the answer has to give both of them with a games count each,
+      a rate, and the interval around it. An answer that reports one side and
+      stops has not answered "first or second", and an answer that reports a
+      rate with no interval has handed a member a coin flip in a suit.
+
+      The two seat patterns accept either order, because "won 60% going
+      first" and "going first, 12 games" are the same claim written two ways,
+      and both accept a zero: a deck that has never been seated on one side
+      has 0 games there, and saying so is the answer rather than a gap in it.
+
+      `forbid` names the three tables a first-or-second answer could be
+      guessed out of instead. `mart_matchups` holds the same games with the
+      split collapsed, `mart_player_summary` holds one member's own split and
+      not the deck's, and `fct_game_side` is off the allowlist. A run that
+      reads any of them for this question has answered a different one, which
+      is what the `meta` playbook's last paragraph forbids in words.
+
+  - id: turn_order_thin_pair
+    job: meta
+    warehouse: fixture
+    question: >-
+      Against Dudunsparce / Mega Greninja ex, is Dragapult control better
+      going first or going second?
+    expect_tools: [query_marts]
+    require:
+      - Dragapult control
+      - Dudunsparce / Mega Greninja ex
+      - "re:\\b1 game\\b"
+      - "re:\\b0 games\\b|\\bno games\\b|never"
+      - "re:too few|not enough|cannot tell|can't tell|thin|no way to tell|min_games_met"
+    forbid:
+      - deck inclusion
+      - "re:[0-9a-f]{16}"
+      - "re:from mart_matchups"
+      - "re:from mart_player_summary"
+    notes: >-
+      The other half, and the one that is a fact of this corpus. The pairing
+      has one game in it, played from the second seat, so the honest answer is
+      1 game on one side, 0 on the other and too few games to tell. It is
+      `warehouse: fixture` for the reason step 5 at the top of this file
+      gives: "1 game" and "0 games" are numbers out of the ten fixture games,
+      and the same pairing in a league warehouse may be thick enough that the
+      caveat would be wrong there.
+
+      Worth writing down for whoever grows the corpus: no archetype in the
+      fixture ten has games on both sides of the table, so there is no pairing
+      here with a real first-versus-second split to grade. `turn_order_both_seats`
+      grades the shape of an answer that would report one; this grades the
+      caveat. A refresh that lands a deck with games in both seats is the day
+      to add the third case, which asserts the gap itself.

@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 12
+version: 13
 
 runs:
   matchup_win_rate:
@@ -698,3 +698,37 @@ runs:
       and 1 win, over a week that holds 8 games in all, so this is six decks that won
       once and not a ranking. The mart flags all six rows as thin, which on a sample of
       one is what you would expect.
+
+  turn_order_both_seats:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, went_first, games, wins, losses,
+            decided_games, win_rate, ci_low, ci_high, min_games_met from
+            mart_archetype_turn_order where archetype_name ilike 'Dragapult
+            control' and is_all_opponents order by went_first desc
+    answer: >-
+      Going first, Dragapult control has 0 games in this warehouse, so there is
+      nothing on that side to read. Going second it is 2 and 0 over 2 games, a win
+      rate of 100%, and the interval around that runs from 34% to 100%. An
+      interval that wide is the sample telling you it cannot separate the two
+      sides, and the mart flags the row as thin, so there is no first-or-second
+      advice here yet: play either and send the games in.
+
+  turn_order_thin_pair:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, went_first, games,
+            wins, losses, win_rate, ci_low, ci_high, min_games_met from
+            mart_archetype_turn_order where archetype_name ilike 'Dragapult
+            control' and opponent_archetype_name ilike 'Dudunsparce / Mega
+            Greninja ex'
+    answer: >-
+      Dragapult control has met Dudunsparce / Mega Greninja ex once and won it
+      going second: 1 game, 1 and 0. Going first it has 0 games against them. That
+      is too few games to tell the two sides apart, and the interval says the same
+      thing out loud: the single win puts the going-second rate somewhere between
+      21% and 100%. Both rows are under the project's minimum sample.

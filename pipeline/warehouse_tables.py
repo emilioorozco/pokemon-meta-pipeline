@@ -27,6 +27,7 @@ WAREHOUSE_TABLES: Final[tuple[str, ...]] = (
     "features_turn",
     "int_game_side_pace",
     "mart_archetype_pace",
+    "mart_archetype_turn_order",
     "mart_archetype_weekly",
     "mart_cards_seen",
     "mart_matchups",
