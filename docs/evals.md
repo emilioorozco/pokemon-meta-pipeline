@@ -6,10 +6,10 @@ that anybody can shorten by accident, and nothing in the test suite would go
 red: the loop would still run, the tool would still validate, and the answers
 would quietly get worse. This is the thing that notices.
 
-`evals/golden.yaml` holds fifty-two questions in three kinds. Twenty-eight are
+`evals/golden.yaml` holds fifty-four questions in three kinds. Thirty are
 `golden`: questions a warehouse with games in it really answers, or, in a few
 cases, a question the page context answers, graded on whether the right fact
-came back. Seven of those twenty-eight carry a `job` and grade the shape of the
+came back. Nine of those thirty carry a `job` and grade the shape of the
 answer the prompt's playbook for that job asks for. Fourteen are `adversarial`: questions nobody should get an answer
 to, added when the agent was opened to members, graded on whether the refusal
 held. Ten are `mistake`: questions about the game on the member's screen,
@@ -125,7 +125,7 @@ name, which a warehouse of two hundred games satisfies as readily as one of
 ten. Only `--remote` reads the field, and the section below says what it does
 with it.
 
-## What the twenty-eight golden questions cover
+## What the thirty golden questions cover
 
 | id | what it is for |
 | --- | --- |
@@ -157,8 +157,10 @@ with it.
 | `job_my_record_going_first` | the going-first split of that row, both halves with their own counts |
 | `job_card_rules_ability` | printed card text and no mart read at all |
 | `job_meta_week` | a week of the field: the number, the sample size and the caveat |
+| `turn_order_both_seats` | first against second for one deck: both sides with a games count each, a rate, and the interval around it, asserted as a shape |
+| `turn_order_thin_pair` | one pairing with a game on one side and none on the other, answered with the too-few-games clause |
 
-Seven of them are marked `warehouse: any`, and they are what the deployed
+Eight of them are marked `warehouse: any`, and they are what the deployed
 check scores; the section below says why.
 
 ## What the fourteen adversarial questions cover
@@ -792,10 +794,34 @@ used, and it may not be handed back. The receipt does not carry it either:
 `player_key` is in `describe.VALUELESS_COLUMNS`, so the line reads "for the
 member" and stops.
 
-`version` in the golden file is 14 and the transcript is 12; the replay
-asserts 52 out of 52 and the line under the table reads
-`52/52 passed (28/28 golden, 14/14 adversarial, 10/10 mistake)`, with
-`by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
+`version` in the golden file was 14 and the transcript 12 at that point, and
+the replay asserted 52 out of 52.
+
+## Version 15, and the question Limitless cannot answer
+
+Who went first is recorded on every seat of every game here and nowhere
+public, so "should I go first or second with this deck" had no answer worth
+reading. `mart_archetype_turn_order` is the mart that answers it, and two
+questions grade the answer: `turn_order_both_seats` asks for one deck's two
+sides and fails anything that reports one of them, a rate with no interval,
+or a run that reaches for `mart_matchups`, `mart_player_summary` or the fact
+table instead; `turn_order_thin_pair` asks about a pairing with one game on
+one side and none on the other, where the whole of the right answer is the
+caveat.
+
+The second is `warehouse: fixture` and the first is `any`, which is step 5 at
+the top of the golden file applied honestly: "1 game" and "0 games" are facts
+of the ten fixture games, and the same pairing in a league warehouse may be
+thick enough that the caveat would be wrong there. Worth knowing for whoever
+grows the corpus: no archetype in the fixture ten has games on both sides of
+the table, so there is no real first-versus-second gap here to grade yet. The
+shape is graded; the gap is the third question, on the day a refresh lands a
+deck that has played from both seats.
+
+`version` in the golden file is 15 and the transcript is 13; the replay
+asserts 54 out of 54 and the line under the table reads
+`54/54 passed (30/30 golden, 14/14 adversarial, 10/10 mistake)`, with
+`by job: 3/3 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
 ## The `offered` set: every question the application puts on a screen
@@ -807,8 +833,8 @@ been measured, and PLA-208 started with a member clicking a chip the
 application itself had drawn and getting a refusal.
 
 `evals/offered.json` is every such string: the "Try asking" suggestions a
-page opens the drawer with, and the follow-up chips under an answer. Seventy
-of them today, 52 suggestions and 18 follow-ups.
+page opens the drawer with, and the follow-up chips under an answer.
+Seventy one of them today, 53 suggestions and 18 follow-ups.
 
 **Where the file comes from.** It is the web application's own export,
 `apps/web/src/lib/askOffered.json`, copied in unchanged. Refreshing it is one

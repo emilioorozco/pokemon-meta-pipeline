@@ -261,6 +261,7 @@ covers the allowlist:
 | relation | what the receipt calls it |
 |---|---|
 | `mart_matchups` | matchup results |
+| `mart_archetype_turn_order` | how each deck does going first and going second |
 | `mart_archetype_weekly` | how each deck did week by week |
 | `mart_archetype_pace` | how fast each deck plays |
 | `mart_cards_seen` | which cards showed up |
@@ -337,7 +338,7 @@ lake cannot read it; the fallback is that warehouse's last-modified time as an
 ISO string under the same key, which still answers "which night is this". Null
 means there is no warehouse to ask.
 
-**No handle reaches any of this.** The rows are whatever the seven allowlisted
+**No handle reaches any of this.** The rows are whatever the allowlisted
 marts hold, and none of their columns is a handle or a user id: the one
 person-shaped column the agent can reach at all is the `player_key` of
 `mart_player_summary`, which is the same irreversible token the pipeline
@@ -717,7 +718,7 @@ which builds anything:
 | field | what it is |
 |---|---|
 | `prompt_sha256` | sha256 of the generated system prompt this container would send, with the card-tool note included exactly when `card_tool` is true |
-| `schema_tables` | how many of the allowlisted tables the listing really describes; eight is whole, zero is the bug |
+| `schema_tables` | how many of the allowlisted tables the listing really describes; nine is whole, zero is the bug |
 
 The local half of the comparison:
 
