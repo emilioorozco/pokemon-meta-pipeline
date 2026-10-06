@@ -359,10 +359,14 @@ turn grows, which costs uncached input tokens on every call of that question
 
 ---
 
-## 3. The reasoning gap, design only
+## 3. The reasoning gap
 
-**This has not been run.** No provider call was made for this spike. What
-follows is the design, the commands and the price.
+**Still not run, and now only for want of a key.** The harness side of this
+section is built and the questions exist; no provider call has been made.
+The subsection "What the run needs, and where it stopped" at the end of this
+section records exactly what is in place, what the commands are now that the
+flags exist, and what blocked the run, so that the next attempt is a command
+rather than a day.
 
 ### What to run
 
@@ -436,28 +440,44 @@ prints and it is the optional SQL gate's cost, not the answering model's. So
 the comparison prices the run by hand from the `--json` report at list prices.
 That is a four-line script over the report and needs no network.
 
-**Latency is not captured at all, and that is a gap in the harness.** The
-deployed service puts `latency_ms` in the `/ask` body, but `--model` cannot be
-combined with `--remote`, and the local path never times anything:
-`pipeline.eval.Result` has no duration field. Three options, in order of
-preference: add an elapsed field to `Result` and print it in the report, which
-is a small change to `run_question` and the one worth making; or time each
-model's whole run with the shell and divide by the case count, which is crude
-but comparable across models since the case set is identical; or accept that
-this comparison reports cost and not latency and open a ticket. The first is
-recommended, because a routed model choice is a latency decision as much as a
-cost one, and "about 5 to 20 seconds" is the only latency figure the product
-currently states to a member.
+**Latency was not captured at all, and that was a gap in the harness. It is
+closed.** The deployed service puts `latency_ms` in the `/ask` body, but
+`--model` cannot be combined with `--remote`, and the local path timed
+nothing: `pipeline.eval.Result` had no duration field. It has one now.
+`elapsed_ms` is the wall clock around the single `ask` call, so every model
+call, tool call and gate verdict of a question is inside it and none of the
+scoring is, and a question that raised is timed too, because a provider
+timeout is a duration and recording it as nothing would hide the one case the
+field exists to find. The report prints `latency: p50 ... ms, p95 ... ms`
+under the table on every run, the JSON carries `latency_ms` beside
+`usage_totals`, and the tracking run logs both. Nearest rank rather than
+interpolated, because at sixty-two questions the 95th is the third slowest
+and a figure between two of them is a duration nothing took.
 
-**One thing to decide before running, because it moves both numbers.** The
-agent builds its provider client with a 60 second timeout and no thinking
-configuration (`pipeline.agent.chat_model`). Haiku 4.5 does no thinking unless
-asked. Sonnet 5 and Opus 5 run adaptive thinking, and on Opus 5 it is on by
-default, so both will emit thinking tokens, billed as output, on every call of
-every question, and both will be slower. The comparison should either set a low
-effort for the two larger models and say so, or raise the client timeout, or
-both. Running them at defaults against a 60 second timeout risks measuring the
+The alternative, timing each model's whole run from the shell and dividing by
+the case count, was rejected for the reason a mean is: one question that hits
+the client timeout moves it and nothing in the number says so.
+
+**One thing to decide before running, because it moves both numbers. It is
+decided and it is wired.** The agent built its provider client with a 60
+second timeout and no thinking configuration (`pipeline.agent.chat_model`).
+Haiku 4.5 does no thinking unless asked. Sonnet 5 and Opus 5 run adaptive
+thinking, and on Opus 5 it is on by default, so both emit thinking tokens,
+billed as output, on every call of every question, and both are slower.
+Running them at defaults against a 60 second timeout risks measuring the
 timeout.
+
+So both halves of the recommendation exist as settings, and both are unset
+everywhere else, which is what keeps the deployed client byte for byte the
+one that was there before. `PRA_AGENT_EFFORT`, with `--effort` on
+`pipeline.eval` as its one surface, sets the provider's effort level;
+`PRA_AGENT_TIMEOUT_S` raises the client ceiling. The run sets `--effort low`
+on Sonnet 5 and Opus 5 and nothing on Haiku 4.5, which rejects the parameter.
+Thinking is not switched off, and the flag deliberately offers no way to:
+a model told not to think has two documented failure modes, a tool call
+written into the visible prose and internal tags leaking into the answer, and
+both would score here as the model being bad at this job rather than as the
+setting being a bad idea.
 
 **Prefix caching is comparable across all three.** The prefix is about 5,200 to
 5,600 tokens (measured 2026-10-04: 4,299 for the system blocks as they then
@@ -488,32 +508,43 @@ uv run python -m pipeline.card_index build --source tests/card_text.jsonl \
 ```
 
 Then the same set against each model, with everything else held identical. The
-harness takes the model by name and hands it to `pipeline.agent`:
+harness takes the model by name and hands it to `pipeline.agent`. Two
+corrections to the shape this was first written in, both found by running it:
+
+**`op run` sets `PIPELINE_DATA_DIR` from 1Password, so it has to be
+overridden inside the command rather than exported outside it.** The dev file
+points that variable at the real lake root, and a run that let it through
+would write its run metrics there. `env VAR=value` between the `--` and `uv`
+is the override, and the same trick pins the tracking store away from the
+repository's `data/`.
+
+**Both `--golden` and `--effort` exist now**, and the competitive file is
+`evals/golden_competitive.yaml`.
 
 ```bash
-mkdir -p /tmp/pla202-eval/runs
-for MODEL in claude-haiku-4-5-20251001 claude-sonnet-5 claude-opus-5; do
-  op run --env-file=.env.op -- uv run python -m pipeline.eval \
-    --model "$MODEL" \
-    --golden evals/golden.yaml \
-    --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
-    --card-index "$PIPELINE_DATA_DIR/card_index" \
-    --experiment agent-model-comparison \
-    --json > "/tmp/pla202-eval/runs/golden-$MODEL.json"
-done
-```
+SCRATCH=/tmp/pla202-eval            # anywhere outside the repository's data/
+mkdir -p "$SCRATCH/runs"
+run () {  # run <model> <effort|-> <golden file> <output name>
+  local effort=()
+  [ "$2" = "-" ] || effort=(--effort "$2")
+  op run --env-file=.env.dev.op -- env \
+    PIPELINE_DATA_DIR="$SCRATCH" \
+    MLFLOW_TRACKING_URI="file:$SCRATCH/mlruns" \
+    uv run python -m pipeline.eval \
+      --model "$1" "${effort[@]}" \
+      --golden "$3" \
+      --warehouse "$SCRATCH/warehouse/meta.duckdb" \
+      --card-index "$SCRATCH/card_index" \
+      --experiment agent-model-comparison \
+      --json > "$SCRATCH/runs/$4.json"
+}
 
-And the competitive subset, once it exists as a file of its own:
-
-```bash
-for MODEL in claude-haiku-4-5-20251001 claude-sonnet-5 claude-opus-5; do
-  op run --env-file=.env.op -- uv run python -m pipeline.eval \
-    --model "$MODEL" \
-    --golden evals/competitive.yaml \
-    --warehouse "$PIPELINE_DATA_DIR/warehouse/meta.duckdb" \
-    --card-index "$PIPELINE_DATA_DIR/card_index" \
-    --experiment agent-model-comparison \
-    --json > "/tmp/pla202-eval/runs/competitive-$MODEL.json"
+for REP in 1 2; do
+  for SET in golden.yaml golden_competitive.yaml; do
+    run claude-haiku-4-5-20251001 -   "evals/$SET" "haiku-${SET%.yaml}-r$REP"
+    run claude-sonnet-5           low "evals/$SET" "sonnet-${SET%.yaml}-r$REP"
+    run claude-opus-5             low "evals/$SET" "opus-${SET%.yaml}-r$REP"
+  done
 done
 ```
 
@@ -537,7 +568,12 @@ for path in sorted(pathlib.Path("/tmp/pla202-eval/runs").glob("*.json")):
         + usage["cache_read_input_tokens"] * rate_in * 0.1
         + usage["output_tokens"] * rate_out
     ) / 1e6
-    print(f"{path.name:44s} {model:30s} ${cost:7.4f}  {report['passed']}/{report['total']}")
+    latency = report["latency_ms"]
+    print(
+        f"{path.name:44s} {model:30s} ${cost:7.4f}  "
+        f"{report['passed']}/{report['total']}  "
+        f"p50 {latency['p50']} ms  p95 {latency['p95']} ms"
+    )
 PY
 ```
 
@@ -585,6 +621,34 @@ result cannot be read to taste: route by job only if the stronger model gains at
 least 1.5 rubric points of 8 on the `my_mistake` and competitive subsets while
 losing nothing on the adversarial set. Below that, the money belongs in the
 data gaps.
+
+### What the run needs, and where it stopped
+
+Everything but the provider call is in place, so this is a list of what the
+next attempt inherits rather than a list of what it has to build.
+
+| piece | state |
+| --- | --- |
+| `elapsed_ms` on every result, `latency: p50 ..., p95 ...` under the table, `latency_ms` in the JSON and two metrics on the tracking run | done |
+| `--effort`, `PRA_AGENT_EFFORT` and `PRA_AGENT_TIMEOUT_S`, all three unset in every deployment and documented in `docs/evals.md` and `docs/stages.md` | done |
+| `--golden <path>` | already existed; now covered by a test of its own, since the competitive file depends on it |
+| `evals/golden_competitive.yaml`, ten questions `N01` to `N10`, every one `warehouse: any`, each carrying `expected_points` for the hand rubric | done |
+| the fixture warehouse and card index, built under a scratch directory by the four commands above, 52 of 52 on the replay with the new latency line printing | done |
+| the three models, two repetitions, 62 cases each | **not run** |
+
+**Where it stopped.** The dry run, one question on Haiku 4.5 through
+`op run --env-file=.env.dev.op`, never reached the provider:
+`error initializing client: authorization timeout`, twice, with `op whoami`
+reporting that the account is not signed in. The 1Password desktop
+application is running but locked, and the command line integration cannot
+raise an approval the person at the keyboard answers. Nothing was spent.
+
+The next attempt is: unlock 1Password, confirm with `op whoami`, then the
+`run` function above. Two things to check on the first model before letting
+the loop run on: that `cache_read_input_tokens` is not zero after the first
+few questions, which is the prefix caching the cost table assumes, and that
+no question's `elapsed_ms` is sitting at the client ceiling, which is what
+measuring the timeout looks like.
 
 ### The items already parked on this ticket
 
@@ -727,19 +791,25 @@ a one-field change on the application's side and it is ticket T3.
 
 ### A competitive golden subset
 
-Twelve cases, proposed here and not yet in `evals/golden.yaml`. They are
-written in the golden format with one addition: an `expected_points` list,
-which is the expert's statement of what a good answer contains. The harness
-ignores unknown fields today, so `expected_points` is documentation until
-somebody teaches the scorer to print it beside a failure; the point of writing
-it now is that the rubric in section 3 needs something to score against that
-was written before anybody saw an answer.
+Twelve cases, drafted here first. Ten of them shipped as
+`evals/golden_competitive.yaml`, under the ids `N01` to `N10` that section 3
+uses, so what follows is the draft and that file is the set that runs. They
+are written in the golden format with one addition: an `expected_points`
+list, which is the expert's statement of what a good answer contains. The
+loader ignores unknown fields, so `expected_points` is documentation until
+somebody teaches the scorer to print it beside a failure; the point of
+writing it before the run is that the rubric in section 3 needs something to
+score against that nobody wrote after seeing an answer.
 
 All twelve are `warehouse: any`, so they can be run against the deployment as
-well as the fixtures. None of them asserts a production number.
+well as the fixtures. None of them asserts a production number. The two that
+read a member's own row say which row is theirs in words, the way
+`job_my_record_season` does, rather than carrying the token placeholder: a
+question with the placeholder in it has to be `warehouse: fixture` by the
+loader's own rule, and these have to be `any` to be runnable at all.
 
 ```yaml
-# Proposed: evals/competitive.yaml, or kind: competitive in golden.yaml.
+# Shipped as evals/golden_competitive.yaml, ten of these twelve, as N01 to N10.
 # expected_points is new and is for the hand rubric, not for the harness.
 version: 1
 questions:
