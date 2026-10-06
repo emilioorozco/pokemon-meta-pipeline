@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your Dragapult control game against Alakazam / Toucannon, you went second, won in 10 turns.",
   "context_game": "Your Dragapult control deck against Alakazam / Toucannon. You went second and won on turn 10. You took 6 prizes and your opponent took 2. Your first attack was on turn 2. Your opponent first attacked on turn 3.",
+  "context_archetypes": {
+    "mine": "Dragapult control",
+    "theirs": "Alakazam / Toucannon"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

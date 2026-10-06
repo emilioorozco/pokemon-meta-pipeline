@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your game against Cynthia's Garchomp, you went second, lost in 6 turns.",
   "context_game": "Your deck against Cynthia's Garchomp. You went second and lost on turn 6. You took 1 prize and your opponent took 4. Your first attack was on turn 2. Your opponent first attacked on turn 3.",
+  "context_archetypes": {
+    "mine": null,
+    "theirs": "Cynthia's Garchomp"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

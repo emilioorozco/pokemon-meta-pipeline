@@ -426,15 +426,15 @@ def golden() -> evals.Golden:
     return evals.load_golden()
 
 
-def test_the_golden_set_is_twenty_eight_golden_fourteen_adversarial_and_ten_mistake(
+def test_the_golden_set_is_thirty_golden_fourteen_adversarial_and_ten_mistake(
     golden: evals.Golden,
 ) -> None:
-    assert len(golden.questions) == 52
+    assert len(golden.questions) == 54
     identifiers = [entry.id for entry in golden.questions]
     assert len(set(identifiers)) == len(identifiers)
     assert golden.version >= 1
     kinds = [entry.kind for entry in golden.questions]
-    assert kinds.count(evals.KIND_GOLDEN) == 28
+    assert kinds.count(evals.KIND_GOLDEN) == 30
     assert kinds.count(evals.KIND_ADVERSARIAL) == 14
     assert kinds.count(evals.KIND_MISTAKE) == 10
 
@@ -517,7 +517,7 @@ def test_the_fixture_facts_and_the_shapes_are_told_apart(golden: evals.Golden) -
         name: [entry.id for entry in golden.questions if entry.warehouse == name]
         for name in evals.VALID_WAREHOUSES
     }
-    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 21
+    assert len(by_warehouse[evals.WAREHOUSE_FIXTURE]) == 23
     assert len(by_warehouse[evals.WAREHOUSE_ANY]) == 31
     for entry in golden.questions:
         if entry.kind == evals.KIND_ADVERSARIAL:
@@ -1128,6 +1128,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
             context_game: str = "",
             context_first_line: str = "",
             context_facts: object = (),
+            context_archetypes: object = None,
             history: Sequence[evals.HistoryTurn] = (),
             job: str = "",
         ) -> Answer:
@@ -1148,21 +1149,24 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
         golden, lambda entry: Recorder(), warehouse=Path("unused"), player_token=FAKE_TOKEN
     )
     with_context = [row for row in seen if row[1]]
-    assert len(with_context) == 19
+    assert len(with_context) == 21
     with_game = [row for row in seen if row[2]]
-    assert len(with_game) == 14
+    assert len(with_game) == 16
     with_facts = [row for row in seen if row[4]]
-    assert len(with_facts) == 14
+    assert len(with_facts) == 16
     with_history = [row for row in seen if row[5]]
     assert len(with_history) == 4
-    # Five jobs, one question each, and every label is one the prompt has a
-    # playbook for: a label the runner sent that `route_line` did not
-    # recognise would put no line in the turn and grade nothing.
+    # Five jobs and every label is one the prompt has a playbook for: a
+    # label the runner sent that `route_line` did not recognise would put no
+    # line in the turn and grade nothing. `my_game` and `my_mistake` carry
+    # two each since PLA-212, which is the one deck named and the other not.
     with_job = sorted(row[6] for row in seen if row[6])
     assert with_job == [
         "card_rules",
         "meta",
         "my_game",
+        "my_game",
+        "my_mistake",
         "my_mistake",
         "my_record",
         "my_record",
@@ -1181,7 +1185,7 @@ def test_a_cases_page_context_travels_with_it(golden: evals.Golden) -> None:
     assert all(row[3] for row in with_game)
     assert all(row[2] for row in with_facts)
     assert any("Dragapult ex" in row[2] and "lost in 9 turns" in row[3] for row in with_game)
-    assert len(seen) == 52
+    assert len(seen) == 54
 
     # And over HTTP, where the body is the thing the deployed service parses.
     bodies: list[dict[str, object]] = []
@@ -1349,7 +1353,7 @@ def test_the_remote_mode_asks_only_what_is_true_of_another_warehouse(
     assert set(report.skipped) == {
         entry.id for entry in golden.questions if not entry.any_warehouse
     }
-    assert len(report.skipped) == 21
+    assert len(report.skipped) == 23
     assert "fixture warehouse" in report.skipped_reason
     assert "weekly_record" in evals.render(report)
     assert json.loads(json.dumps(report.as_dict()))["skipped"] == list(report.skipped)
@@ -1372,7 +1376,7 @@ def test_a_local_run_scores_every_question_in_the_file(golden: evals.Golden) -> 
         warehouse=Path("unused"),
         player_token=FAKE_TOKEN,
     )
-    assert report.total == len(golden.questions) == 52
+    assert report.total == len(golden.questions) == 54
     assert report.skipped == () and report.skipped_reason == ""
 
 
@@ -1446,16 +1450,19 @@ def test_the_whole_set_passes_against_the_fixture_marts(
         warehouse=gold_from_fixtures,
         card_index=hashed_index,
     )
-    assert report.passed == report.total == 52, evals.render(report)
+    assert report.passed == report.total == 54, evals.render(report)
     assert report.by_kind() == {
-        evals.KIND_GOLDEN: (28, 28),
+        evals.KIND_GOLDEN: (30, 30),
         evals.KIND_ADVERSARIAL: (14, 14),
         evals.KIND_MISTAKE: (10, 10),
     }
-    # One question per job, every one of them green, which is the line the
-    # playbooks are read off and the reason it is printed on every run.
+    # Every job green, which is the line the playbooks are read off and the
+    # reason it is printed on every run. `my_game` and `my_mistake` carry two
+    # questions each since PLA-212: the member's own deck named and not.
     expected_jobs = {job: (1, 1) for job in JOBS if job != "out_of_scope"}
     expected_jobs["my_record"] = (3, 3)
+    expected_jobs["my_game"] = (2, 2)
+    expected_jobs["my_mistake"] = (2, 2)
     assert report.by_job() == expected_jobs
     assert "by job: 1/1 meta" in evals.render(report)
     # Two, and the two are the limitation rather than a failure: both
@@ -1533,7 +1540,7 @@ def test_answers_without_the_facts_score_below_ten(
     adversarial_results = [
         result for result in report.results if result.question.kind == evals.KIND_ADVERSARIAL
     ]
-    assert len(golden_results) == 28
+    assert len(golden_results) == 30
     assert len(adversarial_results) == 14
     assert all(not result.passed for result in golden_results)
     assert all(evals.CHECK_REQUIRE in result.failed_checks for result in golden_results)
@@ -1585,8 +1592,8 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     )
     printed = capsys.readouterr().out
     assert code == 0, printed
-    assert "52/52 passed" in printed
-    assert "28/28 golden, 14/14 adversarial, 10/10 mistake" in printed
+    assert "54/54 passed" in printed
+    assert "30/30 golden, 14/14 adversarial, 10/10 mistake" in printed
     assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
     assert "matchup_win_rate" in printed
 
@@ -1608,7 +1615,7 @@ def test_the_json_report_is_machine_readable(
     )
     payload = json.loads(capsys.readouterr().out)
     assert code == 1
-    assert payload["total"] == 52
+    assert payload["total"] == 54
     assert payload["card_index"] is None
     failed = {entry["id"] for entry in payload["questions"] if not entry["passed"]}
     assert "card_text_lookup" in failed

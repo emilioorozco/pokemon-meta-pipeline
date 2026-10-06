@@ -207,7 +207,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 14
+version: 15
 
 questions:
   - id: matchup_win_rate
@@ -1156,6 +1156,8 @@ questions:
       Your deck against Dudunsparce / Kadabra. You went second and won on turn 23. You
       took 5 prizes and your opponent took 4. Your first attack was on turn 8. Your
       opponent first attacked on turn 7.
+    context_archetypes:
+      theirs: Dudunsparce / Kadabra
     context_facts:
       - id: turn_count:both
         text: "The game ran 23 turns."
@@ -1223,6 +1225,8 @@ questions:
       Your deck against Cynthia's Garchomp. You went second and lost on turn 6. You took
       1 prize and your opponent took 4. Your first attack was on turn 2. Your opponent
       first attacked on turn 3.
+    context_archetypes:
+      theirs: "Cynthia's Garchomp"
     context_facts:
       - id: turn_count:both
         text: "The game ran 6 turns."
@@ -1290,6 +1294,9 @@ questions:
       Your Dragapult control deck against Dudunsparce / Mega Greninja ex. You went
       second and won on turn 9. You took 3 prizes and your opponent took 1. Your first
       attack was on turn 2. Your opponent first attacked on turn 5.
+    context_archetypes:
+      mine: Dragapult control
+      theirs: Dudunsparce / Mega Greninja ex
     context_facts:
       - id: turn_count:both
         text: "The game ran 9 turns."
@@ -1356,6 +1363,8 @@ questions:
       Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
       17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
       Your opponent first attacked on turn 7.
+    context_archetypes:
+      theirs: Crustle / Mega Kangaskhan ex
     context_facts:
       - id: turn_count:both
         text: "The game ran 17 turns."
@@ -1422,6 +1431,9 @@ questions:
       Your Dragapult / Dusknoir deck against Fezandipiti ex / Froakie. You went second
       and won on turn 10. You took 2 prizes and your opponent took 0. Your first attack
       was on turn 2. Your opponent first attacked on turn 3.
+    context_archetypes:
+      mine: Dragapult / Dusknoir
+      theirs: Fezandipiti ex / Froakie
     context_facts:
       - id: turn_count:both
         text: "The game ran 10 turns."
@@ -1489,6 +1501,9 @@ questions:
       Your Dragapult / Dusknoir deck against Applin / Celebi. You went second and won on
       turn 4. You took 1 prize and your opponent took 1. Your first attack was on turn
       2. Your opponent never attacked in this game.
+    context_archetypes:
+      mine: Dragapult / Dusknoir
+      theirs: Applin / Celebi
     context_facts:
       - id: turn_count:both
         text: "The game ran 4 turns."
@@ -1554,6 +1569,8 @@ questions:
       Your deck against N's Zoroark ex / Meowth ex. You went first and won on turn 9.
       You took 4 prizes and your opponent took 2. Your first attack was on turn 3. Your
       opponent first attacked on turn 8.
+    context_archetypes:
+      theirs: "N's Zoroark ex / Meowth ex"
     context_facts:
       - id: turn_count:both
         text: "The game ran 9 turns."
@@ -1621,6 +1638,8 @@ questions:
       Your deck against Mega Starmie ex / Mega Froslass ex. You went first and lost on
       turn 14. You took 3 prizes and your opponent took 6. Your first attack was on turn
       3. Your opponent first attacked on turn 2.
+    context_archetypes:
+      theirs: Mega Starmie ex / Mega Froslass ex
     context_facts:
       - id: turn_count:both
         text: "The game ran 14 turns."
@@ -1684,6 +1703,12 @@ questions:
       Your Dragapult control deck against Alakazam / Toucannon. You went second and won
       on turn 10. You took 6 prizes and your opponent took 2. Your first attack was on
       turn 2. Your opponent first attacked on turn 3.
+    context_archetypes:
+      mine: Dragapult control
+      theirs: Alakazam / Toucannon
+    context_archetypes:
+      mine: Dragapult control
+      theirs: Alakazam / Toucannon
     context_facts:
       - id: turn_count:both
         text: "The game ran 10 turns."
@@ -1748,6 +1773,8 @@ questions:
       Your deck against Festival Lead. You went second and lost on turn 4. You took 0
       prizes and your opponent took 2. You never attacked in this game. Your opponent
       first attacked on turn 3.
+    context_archetypes:
+      theirs: Festival Lead
     context_facts:
       - id: turn_count:both
         text: "The game ran 4 turns."
@@ -1823,15 +1850,18 @@ questions:
 
   - id: job_my_mistake_review
     job: my_mistake
-    warehouse: any
     context: >-
       The member is on their own game page, reviewing one game.
     context_first_line: >-
-      Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.
+      Your Dragapult / Dusknoir game against Crustle / Mega Kangaskhan ex, you went
+      second, lost in 17 turns.
     context_game: >-
-      Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn
-      17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4.
-      Your opponent first attacked on turn 7.
+      Your Dragapult / Dusknoir deck against Crustle / Mega Kangaskhan ex. You went
+      second and lost on turn 17. You took 4 prizes and your opponent took 4. Your
+      first attack was on turn 4. Your opponent first attacked on turn 7.
+    context_archetypes:
+      mine: Dragapult / Dusknoir
+      theirs: Crustle / Mega Kangaskhan ex
     context_facts:
       - id: turn_count:both
         text: "The game ran 17 turns."
@@ -1873,13 +1903,16 @@ questions:
         text: "The game ended in a concession on turn 17."
         values: [17]
     question: what should I have done differently in that one
-    expect_tools: []
+    expect_tools: [query_marts]
     max_unverified: 0
     require:
       - "re:\\b12\\b"
       - "re:\\b17\\b"
       - "re:instead|could have|rather than|next time|worth|try "
-      - "re:matchup|the league|other games|the corpus|the warehouse|no row|holds no"
+      - Dragapult / Dusknoir
+      - Crustle / Mega Kangaskhan ex
+      - "re:\\b2 (games|seats)\\b"
+      - "re:\\b1 (game|seat)\\b"
     forbid:
       - "re:\\bfct_game_side\\b"
       - "re:\\bdim_player\\b"
@@ -1888,21 +1921,40 @@ questions:
       - "re:they (probably|must have|likely) (had|held|drew)"
     notes: >-
       The post-loss review, and the question the playbooks were written for.
-      The game is fixture game 4: a loss over 17 turns where the member's
+      The facts are fixture game 4: a loss over 17 turns where the member's
       first prize did not come until turn 12, which is the fact that decided
       it and is the one a stats summary would never surface.
 
-      The three required shapes are the three parts of the playbook's answer,
-      in the order it asks for them. Turn 12 and turn 17 are the facts that
-      mattered, both values of the facts the application sent; the third
-      entry is the line the member could have taken instead; and the fourth
-      is the sentence placing the game against how the matchup usually goes.
-      That last one passes on an honest "the warehouse holds no row for this
-      pairing", which is what the fixture corpus really says, because the
-      playbook asks for the caveat and not for a number that is not there.
+      Since PLA-212 the page context names both decks, and the third part of
+      the answer is the one that spends them. The member's own deck used to
+      reach the model as the words "your deck", so a review could read the
+      opponent's row of `mart_archetype_pace` and not the member's; with both
+      named it reads both and says which of the two paces the game was unlike.
+      Dragapult / Dusknoir first attacks on turn 2 over the 2 seats the mart
+      holds for it and Crustle / Mega Kangaskhan ex on turn 7 over 1, so a
+      member who first attacked on turn 4 and took no prize until turn 12 was
+      slow for their own deck rather than up against a fast one. Both rows are
+      under the project's minimum, which the answer has to say in words.
 
-      `warehouse: any` because nothing required is a fixture fact: the two
-      numbers are in the context the runner sent and the rest are shapes.
+      The required entries are the parts of the playbook's answer, in the
+      order it asks for them: turn 12 and turn 17 are the facts that mattered
+      and both are values of the facts the application sent; the third is the
+      line the member could have taken instead; the last four are the
+      comparison, which is two deck names and the seat count behind each row.
+      Both counts are read out of the mart by the run, which is what keeps
+      `max_unverified: 0` honest about them.
+
+      The two deck names are the context's rather than the warehouse's. No
+      game in the fixture corpus is both a loss for the uploading seat and a
+      seat whose archetype the anonymized export names, so a question that
+      graded the comparison could not also be an extract of one row; what it
+      grades is the comparison the field makes possible, over two pace rows
+      that are really in the mart. It is `warehouse: fixture` for the same
+      reason it stopped being `any`: 2 seats for Dragapult / Dusknoir and 1
+      for Crustle / Mega Kangaskhan ex are facts of this corpus and of no
+      other, so a remote run would score them against a warehouse they are
+      not true of.
+
       The last forbidden entry is the playbook's prohibition on guessing at
       the opponent's hand, which is the easiest way to fill the second part
       with something that sounds like advice.
@@ -1942,8 +1994,10 @@ questions:
     max_unverified: 0
     require:
       - Alakazam / Toucannon
+      - Dragapult control
       - "re:\\b6\\b"
       - "re:1 game\\b"
+      - "re:\\b2 (games|seats)\\b"
     forbid:
       - "re:\\bfct_game_side\\b"
       - "re:\\bdim_player\\b"
@@ -1962,8 +2016,162 @@ questions:
 
       Turn 6 is the member's first prize and their first knockout, which is
       the turn the game turned, and it is a value of two of the facts sent.
-      This is the only job case whose `require` names a fixture number, so
-      it is the only one with no `warehouse: any`.
+
+      Since PLA-212 the context names both decks, and this is the one fixture
+      game where naming them states nothing the warehouse does not already
+      hold: the uploading seat really is Dragapult control and the other
+      really is Alakazam / Toucannon. So the walkthrough's closing sentence
+      can place the game against both pace rows rather than one, and the two
+      added entries are the member's own deck by name and the 2 seats behind
+      its pace row. The `1 game` that was already here is the matchups row
+      and is also the seat count behind Alakazam / Toucannon's pace row, so
+      one entry covers either reading of a correct answer.
+
+  - id: job_my_mistake_no_deck_named
+    job: my_mistake
+    warehouse: any
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your game against Mega Starmie ex / Mega Froslass ex, you went first, lost in 14
+      turns.
+    context_game: >-
+      Your deck against Mega Starmie ex / Mega Froslass ex. You went first and lost on
+      turn 14. You took 3 prizes and your opponent took 6. Your first attack was on turn
+      3. Your opponent first attacked on turn 2.
+    context_archetypes:
+      theirs: Mega Starmie ex / Mega Froslass ex
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 14 turns."
+        values: [14]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 3."
+        values: [3]
+      - id: first_attack_turn:opponent
+        text: "Your opponent first attacked on turn 2."
+        values: [2]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 3."
+        values: [3]
+      - id: prizes_taken:both
+        text: "You took 3 prizes and your opponent took 6."
+        values: [3, 6]
+      - id: knockouts:both
+        text: "You took 2 knockouts and your opponent took 4."
+        values: [2, 4]
+      - id: biggest_attack:me
+        text: "Your biggest attack dealt 230 damage, on turn 3."
+        values: [230, 3]
+    question: what should I have done differently in that one
+    expect_tools: []
+    max_unverified: 0
+    require:
+      - "re:\\b230\\b"
+      - "re:instead|could have|rather than|next time|worth|try "
+      - "re:(not|never|no|without|does not|did not|is not|cannot).{0,40}\
+        (name|named|naming|say|says|said|tell|told|identif|record).{0,40}\
+        (deck|archetype|which deck|your deck)|\
+        (deck|archetype).{0,40}(not|never|no|unnamed|unknown|not named|not stated)"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+      - "re:they (probably|must have|likely) (had|held|drew)"
+      - "answer:re:you (were )?(played|playing|were on|ran|piloted) [A-Z]"
+      - "answer:re:your deck (usually|typically|normally|averages|first attacks|attacks on)"
+      - "answer:re:(compared|compares|versus) (with |to )?(your|yours)"
+    notes: >-
+      The other half of PLA-212, and the half that is the ordinary case on a
+      small corpus. Fixture game 8 is a loss whose uploading seat the
+      anonymized export never gave a deck name, so the application can name
+      the opponent and not the member, which is exactly the shape the
+      `context_archetypes` field has to survive: `theirs` alone and no
+      `mine`.
+
+      What it grades is that the third part of the review degrades to one
+      clause rather than to a guess. The required clause is written as an
+      alternation over the honest ways of saying "this page did not name
+      your deck", because that part of the answer is a statement about what
+      the context holds and there is no number in it to anchor on; the three
+      `answer:` entries are the two failures the clause exists to prevent,
+      which are asserting a deck for the member and comparing a pace they
+      were never given. They are `answer:` and not plain, so a query that
+      reads a pace row for the opponent alone is not scored as a comparison:
+      the playbook still allows that row, and what is forbidden is the
+      sentence, not the lookup.
+
+      `expect_tools: []` because the review is answerable out of the facts
+      and an extra query is wasteful rather than wrong, and `warehouse: any`
+      because nothing required is a fact of this corpus: 230 is a value of
+      the facts the runner sent and the rest are the clause.
+
+  - id: comp_pace_against_the_field
+    job: my_game
+    context: >-
+      The member is on their own game page, reviewing one game.
+    context_first_line: >-
+      Your Dragapult control game against Alakazam / Toucannon, you went second, won in
+      10 turns.
+    context_game: >-
+      Your Dragapult control deck against Alakazam / Toucannon. You went second and won
+      on turn 10. You took 6 prizes and your opponent took 2. Your first attack was on
+      turn 2. Your opponent first attacked on turn 3.
+    context_archetypes:
+      mine: Dragapult control
+      theirs: Alakazam / Toucannon
+    context_facts:
+      - id: turn_count:both
+        text: "The game ran 10 turns."
+        values: [10]
+      - id: first_attack_turn:me
+        text: "Your first attack was on turn 2."
+        values: [2]
+      - id: first_prize_turn:me
+        text: "Your first prize came on turn 6."
+        values: [6]
+      - id: prizes_taken:both
+        text: "You took 6 prizes and your opponent took 2."
+        values: [6, 2]
+    question: is the deck I played fast or slow next to the rest of the field
+    expect_tools: [query_marts]
+    max_unverified: 0
+    require:
+      - Dragapult control
+      - "re:\\b2 (games|seats)\\b"
+      - "re:\\bturn 2\\b"
+      - "re:N's Zoroark ex / Meowth ex|Dudunsparce / Kadabra|\
+        Dudunsparce / Mega Greninja ex|Crustle / Mega Kangaskhan ex|\
+        Dragapult / Dusknoir|Mega Starmie ex / Mega Froslass ex|\
+        Cynthia's Garchomp|Festival Lead|Applin / Celebi|\
+        Fezandipiti ex / Froakie"
+    forbid:
+      - "re:\\bfct_game_side\\b"
+      - "re:\\bdim_player\\b"
+      - "re:\\bstg_|\\bbronze\\b|\\bsilver\\b"
+      - "re:[0-9a-f]{16}"
+      - deck inclusion
+    notes: >-
+      The question the spike proposed and the one the field was added for: a
+      member on their own game page asking where the deck they just played
+      sits against everything else the warehouse has seen. It is unanswerable
+      without `context_archetypes.mine`, because the question never names a
+      deck and the game summary used to call it "your deck"; that is the
+      whole reason it is in the set.
+
+      `mart_archetype_pace` is the one table that answers it, read over the
+      field rather than over one row. The required entries are the member's
+      deck by name, the 2 seats behind its pace row, its average first attack
+      on turn 2, and at least one archetype that is in the mart and not in
+      the page context, which an answer can only have by reading the table
+      rather than the summary. `warehouse: fixture` because the seat count
+      and the archetype list are facts of these ten games.
+
+      `max_unverified: 0` for the reason the game-page questions carry it:
+      every number in the answer is either a pace row the run read or a fact
+      the application sent, and an average invented between the two would
+      otherwise pass.
 
   - id: job_my_record_season
     job: my_record

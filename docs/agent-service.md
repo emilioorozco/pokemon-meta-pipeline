@@ -351,7 +351,7 @@ without allowing for two renderings; `--json` always carries it.
 
 ### Page context
 
-`POST /ask` takes six optional fields beside `question`.
+`POST /ask` takes seven optional fields beside `question`.
 
 | field | what it is |
 |---|---|
@@ -359,6 +359,7 @@ without allowing for two renderings; `--json` always carries it.
 | `context_game` | a redacted plain-text summary of the game the member is looking at, built by the application from that member's own log. A few hundred characters to about 1,500, at most **4,000**, and a longer one is a 422 for the same reason. This service never fetches a game |
 | `context_first_line` | one sentence describing the same game, such as `Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns`. At most **300** characters. It is the only part of the game the relevance decision is shown |
 | `context_facts` | the analysis facts the application computed from the same game, at most **60**, each `{id, text, values}`: a stable key of at most 64 characters, one plain sentence of at most 200 holding that fact's numbers, and those numbers as the application computed them. Sent only beside a `context_game`, and placed only when that summary is placed. Over any of the three ceilings is a 422 |
+| `context_archetypes` | the deck each side played in that same game, as `{"mine": ..., "theirs": ...}`, either of which may be `null`. Each name at most **120** characters; a longer one is a 422. Sent only beside a `context_game`, and placed only when that summary is placed, as one sentence between the summary and the `<facts>` list. Absent is the behaviour this service had before the field existed. See **The two decks** below |
 | `history` | the conversation so far, oldest first, at most **6** turns of `{role, text}` with `role` one of `user` and `assistant`. See **Conversation** below |
 | `job` | the application's own router label, one of `meta`, `my_game`, `my_mistake`, `my_record`, `card_rules`, `out_of_scope`. An enum, so a typo is a 422 rather than a new category in a chart. It picks the playbook the agent answers from. See **The playbooks, and the `Routed as` line** below |
 
@@ -829,6 +830,64 @@ then the only rule with a deterministic check behind it. The ceiling
 went on to 10,000 for `mart_archetype_pace`, whose thirteen columns are 936
 characters of schema listing against the 133 that were left, and to 10,400
 for rule 11 (**Conversation** above).
+
+### The two decks, and why the member's own used to be missing
+
+The summary the application writes names the opponent's deck and calls the
+member's own "your deck", because that is how it reads on a page where the
+member already knows what they played. The model is not on that page. It
+was being handed one archetype out of two, which is enough to read the
+opponent's row of `mart_archetype_pace` and not enough to compare the pair,
+so a post-loss review could say how fast the other deck usually is and
+nothing at all about how fast the member's own usually is.
+
+`context_archetypes` is the other name. One request field, stored nowhere,
+read off the game record the application already holds, and placed as one
+sentence between the summary and the facts:
+
+```
+<context>
+The member is on their own game page, reviewing one game.
+
+Your Dragapult control deck against Alakazam / Toucannon. You went second and
+won on turn 10. You took 6 prizes and your opponent took 2.
+You played Dragapult control. Your opponent played Alakazam / Toucannon.
+<facts>
+1. The game ran 10 turns.
+2. Your first prize came on turn 6.
+</facts>
+</context>
+```
+
+Three sentences and four cases. With both names it is `You played X. Your
+opponent played Y.`; with one of them it is that half on its own, which for
+the opponent alone is the wording the summary has always had; with neither
+it is nothing at all, and the turn is byte for byte the turn it was before
+the field existed. That last case is the whole of the backward
+compatibility, and a test holds it.
+
+The names ride with the game the way the facts do: the relevance decision
+drops them when it drops the summary, because two deck names in front of a
+model that cannot see the game they belong to is a pair of labels with
+nothing under them. Our own delimiters come out of each name first, for the
+reason they come out of a fact's sentence: the name is written into a
+sentence of ours in the middle of the element, so a name carrying a closing
+tag would put the rest of itself where the model has been told the
+project's own words are.
+
+What spends the field is a clause in each of the `my_game` and `my_mistake`
+playbooks. With both decks named the review reads both pace rows and gives
+the seat count behind each, calling a row under the project's minimum a
+thin sample in words; with only the opponent's named it says in one clause
+that the page did not name the member's own deck, and then compares nothing
+and guesses nothing. The two clauses are about 630 characters and
+`MAX_PROMPT_CHARS` went from 21,600 to 22,300 to hold them. A field that
+arrives and changes no answer is a field nobody can see.
+
+The span carries `agent.deck_mine_named` and `agent.deck_theirs_named`,
+which are two booleans. Neither name reaches a log line or a span attribute
+of its own, the same deal the summary and the facts have: an archetype is
+not a member, but it is still a thing about one member's one game.
 
 ### The numeric check, and what it cannot see
 

@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 12
+version: 13
 
 runs:
   matchup_win_rate:
@@ -586,7 +586,14 @@ runs:
   # member's own row on `my_record`, the retriever alone on `card_rules`.
 
   job_my_mistake_review:
-    turns: []
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, first_attack_turn, first_prize_turn,
+            min_games_met from mart_archetype_pace where archetype_name in
+            ('Dragapult / Dusknoir', 'Crustle / Mega Kangaskhan ex') order by
+            first_attack_turn
     answer: >-
       From the game on screen, two things decided it. Your first prize did not come
       until turn 12, and by the end of turn 8 you had taken none at all, so the game was
@@ -598,9 +605,11 @@ runs:
       middle turns rather than at the end is what would have changed the race. Over a
       game that ran 17 turns and finished 4 prizes each, that is the whole margin.
 
-      How the matchup usually goes I cannot tell you here: the warehouse holds no
-      matchup row for this pairing, so there is no community record to place the game
-      against.
+      On pace, Dragapult / Dusknoir usually first attacks on turn 2 and takes a first
+      prize on turn 5, averaged over the 2 games the warehouse holds for it; Crustle /
+      Mega Kangaskhan ex first attacks on turn 7 and takes a first prize on turn 7, over
+      1 game. Both rows are a thin sample. So the slow half of this game was yours
+      rather than theirs, and the warehouse holds no matchup row for the pairing itself.
 
   job_my_game_walkthrough:
     turns:
@@ -611,15 +620,60 @@ runs:
             losses, win_rate, min_games_met from mart_matchups where
             archetype_name ilike 'Dragapult control' and
             opponent_archetype_name ilike 'Alakazam / Toucannon'
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, first_attack_turn, min_games_met
+            from mart_archetype_pace where archetype_name in ('Dragapult
+            control', 'Alakazam / Toucannon') order by first_attack_turn
     answer: >-
       From the game on screen: you went second with Dragapult control and attacked first
       anyway, on turn 2, with your opponent following on turn 3. Your first prize and
       your first knockout both came on turn 6, and from there you took 5 knockouts to
       their 2 and finished 6 prizes to 2 on turn 10.
 
-      Against Alakazam / Toucannon the warehouse holds 1 game for Dragapult control, the
-      one you are looking at, and the mart flags the row as thin. So there is nothing to
-      say yet about whether that shape is ordinary for the pairing.
+      That is the ordinary pace for both decks: Dragapult control first attacks on turn
+      2 averaged over 2 games, and Alakazam / Toucannon on turn 3 over 1 game. Against
+      Alakazam / Toucannon the warehouse holds 1 game for Dragapult control, the one you
+      are looking at, and the mart flags every one of those rows as thin. So there is
+      nothing to say yet about whether that shape is ordinary for the pairing.
+
+  job_my_mistake_no_deck_named:
+    turns: []
+    answer: >-
+      Two things decided it. Your opponent first attacked on turn 2 and you on turn 3,
+      and although your biggest attack of the game landed 230 damage on turn 3, they
+      finished 6 prizes to your 3 over 14 turns: you took 2 knockouts to their 4, so the
+      trade went their way all the way through.
+
+      The line worth taking instead is the slower one. Your first prize came on turn 3
+      and nothing followed it for a long while, so holding the turn 3 attacker back for
+      a second knockout rather than spending it into the first is the choice that would
+      have changed the race.
+
+      On how the matchup usually goes I can give you only half of it: this page does not
+      name the deck you were playing, so there is no deck of yours to put beside Mega
+      Starmie ex / Mega Froslass ex and I am not going to guess at one.
+
+  comp_pace_against_the_field:
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, first_attack_turn, first_prize_turn,
+            min_games_met from mart_archetype_pace order by first_attack_turn,
+            archetype_name
+    answer: >-
+      Fast, as the warehouse has it. Dragapult control first attacks on turn 2, averaged
+      over the 2 games the mart holds for it, which is the earliest first attack of any
+      deck here, shared with Dragapult / Dusknoir and Mega Starmie ex / Mega Froslass
+      ex. Every other deck in the mart opens later than that, N's Zoroark ex / Meowth ex
+      latest of all.
+
+      In the game on your screen you attacked on turn 2, which is exactly the deck's
+      usual opening, and took your first prize on turn 6. Every row behind this is
+      flagged as a thin sample, so read it as where the deck sits in ten games rather
+      than as a measured ranking.
 
   job_my_record_season:
     turns:

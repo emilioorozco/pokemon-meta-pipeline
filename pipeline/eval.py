@@ -163,8 +163,10 @@ from pipeline.observability import configure_logging, emit_summary, git_commit, 
 from pipeline.prompts import (
     HISTORY_ROLES,
     JOBS,
+    MAX_ARCHETYPE_CHARS,
     MAX_HISTORY_TURNS,
     PROMPT_FILE_VAR,
+    Archetypes,
     HistoryError,
     system_prompt,
     validate_history,
@@ -396,6 +398,13 @@ class Question:
     # `<facts>` list under the summary. The ten `mistake` questions carry
     # them and nothing else does.
     context_facts: tuple[Fact, ...] = ()
+    # The deck each side played in that game, as the application reads them
+    # off its own game record. Carried for the reason every other context
+    # field is: a field the harness cannot send is a field the harness
+    # cannot grade, and the member's own deck is the half the summary never
+    # named (PLA-212). Both empty on every question written before it, which
+    # is what keeps their turns the bytes they were.
+    context_archetypes: Archetypes = Archetypes()
     # The conversation the application would have sent back with this
     # question: the prior turns, oldest first, alternating from the member
     # and ending on an answer. Empty on every question that is not a
@@ -517,6 +526,37 @@ def _patterns(raw: Any, *, where: str, allow_codes: bool = False) -> tuple[str, 
                     f"{where}: {pattern!r} is not a regular expression: {failure}"
                 ) from failure
     return patterns
+
+
+def _archetypes(raw: Any, *, where: str) -> Archetypes:
+    """A question's `context_archetypes`, held to the service's own ceiling.
+
+    Checked here rather than trusted, for the reason `_facts` is: a name over
+    the limit would be a 422 on a remote run and a placed sentence on a local
+    one, which is two different failures for one typo. Absent is the pair of
+    empty strings, which is every question written before the field existed.
+    """
+    if raw is None:
+        return Archetypes()
+    if not isinstance(raw, dict):
+        raise GoldenError(
+            f"{where}: `context_archetypes` has to be a mapping of `mine` and `theirs`"
+        )
+    unknown = sorted(set(raw) - {"mine", "theirs"})
+    if unknown:
+        raise GoldenError(f"{where}: `context_archetypes` has no {', '.join(unknown)}")
+    names: dict[str, str] = {}
+    for side in ("mine", "theirs"):
+        value = raw.get(side)
+        if value is not None and not isinstance(value, str):
+            raise GoldenError(f"{where}: `context_archetypes.{side}` has to be a string")
+        name = str(value or "").strip()
+        if len(name) > MAX_ARCHETYPE_CHARS:
+            raise GoldenError(
+                f"{where}: `context_archetypes.{side}` is over {MAX_ARCHETYPE_CHARS} characters"
+            )
+        names[side] = name
+    return Archetypes(**names)
 
 
 def _facts(raw: Any, *, where: str) -> tuple[Fact, ...]:
@@ -660,6 +700,11 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
         if contexts["context_first_line"] and not contexts["context_game"]:
             raise GoldenError(f"{where}: `context_first_line` needs a `context_game` to describe")
         facts = _facts(raw.get("context_facts"), where=where)
+        decks = _archetypes(raw.get("context_archetypes"), where=where)
+        # Deck names with no game to belong to reach nothing: the sentence is
+        # placed inside the context element and only when the summary is.
+        if (decks.mine or decks.theirs) and not contexts["context_game"]:
+            raise GoldenError(f"{where}: `context_archetypes` needs a `context_game` to describe")
         # Facts with no game to belong to reach nothing: they are placed
         # inside the context element and only when the game summary is.
         if facts and not contexts["context_game"]:
@@ -702,6 +747,7 @@ def load_golden(path: Path = GOLDEN_PATH) -> Golden:
                 kind=kind,
                 warehouse=warehouse,
                 context_facts=facts,
+                context_archetypes=decks,
                 history=history,
                 job=job,
                 max_unverified=limit if isinstance(limit, int) else None,
@@ -1632,12 +1678,20 @@ class RemoteAgent:
         context_game: str = "",
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
+        context_archetypes: Archetypes | None = None,
         history: Sequence[HistoryTurn] = (),
         job: str = "",
     ) -> Answer:
         body: dict[str, Any] = {"question": question}
         if context_facts:
             body["context_facts"] = [fact.as_dict() for fact in context_facts]
+        # Sent only when a deck was named, for the reason the rest are: a
+        # question that names neither has to produce the body it has always
+        # produced.
+        if context_archetypes is not None and (
+            context_archetypes.mine or context_archetypes.theirs
+        ):
+            body["context_archetypes"] = context_archetypes.as_dict()
         # Sent only when there is a conversation, for the reason the context
         # fields are: a question that is not a follow-up has to produce the
         # body it has always produced, or every recorded run stops comparing.
@@ -1685,6 +1739,7 @@ class Askable(Protocol):
         context_game: str = "",
         context_first_line: str = "",
         context_facts: Sequence[Fact] = (),
+        context_archetypes: Archetypes | None = None,
         history: Sequence[HistoryTurn] = (),
         job: str = "",
     ) -> Answer: ...
@@ -2128,6 +2183,7 @@ def run_question(question: Question, agent: Askable) -> Result:
             context_game=question.context_game,
             context_first_line=question.context_first_line,
             context_facts=question.context_facts,
+            context_archetypes=question.context_archetypes,
             history=question.history,
             job=question.job,
         )

@@ -4,6 +4,10 @@
   "context": "The member is on their own game page, reviewing one game.",
   "context_first_line": "Your game against Crustle / Mega Kangaskhan ex, you went second, lost in 17 turns.",
   "context_game": "Your deck against Crustle / Mega Kangaskhan ex. You went second and lost on turn 17. You took 4 prizes and your opponent took 4. Your first attack was on turn 4. Your opponent first attacked on turn 7.",
+  "context_archetypes": {
+    "mine": null,
+    "theirs": "Crustle / Mega Kangaskhan ex"
+  },
   "context_facts": [
     {
       "id": "turn_count:both",

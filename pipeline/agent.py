@@ -157,9 +157,11 @@ from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import (
     ALLOWED_TABLES,
     CACHE_CONTROL,
+    NO_ARCHETYPES,
     ROLE_ASSISTANT,
     ROLE_USER,
     TABLE_LIST_NOTE,
+    Archetypes,
     Turn,
     clean_context,
     clean_history,
@@ -1420,6 +1422,7 @@ class Agent:
         context_game: str | None = None,
         context_first_line: str | None = None,
         context_facts: Sequence[Fact] | None = None,
+        context_archetypes: Archetypes | None = None,
         history: Sequence[Turn] | None = None,
     ) -> Answer:
         """Run the loop on one question and collect what it did.
@@ -1458,6 +1461,15 @@ class Agent:
         the model is a sentence with nothing to attach to. They go inside the
         same `<context>` element, after the game text, as the `<facts>` list
         rule 10 describes.
+
+        `context_archetypes` is the two decks of that same game, the
+        member's own and their opponent's, either of which may be missing on
+        a game whose deck was never identified. It rides with the game for
+        the reason the facts do, and it is placed as one sentence between the
+        summary and the facts (`pipeline.prompts.render_decks`). The summary
+        the application writes has always named the opponent's deck and
+        called the member's own "your deck", so without this field a review
+        could read one row of `mart_archetype_pace` and not the other.
 
         `history` is the last few turns of the conversation, which the
         application kept in the browser and sends back with a follow-up
@@ -1513,6 +1525,10 @@ class Agent:
         # two: the judge already said whether what the member is looking at
         # belongs in front of the question.
         facts = clean_facts(context_facts) if attached else ()
+        # With the game, for the same one decision: two deck names in front
+        # of a model that cannot see the game they belong to is a pair of
+        # labels with nothing under them.
+        decks = (context_archetypes or NO_ARCHETYPES) if attached else NO_ARCHETYPES
         # Cleaned here and never rejected here: the service has already
         # refused a malformed conversation with a 422, and the floor under
         # the other callers is a history that is placed as nothing rather
@@ -1531,6 +1547,11 @@ class Agent:
                 span.set_attribute("agent.relevance_ms", decision.latency_ms if decision else 0)
                 span.set_attribute("agent.job", job or "")
                 span.set_attribute("agent.facts", len(facts))
+                # Whether each side's deck was named, and never which deck it
+                # was: an archetype is not a member, but it is still a thing
+                # about one game that nothing needs in a log to be read.
+                span.set_attribute("agent.deck_mine_named", bool(decks.mine))
+                span.set_attribute("agent.deck_theirs_named", bool(decks.theirs))
                 # The conversation as two numbers and never as text: how many
                 # turns came back with the question and how long they were.
                 span.set_attribute("agent.history_turns", len(prior))
@@ -1538,7 +1559,7 @@ class Agent:
                 if self.metrics is not None:
                     self.metrics.count_history_turns(len(prior))
                 turn = HumanMessage(
-                    content=wrap_turn(question, placed, [fact.text for fact in facts], job)
+                    content=wrap_turn(question, placed, [fact.text for fact in facts], job, decks)
                 )
                 state = self.graph.invoke({"messages": [*prior_messages(prior), turn]})
                 messages: list[BaseMessage] = list(state["messages"])
