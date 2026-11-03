@@ -100,10 +100,19 @@ _PLAIN_NUMBER: Final = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?%?\Z")
 # The punctuation a sentence leaves on the end of a number.
 _TRAILING: Final = ".,;:)]}"
 
-# How an answer cites a fact by its number: "fact 2", "facts 2 and 3", "fact
-# #2". The numbered list is one to ten items long, so a bare "2" is a number
-# and not a citation; the word has to be there.
-_FACT_REFERENCE: Final = re.compile(r"\bfacts?\s*#?\s*(\d+)", re.IGNORECASE)
+# How an answer cites a fact by its number: "fact 2", "fact #2", "facts 2 and
+# 3", "facts 2, 5 and 8", "facts 2-3", "facts 2–3". The numbered list is short,
+# so a bare "2" is a number and not a citation; the word has to be there. The
+# whole citation is matched, not only its first position, because the numeric
+# check has to take every position out of the prose: rule 10 lets an answer
+# cite a fact by its number, and a position is not a claim about the game.
+_FACT_REFERENCE: Final = re.compile(
+    r"\bfacts?\s*#?\s*\d+"
+    r"(?:\s*(?:,\s*(?:and\b|or\b)?|\band\b|\bor\b|&|\bto\b|[-–—])\s*#?\s*\d+)*",
+    re.IGNORECASE,
+)
+# Inside one citation: a position, and the separator in front of the next.
+_REFERENCE_PART: Final = re.compile(r"(\d+)|(\bto\b|[-–—])", re.IGNORECASE)
 
 
 class FactError(ValueError):
@@ -312,6 +321,54 @@ def covered(token: str, known: Iterable[float]) -> bool:
     return False
 
 
+def _reference_positions(citation: str) -> set[int]:
+    """The list positions one citation names, with "2-4" read as 2, 3 and 4."""
+    positions: set[int] = set()
+    previous: int | None = None
+    ranged = False
+    for match in _REFERENCE_PART.finditer(citation):
+        if match.group(2):
+            ranged = previous is not None
+            continue
+        position = int(match.group(1))
+        if ranged and previous is not None and previous < position:
+            positions.update(range(previous, position + 1))
+        else:
+            positions.add(position)
+        previous, ranged = position, False
+    return positions
+
+
+def fact_references(answer: str) -> list[tuple[tuple[int, int], set[int]]]:
+    """Every fact citation in an answer: where it is written and which positions it names."""
+    return [
+        (match.span(), _reference_positions(match.group(0)))
+        for match in _FACT_REFERENCE.finditer(answer)
+    ]
+
+
+def without_fact_references(answer: str, placed: int) -> str:
+    """The answer with every citation of a placed fact taken out of the prose.
+
+    "Your opponent took 2 prizes (fact 7)" makes one claim about the game, the
+    2, and the 7 is where the claim came from. Rule 10 of the prompt allows a
+    fact to be cited by its number, so a position has to leave the text before
+    the scan or every citation of a fact whose position is not also one of the
+    game's numbers reads as an invented number. Only a citation whose every
+    position is on the list is taken out: "fact 40" against a list of twelve
+    is not a citation of anything, and its number stays to be checked.
+    """
+    pieces: list[str] = []
+    cursor = 0
+    for (start, end), positions in fact_references(answer):
+        if positions and all(1 <= position <= placed for position in positions):
+            pieces.append(answer[cursor:start])
+            pieces.append(" ")
+            cursor = end
+    pieces.append(answer[cursor:])
+    return "".join(pieces)
+
+
 def remembered_numbers(history: Iterable[str] = ()) -> frozenset[float]:
     """Every number the assistant's earlier turns in this conversation stated.
 
@@ -357,7 +414,7 @@ def check_numbers(
     remembered = remembered_numbers(history)
     unverified: list[str] = []
     from_history: list[str] = []
-    for token in number_tokens(answer):
+    for token in number_tokens(without_fact_references(answer, len(facts))):
         if token in unverified or token in from_history or covered(token, known):
             continue
         if covered(token, remembered):
@@ -377,9 +434,11 @@ def cite_facts(answer: str, facts: Sequence[Fact]) -> list[FactEvidence]:
     with no values at all ("you never attacked in this game") can only be
     cited the first way, which is correct: there is no number in it to find.
     """
-    numbered = {int(match.group(1)) for match in _FACT_REFERENCE.finditer(answer)}
+    numbered = {position for _, positions in fact_references(answer) for position in positions}
     written = {
-        parsed[0] for token in number_tokens(answer) if (parsed := parse_number(token)) is not None
+        parsed[0]
+        for token in number_tokens(without_fact_references(answer, len(facts)))
+        if (parsed := parse_number(token)) is not None
     }
     evidence: list[FactEvidence] = []
     for position, fact in enumerate(facts, start=1):
