@@ -207,7 +207,7 @@
 #   imagination. It also carries `expect_tools: []`, because the warehouse
 #   holds nothing at the grain of one game, and `max_unverified: 0`.
 
-version: 14
+version: 15
 
 questions:
   - id: matchup_win_rate
@@ -1873,7 +1873,7 @@ questions:
         text: "The game ended in a concession on turn 17."
         values: [17]
     question: what should I have done differently in that one
-    expect_tools: []
+    expect_tools: [query_marts]
     max_unverified: 0
     require:
       - "re:\\b12\\b"
@@ -1903,6 +1903,13 @@ questions:
 
       `warehouse: any` because nothing required is a fixture fact: the two
       numbers are in the context the runner sent and the rest are shapes.
+
+      `expect_tools: [query_marts]` since version 15. The third part is about
+      the warehouse, and before then the question accepted "no row" from an
+      answer that had run no query at all: the deployed agent wrote it on
+      Nov 2 and Nov 3 against a production warehouse that holds the pairing.
+      An absence has to come back from a query to count, here as everywhere
+      else, and the playbook now says so.
       The last forbidden entry is the playbook's prohibition on guessing at
       the opponent's hand, which is the easiest way to fill the second part
       with something that sounds like advice.

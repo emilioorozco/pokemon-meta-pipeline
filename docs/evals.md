@@ -798,6 +798,49 @@ asserts 52 out of 52 and the line under the table reads
 `by job: 1/1 meta, 1/1 my_game, 1/1 my_mistake, 3/3 my_record, 1/1 card_rules`
 under it. The count of unverified numbers is unchanged at two.
 
+## Version 15, and the review that changed from week to week
+
+After the fact citations stopped counting as unverified numbers, one question
+was left red on the deployed agent: `job_my_mistake_review`, missing the
+`\b17\b` it requires. Read across the five weekly runs it was never one
+failure. The input is identical every week, and the answers were a full
+three-part review (Oct 4, the only pass), the matchup sentence and nothing
+else (Oct 5 and Oct 26), and a review that said the warehouse held no row for
+the pairing without having run a query (Nov 2 and Nov 3, against a production
+warehouse that holds it). Three causes, each fixed where it lives rather than
+by loosening the question:
+
+- **The model sampled at 1.0.** `chat_model` never set a temperature, so the
+  provider's default applied, and an answer that should be a function of the
+  prompt and the facts was a draw. It now asks for 0
+  (`agent.CHAT_TEMPERATURE`), except on models whose API refuses anything but
+  its default (`FIXED_SAMPLING_MODEL_PREFIXES`), where an override gets the
+  default rather than an error.
+- **The playbook did not ask for what the question grades.** The review is
+  required to say 17, the game's length, and the `my_mistake` playbook never
+  asked for it. It now asks for each deciding fact to be placed against the
+  game's length ("turn 12 of 17"), which is also the better review: turn 12
+  is only late in a game that ended on turn 17.
+- **An absence was accepted without a query.** The third part of the review
+  is how the matchup usually goes, which is a warehouse question. The
+  playbook did not say so, the golden question expected no tool, and the
+  recorded answer claimed "no row" from nothing, so all three allowed the
+  Nov 2 answer. The playbook now says the part is a query and that "no row"
+  may only follow an empty result, and when the page does not name the
+  member's deck, to give the opponent deck's pace instead. The question
+  expects `query_marts`, and the transcript records the two statements a
+  competent run makes: the matchup row, empty in the fixture warehouse, and
+  the opponent deck's row in `mart_archetype_pace`.
+
+The `require` list is unchanged. The system prompt with the card tool grows
+to 21,485 characters, under `MAX_PROMPT_CHARS`.
+
+`version` in the golden file is 15 and the transcript is 13; the replay still
+asserts 52 out of 52 with the same line under the table, and the count of
+unverified numbers is unchanged at two. The replay shows the recorded run is
+legal and scores; whether the deployed model now writes it is only answered
+by the next live run.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

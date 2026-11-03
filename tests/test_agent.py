@@ -14,6 +14,8 @@ API key. Nothing here is mocked except the decision about which SQL to write.
 """
 
 import json
+import sys
+import types
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -2181,3 +2183,43 @@ def test_the_count_is_written_down_and_the_numbers_are_not(
     assert attribute(span, "agent.unverified_numbers") == 2
     assert attribute(span, "agent.facts") == 2
     assert metrics.agent_unverified_numbers._value.get() == 2  # noqa: SLF001
+
+
+class _RecordedChatModel:
+    """Stands in for `ChatAnthropic` and keeps what it was built with.
+
+    A stand-in rather than the real class, because importing the provider here
+    would leave it in `sys.modules` for the tests that assert a cold start
+    never loads it.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+
+@pytest.fixture
+def recorded_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = types.ModuleType("langchain_anthropic")
+    module.ChatAnthropic = _RecordedChatModel  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langchain_anthropic", module)
+    monkeypatch.delenv(agent.MODEL_VAR, raising=False)
+
+
+@pytest.mark.usefixtures("recorded_provider")
+def test_the_chat_model_decodes_greedily(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Left unset, the provider samples at 1.0, and one mistake review on one set
+    of facts came back as four different answers over five weekly runs."""
+    built: Any = agent.chat_model()
+    assert built.kwargs["model"] == agent.DEFAULT_MODEL
+    assert built.kwargs["temperature"] == agent.CHAT_TEMPERATURE == 0.0
+    monkeypatch.setenv(agent.MODEL_VAR, "claude-sonnet-4-5")
+    overridden: Any = agent.chat_model()
+    assert overridden.kwargs["model"] == "claude-sonnet-4-5"
+    assert overridden.kwargs["temperature"] == 0.0
+
+
+@pytest.mark.usefixtures("recorded_provider")
+def test_a_model_that_refuses_a_temperature_gets_its_default() -> None:
+    """An override to one of those models has to start, not fail on its first call."""
+    built: Any = agent.chat_model("claude-fable-5-1")
+    assert "temperature" not in built.kwargs

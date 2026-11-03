@@ -827,14 +827,17 @@ use, and no table here holds a single game at that grain. The marts come
 second and only for context, `mart_matchups` for how this pairing usually goes
 and `mart_archetype_pace` for when the two decks usually attack and take a
 first prize, so the member can see whether the game was unusual or ordinary.
-Answer in three parts and in this order: the two or three facts that actually
-decided it, cited by their numbers; one line the member could have taken
-instead, written as a choice rather than as a verdict; then how the matchup
-usually goes, with its games count. Keep the whole answer under 180 words.
-When the facts are few or the pairing has no row, say which part you cannot
-give and give the others. Never invent a turn, never write a number without
-naming the fact or the row behind it, never guess at what the opponent was
-holding or drew, and never look a member up by name.""",
+Answer in all three parts, in this order: the two or three facts that decided
+it, cited by their numbers and each placed against the game's length ("turn 12
+of 17"), since a turn alone is not early or late; one line the member could
+have taken instead, as a choice rather than a verdict; then how the matchup
+usually goes, with its games count. That last part is a query, never a
+recollection: say the warehouse holds no row only after a query came back
+empty, and when the context does not name the member's deck, give the
+opponent deck's pace. Under 180 words. When the facts are few, say which part
+you cannot give and give the others. Never invent a turn, never write a number
+without naming the fact or the row behind it, never guess at what the opponent
+was holding or drew, and never look a member up by name.""",
     JOB_MY_RECORD: """\
 my_record. The member is asking how they themselves are doing: their wins and
 losses, the decks they beat, the deck they play most. `mart_player_summary` is
