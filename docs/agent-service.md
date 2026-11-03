@@ -842,11 +842,19 @@ written. A fifth place is searched after those four and reported apart: the
 assistant's prior turns, which give `from_history` rather than
 `unverified_numbers` (**Conversation** above).
 
-**It is a report and not a refusal.** The answer returns unchanged, nothing
-is rewritten, and no second model is asked for an opinion. The service logs
-the count and puts it on the span as `agent.unverified_numbers`, and
-`agent_unverified_numbers_total` counts it in Prometheus. A number an answer
-wrote is the answer, so none of them is ever logged.
+**It is a report and not a refusal.** No second model is asked for an
+opinion. An answer with an unverified number is handed back once to the
+model that wrote it, in a `<recheck>` turn that lists the numbers, and the
+whole answer is written again; the rewrite is kept only if it has fewer
+unverified numbers, and otherwise the first answer returns unchanged. Either
+way the response carries the numbers of the answer that was kept. That is
+one more model call, and only on an answer the check caught; an answer whose
+numbers are all traced costs what it always did. The service logs the count
+and puts it on the span as `agent.unverified_numbers`, with
+`agent.rechecks` and `agent.unverified_before_recheck` beside it for the
+before and after, and `agent_unverified_numbers_total` counts the kept
+answer's in Prometheus. A number an answer wrote is the answer, so none of
+them is ever logged.
 
 **What counts as a number.** A run of digits that does not continue a word
 is taken with everything number-like after it, sentence punctuation comes
