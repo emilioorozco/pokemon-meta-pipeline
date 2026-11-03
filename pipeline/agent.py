@@ -196,6 +196,10 @@ SERVICE_NAME: Final = "pra-agent"
 DEFAULT_MODEL: Final = "claude-haiku-4-5-20251001"
 MODEL_VAR: Final = "PRA_AGENT_MODEL"
 API_KEY_VAR: Final = "ANTHROPIC_API_KEY"
+# Greedy decoding for every answer (`chat_model` says why), except on the
+# models whose API rejects a temperature other than its default.
+CHAT_TEMPERATURE: Final = 0.0
+FIXED_SAMPLING_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-fable-5",)
 
 SQL_TOOL: Final = "query_marts"
 CARD_TOOL: Final = "lookup_cards"
@@ -1334,7 +1338,21 @@ def chat_model(model: str | None = None) -> BaseChatModel:
     name = model or os.environ.get(MODEL_VAR, "").strip() or DEFAULT_MODEL
     # `model` rather than `model_name`: the field carries that alias, and it is
     # the name the provider's own documentation and its type signature use.
-    return ChatAnthropic(model=name, timeout=60, stop=None)
+    #
+    # Temperature 0, because left unset the provider samples at 1.0, and an
+    # agent whose job is to read rows and facts back accurately has no use
+    # for that spread. It showed up in the weekly eval: the same mistake
+    # review, same facts, same prompt, came back as a full three-part answer
+    # on one run, as only the matchup sentence on two others, and as a review
+    # that asserted "no row in the warehouse" without running a query on two
+    # more. Zero does not make a wrong answer right, but it makes the answer a
+    # property of the prompt rather than of the draw, so a red week means the
+    # prompt changed or the data did. Some models refuse any sampling setting
+    # but their default, so an override to one of those gets its default
+    # rather than an error at startup.
+    if name.startswith(FIXED_SAMPLING_MODEL_PREFIXES):
+        return ChatAnthropic(model=name, timeout=60, stop=None)
+    return ChatAnthropic(model=name, timeout=60, stop=None, temperature=CHAT_TEMPERATURE)
 
 
 class Agent:

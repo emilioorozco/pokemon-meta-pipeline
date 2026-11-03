@@ -24,7 +24,7 @@
 # When a question is added to `evals/golden.yaml`, add its turns here under the
 # same id, keeping the SQL to one statement over the allowlisted tables.
 
-version: 12
+version: 13
 
 runs:
   matchup_win_rate:
@@ -586,21 +586,36 @@ runs:
   # member's own row on `my_record`, the retriever alone on `card_rules`.
 
   job_my_mistake_review:
-    turns: []
+    turns:
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, opponent_archetype_name, games, wins,
+            losses, win_rate, min_games_met from mart_matchups where
+            opponent_archetype_name ilike 'Crustle / Mega Kangaskhan ex'
+      - tool: query_marts
+        args:
+          sql: >-
+            select archetype_name, games, first_attack_turn, prizes_by_turn_8,
+            min_games_met from mart_archetype_pace where archetype_name ilike
+            'Crustle / Mega Kangaskhan ex'
     answer: >-
       From the game on screen, two things decided it. Your first prize did not come
-      until turn 12, and by the end of turn 8 you had taken none at all, so the game was
-      half over before you were on the board. Your opponent first attacked on turn 7 and
-      you on turn 4, which is the one part of it you were ahead on.
+      until turn 12 of a 17-turn game (fact 6), and by the end of turn 8 you had taken
+      none at all (fact 8), so the game was half over before you were on the board.
+      Your opponent first attacked on turn 7 and you on turn 4 (facts 2 and 3), which is
+      the one part of it you were ahead on.
 
       The line worth taking instead is the earlier trade: you had an attack available
-      from turn 4 and your first knockout was turn 12, so a knockout taken around the
-      middle turns rather than at the end is what would have changed the race. Over a
-      game that ran 17 turns and finished 4 prizes each, that is the whole margin.
+      from turn 4 and your first knockout was turn 12 (fact 9), so a knockout taken
+      around the middle turns rather than at the end is what would have changed the
+      race. Over a game that finished 4 prizes each, that is the whole margin.
 
-      How the matchup usually goes I cannot tell you here: the warehouse holds no
-      matchup row for this pairing, so there is no community record to place the game
-      against.
+      How the matchup usually goes I cannot tell you: this page does not name your deck,
+      and the warehouse holds no matchup row against Crustle / Mega Kangaskhan ex at
+      all. The deck itself has 1 game in the pace table, with its first attack on turn 7,
+      which is when it attacked here, so this game was ordinary for it as far as one
+      game can say.
 
   job_my_game_walkthrough:
     turns:
