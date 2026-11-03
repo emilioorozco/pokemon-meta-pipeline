@@ -873,6 +873,26 @@ of 52: its recorded tool calls carry no text, so it never exercised this.
 `tests/test_agent.py` now does, with a scripted turn that writes and then
 queries.
 
+The same run failed three other questions, and with the temperature at 0
+those answers come back the same every week, so each was fixed where it
+lives rather than waited out:
+
+- `mistake_game_04` wrote "a gap of 5 turns" (turn 12 less turn 7) and
+  `game_on_screen_loss` wrote "a prize every 1.5 turns" (9 turns over 6
+  prizes). Neither number is in a fact or a row, which is what
+  `max_unverified` is there to catch. Rule 10 now says a number worked out
+  from the facts is no more traceable than an invented one and asks for the
+  values it comes from. The check is not taught arithmetic: with facts like
+  4, 7, 12 and 17, every small difference would pass, an invented 5 among
+  them.
+- `most_seen_cards_shape` called the cards seen in the most games "the most
+  widely played", which is the inclusion-rate reading rule 3 exists to stop.
+  Rule 3 now gives the wording, "seen in N games", and names that reading as
+  the one not to give. The `require` entry is unchanged.
+
+The two clauses are 243 characters, and `MAX_PROMPT_CHARS` goes from 21,600
+to 22,000 for them, for the reason the comment above it gives.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote
