@@ -841,6 +841,58 @@ unverified numbers is unchanged at two. The replay shows the recorded run is
 legal and scores; whether the deployed model now writes it is only answered
 by the next live run.
 
+## The answer that lost its first half
+
+Version 15 made the matchup part of `job_my_mistake_review` a query, and the
+first live run after it came back as one sentence: the matchup's record and
+"falling behind on tempo as you did was particularly costly", a sentence
+that refers to a review the answer did not contain. The review had been
+written. `agent.final_text` built the answer from the last assistant message
+only, and the provider puts text and a tool call in the same message, so a
+model that writes the review and then asks for the matchup loses everything
+before the query. The runs say so in their token counts:
+
+| run | queries | output tokens | answer, about |
+| --- | --- | --- | --- |
+| Nov 2 | 0 | 248 | 219 tokens, the whole review |
+| Oct 5 | 1 | 418 | 111, the matchup sentence |
+| Oct 26 | 1 | 430 | 59, the matchup sentence |
+| Nov 3, after version 15 | 1 | 424 | 66, the matchup sentence |
+
+A query costs this model 75 to 130 output tokens on the other questions, so
+each one-query run paid for some 200 to 300 tokens of text nobody saw, which
+is the size of the review the Nov 2 run, with no query, did return. Requiring
+the query turned a sometimes failure into an every time one.
+
+`final_text` now joins the text of every assistant message after the last
+human message, in order, with a blank line where one message ended. An
+earlier answer in the conversation is still not part of this one. The
+number check, the fact citations and the eval all read the joined text, so
+what is scored is what the member is shown. The replay is unchanged at 52 out
+of 52: its recorded tool calls carry no text, so it never exercised this.
+`tests/test_agent.py` now does, with a scripted turn that writes and then
+queries.
+
+The same run failed three other questions, and with the temperature at 0
+those answers come back the same every week, so each was fixed where it
+lives rather than waited out:
+
+- `mistake_game_04` wrote "a gap of 5 turns" (turn 12 less turn 7) and
+  `game_on_screen_loss` wrote "a prize every 1.5 turns" (9 turns over 6
+  prizes). Neither number is in a fact or a row, which is what
+  `max_unverified` is there to catch. Rule 10 now says a number worked out
+  from the facts is no more traceable than an invented one and asks for the
+  values it comes from. The check is not taught arithmetic: with facts like
+  4, 7, 12 and 17, every small difference would pass, an invented 5 among
+  them.
+- `most_seen_cards_shape` called the cards seen in the most games "the most
+  widely played", which is the inclusion-rate reading rule 3 exists to stop.
+  Rule 3 now gives the wording, "seen in N games", and names that reading as
+  the one not to give. The `require` entry is unchanged.
+
+The two clauses are 243 characters, and `MAX_PROMPT_CHARS` goes from 21,600
+to 22,000 for them, for the reason the comment above it gives.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

@@ -2223,3 +2223,56 @@ def test_a_model_that_refuses_a_temperature_gets_its_default() -> None:
     """An override to one of those models has to start, not fail on its first call."""
     built: Any = agent.chat_model("claude-fable-5-1")
     assert "temperature" not in built.kwargs
+
+
+def test_the_answer_is_everything_written_in_the_turn_and_nothing_before_it() -> None:
+    """Text written beside a tool call is part of the answer; an earlier answer is not."""
+    messages = [
+        HumanMessage(content="first question"),
+        AIMessage(content="An earlier answer."),
+        HumanMessage(content="review my game"),
+        AIMessage(
+            content=[
+                {"type": "text", "text": "You fell behind on turn 12 of 17 (fact 6)."},
+                {"type": "tool_use", "id": "call-1", "name": "query_marts", "input": {}},
+            ],
+            tool_calls=[{"name": "query_marts", "args": {}, "id": "call-1", "type": "tool_call"}],
+        ),
+        AIMessage(content="The matchup has 3 games in the warehouse."),
+    ]
+    assert agent.final_text(messages) == (
+        "You fell behind on turn 12 of 17 (fact 6).\n\nThe matchup has 3 games in the warehouse."
+    )
+    assert agent.final_text([HumanMessage(content="hi"), AIMessage(content="  ")]) == ""
+
+
+def test_a_review_written_before_the_query_reaches_the_member(tmp_path: Path) -> None:
+    """The shape the deployed agent answered `job_my_mistake_review` in, end to end.
+
+    Review first, one query for the matchup, one closing sentence: the last
+    message alone is the sentence, and it was all the member and the eval saw.
+    """
+    review = "Your first prize came on turn 12 of a 17-turn game. Attaching earlier was the line."
+    model = scripted(
+        AIMessage(
+            content=[
+                {"type": "text", "text": review},
+                {"type": "tool_use", "id": "call-1", "name": agent.SQL_TOOL, "input": {}},
+            ],
+            tool_calls=[
+                {
+                    "name": agent.SQL_TOOL,
+                    "args": {"sql": "select games from mart_matchups"},
+                    "id": "call-1",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        final("The warehouse could not be read, so the matchup is missing."),
+    )
+    built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
+    answer = built.ask("what was my mistake")
+
+    assert answer.answer.startswith(review)
+    assert answer.answer.endswith("so the matchup is missing.")
+    assert [call.tool for call in answer.tool_calls] == [agent.SQL_TOOL]

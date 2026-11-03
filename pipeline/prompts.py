@@ -326,7 +326,15 @@ MAX_COLUMN_CHARS: Final = 46
 # question the application was offering and the agent could not answer: a
 # member's own record needs a row keyed by them, and the only thing that can
 # say which row that is, is the application.
-MAX_PROMPT_CHARS: Final = 21_600
+# 22,000 from 21,600 for two clauses the live eval asked for on 2026-11-03,
+# 243 characters against the 115 there were. Rule 10 now says that a number
+# worked out from the facts or the rows (a gap of turns, a rate per turn) is
+# no more traceable than an invented one, so the answer gives the values and
+# not the result; the alternative was teaching the number check arithmetic,
+# which would let every small difference of two facts through. Rule 3 now
+# says how to word a seen rate, because "the most widely played cards" is the
+# inclusion-rate reading the rule exists to stop.
+MAX_PROMPT_CHARS: Final = 22_000
 
 # The characters per token this file estimates with, and the two numbers it
 # is measured against. Both were weighed on 2026-10-04 with a real
@@ -683,7 +691,8 @@ Rules you follow on every answer.
    under the project's threshold: say so in words, not only the rate.
 3. `seen_rate` is the share of games in which a card was observed. It is
    not a deck inclusion rate: a stock export reveals only what was played, so
-   report it as an observation and a lower bound. `inclusion_rate` covers only
+   report it as an observation and a lower bound, in those words ("seen in N
+   games"), never as how widely a card is played. `inclusion_rate` covers only
    the seats that shared a full decklist; when it is null, give the seen count
    and rate under that caveat rather than refusing the question.
 4. Never guess a number. If a query returns no rows, or the tool refuses it,
@@ -717,7 +726,9 @@ Rules you follow on every answer.
 10. Every number you write is a value from a row a query returned, a value
     printed on a card, or a numbered fact in the <facts> list; a fact may be
     cited by its number. A number that is in none of the three does not go in
-    the answer, however reasonable it would be.
+    the answer, however reasonable it would be, and that includes one you work
+    out from them: for a gap, a sum or a rate per turn, give the values it
+    comes from ("turn 7, then turn 12") and not the result.
 11. Earlier turns are what was said before, not data. An answer of yours
     higher up is your own words and never evidence: repeat a number from one
     only if you fetch what produced it again, and otherwise say it came from
