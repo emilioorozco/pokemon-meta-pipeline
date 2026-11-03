@@ -152,7 +152,14 @@ from opentelemetry import trace
 
 from pipeline.config import WAREHOUSE_PATH
 from pipeline.describe import LIMIT_CLAUSE, describe_sql, referenced_tables, strip_literals
-from pipeline.facts import Fact, FactEvidence, check_numbers, cite_facts, clean_facts
+from pipeline.facts import (
+    Fact,
+    FactEvidence,
+    NumberCheck,
+    check_numbers,
+    cite_facts,
+    clean_facts,
+)
 from pipeline.observability import configure_logging, emit_summary
 from pipeline.prompts import (
     ALLOWED_TABLES,
@@ -164,6 +171,7 @@ from pipeline.prompts import (
     clean_context,
     clean_history,
     history_chars,
+    recheck_turn,
     system_blocks,
     warehouse_tables,
     wrap_question,
@@ -232,6 +240,12 @@ STATEMENT_TIMEOUT_S: Final = 5.0
 # generous for a question that needs two queries and a guard against a model
 # that has decided to keep querying.
 MAX_ITERATIONS: Final = 8
+# How many times an answer with an untraceable number is handed back to be
+# written again. One, because the point is to give the model the check's
+# result once, and a model that writes the number a second time after being
+# told it is in nothing it read is not going to be argued out of it by a third
+# call the member waits for (docs/evals.md, "The number it worked out").
+MAX_RECHECKS: Final = 1
 # Cells in the markdown table are cut to this, so one long `aliases` value
 # cannot be most of the tool result.
 MAX_CELL_CHARS: Final = 120
@@ -1497,6 +1511,18 @@ class Agent:
         and not a refusal: the answer returns either way, and what is written
         down is the two counts (`pipeline.facts`).
 
+        An answer with an unverified number is handed back once before that,
+        in a `<recheck>` turn that lists the numbers and asks for the whole
+        answer again without them (rule 10, `MAX_RECHECKS`). The rewrite is
+        checked the same way and kept only when it has fewer such numbers;
+        otherwise the first answer stands and its numbers are reported as
+        before. The reason is that the model works numbers out: a gap of
+        turns from two turn facts is a number in no fact, a prompt rule
+        against it lowered how often it happened and did not stop it, and
+        teaching the check arithmetic would let every small difference of two
+        facts through as traced (docs/evals.md, "The number it worked out").
+        An answer whose numbers are all traced costs exactly what it did.
+
         `job` is the application's own router label for the question, one of
         `pipeline.prompts.JOBS`. Since PLA-205 it does something: it is
         written into the human turn as one line, `Routed as: my_mistake`,
@@ -1560,30 +1586,56 @@ class Agent:
                 )
                 state = self.graph.invoke({"messages": [*prior_messages(prior), turn]})
                 messages: list[BaseMessage] = list(state["messages"])
+                earlier = [
+                    prior_turn.text for prior_turn in prior if prior_turn.role == ROLE_ASSISTANT
+                ]
+
+                def checked(answer_text: str) -> NumberCheck:
+                    # Against everything read so far, which after a recheck
+                    # includes any query the rewrite made: a number the model
+                    # went and fetched is a number with a row behind it.
+                    return check_numbers(
+                        answer_text,
+                        rows=[row for query in log.queries for row in query.rows],
+                        cards=[f"{card.number} {card.text}" for card in log.cards],
+                        facts=facts,
+                        history=earlier,
+                    )
+
+                # A scan of a string that has already been produced, so on an
+                # answer whose every number is traced nothing here asks the
+                # provider anything or adds a call to a member's wait.
+                text = final_text(messages)
+                check = checked(text)
+                flagged_first = len(check.unverified)
+                rechecks = 0
+                while check.unverified and rechecks < MAX_RECHECKS:
+                    rechecks += 1
+                    handed_back = HumanMessage(content=recheck_turn(check.unverified))
+                    state = self.graph.invoke({"messages": [*messages, handed_back]})
+                    messages = list(state["messages"])
+                    rewritten = final_text(messages)
+                    rewritten_check = checked(rewritten)
+                    # Kept only when it is better. A rewrite that came back
+                    # empty, or with as many untraced numbers as before, is a
+                    # second answer no more trustworthy than the first, and
+                    # the first is the one the model wrote without being led.
+                    if rewritten and len(rewritten_check.unverified) < len(check.unverified):
+                        text, check = rewritten, rewritten_check
                 usage = token_usage(messages)
                 span.set_attribute("agent.tool_calls", len(collected))
                 # Every reported count, which since the cache breakpoint went
                 # in includes `agent.usage.cache_read_input_tokens` and
-                # `agent.usage.cache_creation_input_tokens`.
+                # `agent.usage.cache_creation_input_tokens`. Summed over the
+                # recheck too when there was one, because it was billed
+                # whichever answer was kept.
                 for name, value in usage.items():
                     span.set_attribute(f"agent.usage.{name}", value)
                 if self.metrics is not None:
                     self.metrics.count_prompt_tokens(usage)
-                # Inside the span, because the count is one of its
-                # attributes and the check is a scan of a string that has
-                # already been produced: nothing here asks the provider
-                # anything or adds a call to a member's wait.
-                text = final_text(messages)
                 evidence = log.finish(cite_facts(text, facts))
-                check = check_numbers(
-                    text,
-                    rows=[row for query in evidence.queries for row in query.rows],
-                    cards=[f"{card.number} {card.text}" for card in evidence.cards],
-                    facts=facts,
-                    history=[
-                        prior_turn.text for prior_turn in prior if prior_turn.role == ROLE_ASSISTANT
-                    ],
-                )
+                span.set_attribute("agent.rechecks", rechecks)
+                span.set_attribute("agent.unverified_before_recheck", flagged_first)
                 span.set_attribute("agent.unverified_numbers", len(check.unverified))
                 span.set_attribute("agent.from_history", len(check.from_history))
                 if self.metrics is not None:
@@ -1623,6 +1675,11 @@ class Agent:
                 # is the answer, and this line has never carried any of it.
                 "facts": len(facts),
                 "unverified_numbers": len(check.unverified),
+                # Whether the answer was handed back, and how many numbers it
+                # had when it was: the before and after of the recheck as two
+                # counts, never the numbers.
+                "rechecks": rechecks,
+                "unverified_before_recheck": flagged_first,
                 # Two counts and a length, and not a word of what was said
                 # in any of those turns.
                 "history_turns": len(prior),

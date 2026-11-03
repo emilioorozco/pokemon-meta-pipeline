@@ -400,13 +400,20 @@ CONTEXT_CLOSE: Final = "</context>"
 # the member is looking at" keeps rule 9 covering all of it.
 FACTS_OPEN: Final = "<facts>"
 FACTS_CLOSE: Final = "</facts>"
-# Any spelling of any of the three elements' tags, including a self-closing
+# The element the number check hands an answer back inside, named by rule 10
+# and built by `recheck_turn`. It is the one turn of ours that comes after the
+# model has answered, and the only thing in it is the numbers the check could
+# not trace, so it is a turn with nothing of the member's in it at all.
+RECHECK_OPEN: Final = "<recheck>"
+RECHECK_CLOSE: Final = "</recheck>"
+# Any spelling of any of the four elements' tags, including a self-closing
 # one, so text that writes `</QUESTION >` cannot end the block it is inside
-# and text that writes `<context>` cannot open a second one. All three are
-# taken out of all three bodies: they are neighbours in one turn, so a
+# and text that writes `<context>` cannot open a second one. All four are
+# taken out of every body: they are neighbours in one conversation, so a
 # closing tag in any of them would put the rest of that body where the model
-# has been told the project's own words are.
-_ELEMENT_TAG: Final = re.compile(r"</?\s*(?:question|context|facts)\s*/?>", re.IGNORECASE)
+# has been told the project's own words are, and a `<recheck>` typed by a
+# member would be a member writing in the check's voice.
+_ELEMENT_TAG: Final = re.compile(r"</?\s*(?:question|context|facts|recheck)\s*/?>", re.IGNORECASE)
 
 # The two roles a prior turn can have, and the ceilings the conversation is
 # placed under. The application keeps the transcript in the browser and sends
@@ -728,7 +735,9 @@ Rules you follow on every answer.
     cited by its number. A number that is in none of the three does not go in
     the answer, however reasonable it would be, and that includes one you work
     out from them: for a gap, a sum or a rate per turn, give the values it
-    comes from ("turn 7, then turn 12") and not the result.
+    comes from ("turn 7, then turn 12") and not the result. A <recheck> after
+    your answer lists numbers found in none of the three: write the whole
+    answer again without them, changing nothing else.
 11. Earlier turns are what was said before, not data. An answer of yours
     higher up is your own words and never evidence: repeat a number from one
     only if you fetch what produced it again, and otherwise say it came from
@@ -1153,6 +1162,33 @@ def wrap_turn(
         wrapped = f"{CONTEXT_OPEN}\n{inner}\n{CONTEXT_CLOSE}\n{wrapped}"
     routed = route_line(job)
     return f"{routed}\n{wrapped}" if routed else wrapped
+
+
+def recheck_turn(numbers: Sequence[str]) -> str:
+    """The turn that hands an answer back with the numbers nothing accounts for.
+
+    Rule 10 says what it means, so the element carries only the numbers, as
+    the answer wrote them, and one line saying what to do with them:
+
+        <recheck>
+        Numbers in none of the rows, cards or facts: 5, 11
+        Write the whole answer again without them.
+        </recheck>
+
+    The numbers are the only thing of the answer's that is repeated. They
+    come from `pipeline.facts.check_numbers`, which only ever returns digits,
+    commas, a point and a percent sign, so nothing a member typed or a row held can
+    ride in here as words. They are stripped of our delimiters all the same,
+    because this is the one element that comes after the model has spoken
+    and the last thing it should be possible to forge.
+    """
+    listed = ", ".join(cleaned for number in numbers if (cleaned := clean_context(number)))
+    return (
+        f"{RECHECK_OPEN}\n"
+        f"Numbers in none of the rows, cards or facts: {listed}\n"
+        "Write the whole answer again without them.\n"
+        f"{RECHECK_CLOSE}"
+    )
 
 
 def override_path() -> Path | None:

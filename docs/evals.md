@@ -893,6 +893,42 @@ lives rather than waited out:
 The two clauses are 243 characters, and `MAX_PROMPT_CHARS` goes from 21,600
 to 22,000 for them, for the reason the comment above it gives.
 
+## The number it worked out
+
+The live run after the section above scored 29 of 31, and both failures were
+the same thing: `mistake_game_04` wrote that turn 12 was "5 turns into the
+second half" of a 17-turn game, and `job_my_mistake_review` wrote "a 5-turn
+gap, turns 7 through 11". Neither 5 in the first nor 11 in the second is in a
+fact. The rule 10 clause lowered how often the model did turn arithmetic and
+did not stop it, and with the temperature at 0 the same answer comes back
+each week.
+
+So the check's result now goes back to the model. When `check_numbers` finds
+an unverified number, `Agent.ask` adds one `<recheck>` turn after the answer,
+listing the numbers as they were written and asking for the whole answer
+again without them, and checks the rewrite the same way. The rewrite is kept
+only when it has fewer unverified numbers; a rewrite that is empty, or no
+better, leaves the first answer and its report as they were, so the step can
+lower the count and never raise it. It is one model call, made only on an
+answer the check already caught, and `agent.rechecks` and
+`agent.unverified_before_recheck` on the span say how often and how much.
+
+This keeps the two choices made above. The check still knows values and not
+arithmetic, so it stays a test that an invented 5 cannot pass, and the score
+is still the model's answer to the question: the rewrite is the model's own,
+written with the numbers it could not trace named back to it, and the golden
+`max_unverified` entries are unchanged. Run 37's two answers, put through it
+offline with a rewrite that restates only the flagged sentence from the
+facts, were handed back with exactly `5` and `11` and pass every check; what
+Haiku writes when handed back is for the next live run to say.
+
+One thing the run showed that no check catches: `mistake_game_04` also said
+both sides were "still even at 0 prizes each" at turn 12, which no fact says
+(the facts give the member's prizes by turn, never the opponent's). Every
+number in it is a fact value, so the number check passes it. A check that
+would catch it has to know which fact a number was quoted from, and that is a
+judge, not a string search.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

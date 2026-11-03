@@ -214,10 +214,16 @@ nowhere comes back on the response as `unverified_numbers`
 ([agent-service.md](agent-service.md)).
 
 It is worth being exact about what that is and is not, because a field with
-that name invites being read as a guarantee. It does not refuse, rewrite or
-flag the answer; the answer returns as it was. It does not ask a second model
-whether the first one was right, which would be a second thing to be wrong
-and a second bill. It compares strings to numbers: a number the run can
+that name invites being read as a guarantee. It does not refuse or flag the
+answer. It does hand it back once: an answer with an unverified number is
+returned to the same model in a `<recheck>` turn that lists the numbers, the
+whole answer is written again, and the rewrite is kept only if it has fewer
+of them (rule 10, `MAX_RECHECKS` in `pipeline.agent`). The numbers of
+whichever answer was kept are what is reported. It does not ask a second
+model whether the first one was right, which would be a second thing to be
+wrong and a second bill; the recheck is the check's result handed to the
+model that wrote the answer, and it costs a call only on an answer the check
+already caught. It compares strings to numbers: a number the run can
 account for passes, and a number it cannot is reported. So it cannot see
 arithmetic, and a model that correctly adds two rows it read is reported like
 anything else; it cannot see a number that is real and irrelevant; and it
