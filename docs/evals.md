@@ -841,6 +841,38 @@ unverified numbers is unchanged at two. The replay shows the recorded run is
 legal and scores; whether the deployed model now writes it is only answered
 by the next live run.
 
+## The answer that lost its first half
+
+Version 15 made the matchup part of `job_my_mistake_review` a query, and the
+first live run after it came back as one sentence: the matchup's record and
+"falling behind on tempo as you did was particularly costly", a sentence
+that refers to a review the answer did not contain. The review had been
+written. `agent.final_text` built the answer from the last assistant message
+only, and the provider puts text and a tool call in the same message, so a
+model that writes the review and then asks for the matchup loses everything
+before the query. The runs say so in their token counts:
+
+| run | queries | output tokens | answer, about |
+| --- | --- | --- | --- |
+| Nov 2 | 0 | 248 | 219 tokens, the whole review |
+| Oct 5 | 1 | 418 | 111, the matchup sentence |
+| Oct 26 | 1 | 430 | 59, the matchup sentence |
+| Nov 3, after version 15 | 1 | 424 | 66, the matchup sentence |
+
+A query costs this model 75 to 130 output tokens on the other questions, so
+each one-query run paid for some 200 to 300 tokens of text nobody saw, which
+is the size of the review the Nov 2 run, with no query, did return. Requiring
+the query turned a sometimes failure into an every time one.
+
+`final_text` now joins the text of every assistant message after the last
+human message, in order, with a blank line where one message ended. An
+earlier answer in the conversation is still not part of this one. The
+number check, the fact citations and the eval all read the joined text, so
+what is scored is what the member is shown. The replay is unchanged at 52 out
+of 52: its recorded tool calls carry no text, so it never exercised this.
+`tests/test_agent.py` now does, with a scripted turn that writes and then
+queries.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

@@ -1634,29 +1634,45 @@ class Agent:
 
 
 def final_text(messages: Sequence[BaseMessage]) -> str:
-    """The last assistant message as plain text.
+    """Everything the assistant wrote in this turn, in the order it wrote it.
+
+    The turn is the messages after the last `HumanMessage`: the earlier ones
+    are the conversation placed in front of it, and an earlier answer is not
+    this one. Inside the turn every assistant message counts, not only the
+    last, because the provider puts text and a tool call in the same message:
+    a model that writes the review of a game and then asks for the matchup
+    has written two thirds of its answer before the tool runs, and the
+    message after the tool carries only the third that needed the result.
+    Taking the last message alone threw the rest away, which is what the
+    weekly eval kept catching on `job_my_mistake_review`: every run that made
+    exactly one query came back as the matchup sentence and nothing else,
+    while the model had been billed for some 300 output tokens more than that
+    sentence (docs/evals.md, "The answer that lost its first half").
 
     A content block list rather than a string is the normal shape from a
     provider that can interleave text and tool calls, so the text blocks are
-    joined rather than assumed to be the whole thing.
+    joined rather than assumed to be the whole thing. Parts are joined with a
+    blank line, which is where one message ended and the next began.
     """
-    for message in reversed(messages):
+    turn_start = 0
+    for position, message in enumerate(messages):
+        if isinstance(message, HumanMessage):
+            turn_start = position + 1
+    parts: list[str] = []
+    for message in messages[turn_start:]:
         if not isinstance(message, AIMessage):
             continue
         content = message.content
         if isinstance(content, str):
-            if content.strip():
-                return content.strip()
-            continue
-        parts = [
-            str(block.get("text", ""))
-            for block in content
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        joined = "\n".join(part for part in parts if part).strip()
-        if joined:
-            return joined
-    return ""
+            texts = [content]
+        else:
+            texts = [
+                str(block.get("text", ""))
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            ]
+        parts.extend(text.strip() for text in texts if text.strip())
+    return "\n\n".join(parts)
 
 
 def token_usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
