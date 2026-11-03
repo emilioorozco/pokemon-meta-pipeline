@@ -202,6 +202,38 @@ def test_the_three_sources_and_the_allowlist_each_account_for_a_number() -> None
     assert module.check_numbers(answer, rows=rows, cards=cards, facts=GAME_FACTS).unverified == ()
 
 
+def test_a_fact_cited_by_its_position_is_not_a_number_the_answer_claims() -> None:
+    """Rule 10 lets an answer cite a fact by its number, so the number is a citation.
+
+    The deployed agent's mistake reviews wrote "(fact 3)" and "(facts 2–3)"
+    and every one of them came back with the position as an unverified number,
+    which failed each question that carries `max_unverified: 0`. None of 3, 2
+    or 1 here is a game number except by coincidence; all of them are places
+    in the list.
+    """
+    answer = (
+        "Your first prize came on turn 7 (fact 3). You held back on turns 2, 4 and 6 "
+        "(facts 1–3), see fact #2, facts 1, 2 and 3, and facts 1-2."
+    )
+    assert module.check_numbers(answer, facts=GAME_FACTS).unverified == ()
+
+
+def test_a_citation_of_a_position_past_the_list_is_still_checked() -> None:
+    """ "fact 40" against three placed facts cites nothing, so its 40 is a number."""
+    assert module.check_numbers("As fact 40 says.", facts=GAME_FACTS).unverified == ("40",)
+
+
+def test_a_number_beside_a_citation_is_still_checked() -> None:
+    """Taking the position out must not take the claim with it."""
+    answer = "You could have taken a prize by turn 8 or 12 (fact 3)."
+    assert module.check_numbers(answer, facts=GAME_FACTS).unverified == ("8", "12")
+
+
+def test_a_cited_range_marks_every_fact_in_it() -> None:
+    cited = module.cite_facts("The game turned on facts 1–3.", GAME_FACTS)
+    assert all(entry.cited for entry in cited)
+
+
 def test_a_fact_with_no_values_accounts_for_nothing_on_its_own() -> None:
     """ "You never attacked" carries no number, so it allows none."""
     empty = (Fact(id="first_attack_turn:me", text="You never attacked in this game."),)
