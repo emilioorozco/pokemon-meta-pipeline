@@ -2384,7 +2384,28 @@ def render(report: Report) -> str:
             # not the question thought to set a `max_unverified`.
             numbers = ", ".join(result.unverified_numbers)
             lines.append(f"    unverified numbers: {numbers}")
+        if not result.passed:
+            lines.append(f"    answered: {answer_excerpt(result.answer)}")
     return "\n".join(lines)
+
+
+# How much of a failing answer the terminal report prints. Enough to see the
+# sentence a `require` pattern was looking for; the whole answer is in the JSON
+# report. The 2026-11-04 golden run failed nine questions and its log said
+# which pattern each one missed and nothing about what was written instead, and
+# the report it kept was an artifact that not every reader can download.
+ANSWER_EXCERPT_CHARS: Final = 600
+# A player token's shape, blanked out of the excerpt whether or not the answer
+# was supposed to hold one, because this line is printed into a CI log.
+_TOKEN_SHAPE: Final = re.compile(r"\b[0-9a-f]{16}\b")
+
+
+def answer_excerpt(answer: str, width: int = ANSWER_EXCERPT_CHARS) -> str:
+    """A failing answer on one line, cut to `width`, with any token blanked."""
+    flat = _TOKEN_SHAPE.sub("[token]", " ".join(answer.split()))
+    if not flat:
+        return "(nothing)"
+    return flat if len(flat) <= width else flat[: width - 3] + "..."
 
 
 def render_by_job(report: Report) -> str:

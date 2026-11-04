@@ -978,6 +978,30 @@ is the recheck: `mistake_game_04` made four refused queries and
 fire more often, so the number to watch is the share of production answers
 with `agent.rechecks` set, rather than the eval's token total.
 
+## The tie the prompt already warned about
+
+The 2026-11-04 golden run, the first with a provider key in the workflow,
+scored 43 of 52. Two of the nine misses had the same cause and it was visible
+in the receipt: `busiest_archetype` and `busiest_archetype_shape` both looked
+up "the deck list, top 1 by matches". Two archetypes tie at two games each, so
+`ORDER BY ... LIMIT 1` handed the model one of them and the answer named one.
+Rule 6 of the prompt says a top is not one row, and the model wrote `LIMIT 1`
+anyway.
+
+So the tool now does what the rule asks. A statement whose last clause is
+`LIMIT 1` after an ORDER BY runs with `LIMIT 5`, and the text the model reads
+ends with a line saying why and asking it to name every row that ties the
+first. Nothing else about the statement changes, the receipt still describes
+what the model wrote, and a top with nothing after it gets no extra line
+(`peek_past_a_top_one` in `pipeline/agent.py`).
+
+The other seven misses could not be read from the log: the report said which
+pattern each answer lacked and not what the answer said, and the run's report
+artifact is not something every reader can download. The terminal report now
+prints the first 600 characters of each failing answer under its misses, with
+anything shaped like a player token blanked, so the next run says why as well
+as where.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

@@ -21,6 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Final
 
+import duckdb
 import pytest
 import yaml
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -344,6 +345,48 @@ def test_a_limit_is_appended_when_there_is_none_and_capped_when_it_is_too_big() 
     )
     capped = agent.with_limit("select 1 from mart_matchups limit 5000")
     assert capped.endswith(f"LIMIT {agent.MAX_LIMIT}")
+
+
+def test_a_final_order_by_limit_1_is_widened_so_a_tie_shows() -> None:
+    widened, peeked = agent.peek_past_a_top_one(
+        "select archetype_name, games_played from dim_archetype\n"
+        "order by games_played desc limit 1;"
+    )
+    assert peeked
+    assert widened.endswith(f"LIMIT {agent.TIE_PEEK_LIMIT}")
+    # Not without an ORDER BY, not a LIMIT that is not 1, not one inside a CTE
+    # or a string, because none of those is a top written as one row.
+    for sql in (
+        "select archetype_name from dim_archetype limit 1",
+        "select archetype_name from dim_archetype order by games_played desc limit 2",
+        "with top as (select * from dim_archetype order by games_played desc limit 1) "
+        "select * from top",
+        "select archetype_name from dim_archetype where archetype_name = 'order by x limit 1'",
+    ):
+        assert agent.peek_past_a_top_one(sql) == (sql, False), sql
+
+
+def test_a_widened_top_one_returns_the_tie_and_says_why(tmp_path: Path) -> None:
+    warehouse = tmp_path / "tie.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        "create table dim_archetype as select * from (values "
+        "('Alpha', 2), ('Beta', 2), ('Gamma', 1)) t(archetype_name, games_played)"
+    )
+    connection.close()
+    result = agent.execute_marts_query(
+        "select archetype_name, games_played from dim_archetype order by games_played desc limit 1",
+        warehouse=warehouse,
+    )
+    assert "Alpha" in result.text and "Beta" in result.text
+    assert result.text.endswith(agent.TIE_PEEK_NOTE)
+    single = agent.execute_marts_query(
+        "select archetype_name from dim_archetype where archetype_name = 'Gamma' "
+        "order by games_played desc limit 1",
+        warehouse=warehouse,
+    )
+    # One row back is a top with nothing to tie, so nothing is said about it.
+    assert agent.TIE_PEEK_NOTE not in single.text
 
 
 def test_a_result_is_rendered_as_a_table_a_model_can_read() -> None:

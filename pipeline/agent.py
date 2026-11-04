@@ -234,6 +234,18 @@ CACHE_TOKEN_FIELDS: Final[dict[str, str]] = {
 # spent rather than evidence gathered.
 DEFAULT_LIMIT: Final = 50
 MAX_LIMIT: Final = 200
+# How many rows a `ORDER BY ... LIMIT 1` is widened to, so that a row tied with
+# the first is in front of the model. Rule 6 of the prompt already says a top
+# is not one row, and on 2026-11-04 the golden run still answered both "which
+# archetype has the most games" questions with `top 1 by matches` over a tie
+# of two (docs/evals.md). Five is enough to show a tie and few enough that the
+# answer still reads as a top.
+TIE_PEEK_LIMIT: Final = 5
+TIE_PEEK_NOTE: Final = (
+    "Your statement ended in ORDER BY ... LIMIT 1, so the next rows are shown "
+    "too. Name every row that ties the first one on the value you ordered by, "
+    "and the first row alone only when the next one is lower (rule 6)."
+)
 # DuckDB cancels a statement that runs longer than this. A mart query over a
 # corpus this size is milliseconds, so anything near five seconds is a mistake.
 STATEMENT_TIMEOUT_S: Final = 5.0
@@ -529,6 +541,33 @@ def with_limit(sql: str, *, default: int = DEFAULT_LIMIT, cap: int = MAX_LIMIT) 
     if int(last.group(1)) <= cap:
         return text
     return f"{text[: last.start()]}LIMIT {cap}{text[last.end() :]}"
+
+
+def peek_past_a_top_one(sql: str) -> tuple[str, bool]:
+    """The statement with a final `ORDER BY ... LIMIT 1` widened, and whether it was.
+
+    Only the last LIMIT, only when nothing but whitespace follows it and only
+    when an ORDER BY comes before it, because that is the shape of "the most"
+    or "the best" written as one row. A `LIMIT 1` with no ORDER BY picks an
+    arbitrary row and a tie means nothing there, and a `LIMIT 1` inside a CTE
+    is the model's own intermediate step. Literals and comments are blanked
+    first, so a `'limit 1'` inside a string is not read as one.
+
+    The model sees more rows than it asked for, which `with_limit` avoids for
+    every other statement; here that is the point, and the tool says so in the
+    text it returns (`TIE_PEEK_NOTE`) rather than leaving a silent difference.
+    """
+    text = sql.strip().rstrip(";").strip()
+    blanked = strip_literals(text)
+    found = list(LIMIT_CLAUSE.finditer(blanked))
+    if not found:
+        return text, False
+    last = found[-1]
+    if int(last.group(1)) != 1 or blanked[last.end() :].strip():
+        return text, False
+    if not re.search(r"\border\s+by\b", blanked[: last.start()], re.IGNORECASE):
+        return text, False
+    return f"{text[: last.start()]}LIMIT {TIE_PEEK_LIMIT}{text[last.end() :]}", True
 
 
 def markdown_table(columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
@@ -1055,7 +1094,8 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
     says: the count is the answer to "how much did this match" and the rows
     are there to be read, and nobody reads the fiftieth one.
     """
-    limited = with_limit(sql)
+    peeked, widened = peek_past_a_top_one(sql)
+    limited = with_limit(peeked)
     target = location(warehouse)
     if not target.is_file():
         missing = (
@@ -1077,8 +1117,9 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
     if not rows:
         return QueryResult("0 rows. The query ran and matched nothing.")
     table = markdown_table(columns, rows)
+    note = f"\n\n{TIE_PEEK_NOTE}" if widened and len(rows) > 1 else ""
     return QueryResult(
-        f"{table}\n\n{len(rows)} row(s).",
+        f"{table}\n\n{len(rows)} row(s).{note}",
         row_count=len(rows),
         rows=[
             {str(name): json_safe(value) for name, value in zip(columns, row, strict=True)}

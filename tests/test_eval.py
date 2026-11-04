@@ -815,6 +815,25 @@ def test_the_table_names_the_failure_and_ends_with_the_score() -> None:
     assert "missing: re:\\b12 games" in rendered
 
 
+def test_a_failing_answer_is_printed_under_its_misses() -> None:
+    """The log shows what was written, not only which pattern it lacked."""
+    report = report_of(
+        evals.score(question(id="good"), "12 games", [evals.SQL_TOOL]),
+        evals.score(question(id="bad"), "Twelve games,\n  for 0123456789abcdef.", []),
+    )
+    rendered = evals.render(report)
+    assert "    answered: Twelve games, for [token]." in rendered
+    # Only under the failing question: a passing answer is not news.
+    assert rendered.count("answered:") == 1
+
+
+def test_a_long_failing_answer_is_cut_and_an_empty_one_is_named() -> None:
+    long = "x" * (evals.ANSWER_EXCERPT_CHARS + 50)
+    assert len(evals.answer_excerpt(long)) == evals.ANSWER_EXCERPT_CHARS
+    assert evals.answer_excerpt(long).endswith("...")
+    assert evals.answer_excerpt("  ") == "(nothing)"
+
+
 def test_the_table_marks_a_passing_advisory_row_distinctly() -> None:
     """A run that passed only because `require` was downgraded is still legible."""
     asked = question(
