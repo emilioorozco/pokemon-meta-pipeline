@@ -218,7 +218,10 @@ that name invites being read as a guarantee. It does not refuse or flag the
 answer. It does hand it back once: an answer with an unverified number is
 returned to the same model in a `<recheck>` turn that lists the numbers, the
 whole answer is written again, and the rewrite is kept only if it has fewer
-of them (rule 10, `MAX_RECHECKS` in `pipeline.agent`). The numbers of
+of them (rule 10, `MAX_RECHECKS` in `pipeline.agent`). The same turn hands
+back an answer that says the warehouse has nothing when no query came back
+empty, because a refused query is a question nobody answered and "no record"
+written over one is a guess with the look of a finding. The numbers of
 whichever answer was kept are what is reported. It does not ask a second
 model whether the first one was right, which would be a second thing to be
 wrong and a second bill; the recheck is the check's result handed to the

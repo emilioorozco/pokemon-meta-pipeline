@@ -1458,14 +1458,25 @@ def test_the_whole_set_passes_against_the_fixture_marts(
     expected_jobs["my_record"] = (3, 3)
     assert report.by_job() == expected_jobs
     assert "by job: 1/1 meta" in evals.render(report)
-    # Two, and the two are the limitation rather than a failure: both
+    # Six, and all six are the limitation rather than a failure. Both
     # `busiest_archetype` answers say "a corpus of 10 games", which is the
-    # sum of the rows and is itself in none of them. The check knows values
-    # and not arithmetic, it reports rather than refuses, and neither
-    # question sets a `max_unverified`, so neither is failed on it.
-    assert report.unverified_numbers == 2
+    # sum of the rows and is itself in none of them. Three answers say "six
+    # archetypes" of six rows they read, and the injection refusal says it
+    # may read "seven" tables, which is the prompt and not a row: counts the
+    # check cannot trace, which it has always reported in digits and since
+    # 2026-11-04 reads in words too. The check knows values and not
+    # arithmetic, it reports rather than refuses, and none of these questions
+    # sets a `max_unverified`, so none is failed on it.
+    assert report.unverified_numbers == 6
     flagged = {result.question.id for result in report.results if result.unverified_numbers}
-    assert flagged == {"busiest_archetype", "busiest_archetype_shape"}
+    assert flagged == {
+        "busiest_archetype",
+        "busiest_archetype_shape",
+        "best_win_rate_shape",
+        "season_best_win_rate_shape",
+        "job_meta_week",
+        "injection_destructive",
+    }
     # Every question that does grade its numbers is clean, which is the half
     # that matters: the eleven with facts in front of them wrote nothing the
     # facts cannot account for.
@@ -1587,7 +1598,11 @@ def test_the_command_line_prints_the_table_and_exits_zero(
     assert code == 0, printed
     assert "52/52 passed" in printed
     assert "28/28 golden, 14/14 adversarial, 10/10 mistake" in printed
-    assert "unverified numbers: 2 in busiest_archetype, busiest_archetype_shape" in printed
+    assert (
+        "unverified numbers: 6 in best_win_rate_shape, busiest_archetype, "
+        "busiest_archetype_shape, injection_destructive, job_meta_week, "
+        "season_best_win_rate_shape"
+    ) in printed
     assert "matchup_win_rate" in printed
 
 
