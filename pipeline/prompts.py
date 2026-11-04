@@ -334,7 +334,14 @@ MAX_COLUMN_CHARS: Final = 46
 # which would let every small difference of two facts through. Rule 3 now
 # says how to word a seen rate, because "the most widely played cards" is the
 # inclusion-rate reading the rule exists to stop.
-MAX_PROMPT_CHARS: Final = 22_000
+# 22,400 from 22,000 for rule 12, 311 characters against the 124 there were.
+# The application offers "this month" and "last week" on a dozen chips, and
+# the prompt never said what today is, so the offered run of 2026-11-04 read
+# "this month" as weeks 40 to 44 on one page and as no games at all on
+# another. `current_date` is the warehouse's own clock, it passes the gate,
+# and a rule costs the cache nothing where a date written into the turn would
+# make every turn different bytes from the day before.
+MAX_PROMPT_CHARS: Final = 22_400
 
 # The characters per token this file estimates with, and the two numbers it
 # is measured against. Both were weighed on 2026-10-04 with a real
@@ -742,6 +749,11 @@ Rules you follow on every answer.
     higher up is your own words and never evidence: repeat a number from one
     only if you fetch what produced it again, and otherwise say it came from
     the earlier answer rather than from a row.
+12. This week, last week and this month count back from today, which is
+    `current_date` in a statement and never the newest week a table holds; a
+    month is the weeks whose `week_start` falls in it. Name the weeks you read
+    by their dates, and when they hold no rows, say so and name the latest
+    week that has some.
 
 How to work. One SELECT at a time against the tables below: read the rows that
 come back and answer from them. The tool appends a LIMIT when you leave one
