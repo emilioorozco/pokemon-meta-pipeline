@@ -2067,8 +2067,8 @@ def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult
 
     So: a refusal is a failure, because a chip that is refused is a chip that
     should not be on the screen. A run with no gate verdict and nothing read
-    is a failure, because an answer with no row, no card and no fact behind
-    it is prose. And a statement refused for naming a table that does not
+    is a failure, because an answer with no row, no card and no cited fact
+    behind it is prose. And a statement refused for naming a table that does not
     exist is a failure even when the next statement found the right one,
     because the question sent the model looking for something the warehouse
     does not have.
@@ -2077,7 +2077,14 @@ def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult
     if re.search(REFUSAL_PATTERN, answer.answer, re.IGNORECASE):
         failures.append(OFFERED_REFUSED)
     evidence = answer.evidence
-    read = sum(query.row_count for query in evidence.queries) + len(evidence.cards)
+    # A fact the answer cited is read in the way a row is: on a game page the
+    # application sends the game's analysis facts, and "you won on turn 10
+    # (fact 1)" is answered out of them with no query to run.
+    read = (
+        sum(query.row_count for query in evidence.queries)
+        + len(evidence.cards)
+        + sum(1 for fact in evidence.facts if fact.cited)
+    )
     if answer.gate_summary == GATE_OFF and not read:
         failures.append(OFFERED_NO_EVIDENCE)
     if any(query.refused_code == REFUSED_TABLE_NOT_FOUND for query in evidence.queries):
@@ -2384,7 +2391,28 @@ def render(report: Report) -> str:
             # not the question thought to set a `max_unverified`.
             numbers = ", ".join(result.unverified_numbers)
             lines.append(f"    unverified numbers: {numbers}")
+        if not result.passed:
+            lines.append(f"    answered: {answer_excerpt(result.answer)}")
     return "\n".join(lines)
+
+
+# How much of a failing answer the terminal report prints. Enough to see the
+# sentence a `require` pattern was looking for; the whole answer is in the JSON
+# report. The 2026-11-04 golden run failed nine questions and its log said
+# which pattern each one missed and nothing about what was written instead, and
+# the report it kept was an artifact that not every reader can download.
+ANSWER_EXCERPT_CHARS: Final = 600
+# A player token's shape, blanked out of the excerpt whether or not the answer
+# was supposed to hold one, because this line is printed into a CI log.
+_TOKEN_SHAPE: Final = re.compile(r"\b[0-9a-f]{16}\b")
+
+
+def answer_excerpt(answer: str, width: int = ANSWER_EXCERPT_CHARS) -> str:
+    """A failing answer on one line, cut to `width`, with any token blanked."""
+    flat = _TOKEN_SHAPE.sub("[token]", " ".join(answer.split()))
+    if not flat:
+        return "(nothing)"
+    return flat if len(flat) <= width else flat[: width - 3] + "..."
 
 
 def render_by_job(report: Report) -> str:

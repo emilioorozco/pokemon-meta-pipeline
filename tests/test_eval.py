@@ -815,6 +815,25 @@ def test_the_table_names_the_failure_and_ends_with_the_score() -> None:
     assert "missing: re:\\b12 games" in rendered
 
 
+def test_a_failing_answer_is_printed_under_its_misses() -> None:
+    """The log shows what was written, not only which pattern it lacked."""
+    report = report_of(
+        evals.score(question(id="good"), "12 games", [evals.SQL_TOOL]),
+        evals.score(question(id="bad"), "Twelve games,\n  for 0123456789abcdef.", []),
+    )
+    rendered = evals.render(report)
+    assert "    answered: Twelve games, for [token]." in rendered
+    # Only under the failing question: a passing answer is not news.
+    assert rendered.count("answered:") == 1
+
+
+def test_a_long_failing_answer_is_cut_and_an_empty_one_is_named() -> None:
+    long = "x" * (evals.ANSWER_EXCERPT_CHARS + 50)
+    assert len(evals.answer_excerpt(long)) == evals.ANSWER_EXCERPT_CHARS
+    assert evals.answer_excerpt(long).endswith("...")
+    assert evals.answer_excerpt("  ") == "(nothing)"
+
+
 def test_the_table_marks_a_passing_advisory_row_distinctly() -> None:
     """A run that passed only because `require` was downgraded is still legible."""
     asked = question(
@@ -1647,9 +1666,14 @@ def offered_answer(
     gate: str = "off",
     refused_code: str | None = None,
     cards: int = 0,
+    facts: tuple[bool, ...] = (),
 ) -> object:
-    """One `Answer` as the deployed service would send it back, built by hand."""
+    """One `Answer` as the deployed service would send it back, built by hand.
+
+    `facts` is one `cited` flag for each analysis fact the application sent.
+    """
     from pipeline.agent import Answer, CardEvidence, Evidence, QueryEvidence
+    from pipeline.facts import FactEvidence
 
     return Answer(
         answer=text,
@@ -1665,6 +1689,10 @@ def offered_answer(
                 )
             ],
             cards=[CardEvidence(name="Budew", set_code="SV", number="1", text="x")] * cards,
+            facts=[
+                FactEvidence(id=f"f{index}", text="You won on turn 10.", cited=cited)
+                for index, cited in enumerate(facts, start=1)
+            ],
         ),
     )
 
@@ -1787,6 +1815,10 @@ def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
         ),
         (offered_answer(rows=0), (evals.OFFERED_NO_EVIDENCE,)),
         (offered_answer(rows=0, cards=1), ()),
+        # The game on screen came with its facts, and the answer used one.
+        (offered_answer("You won on turn 10 (fact 1).", rows=0, facts=(True, False)), ()),
+        # Facts that were sent and not used are not something the answer read.
+        (offered_answer(rows=0, facts=(False, False)), (evals.OFFERED_NO_EVIDENCE,)),
         (
             offered_answer(refused_code="table_not_found"),
             (evals.OFFERED_GUESSED_TABLE,),

@@ -978,6 +978,30 @@ is the recheck: `mistake_game_04` made four refused queries and
 fire more often, so the number to watch is the share of production answers
 with `agent.rechecks` set, rather than the eval's token total.
 
+## The tie the prompt already warned about
+
+The 2026-11-04 golden run, the first with a provider key in the workflow,
+scored 43 of 52. Two of the nine misses had the same cause and it was visible
+in the receipt: `busiest_archetype` and `busiest_archetype_shape` both looked
+up "the deck list, top 1 by matches". Two archetypes tie at two games each, so
+`ORDER BY ... LIMIT 1` handed the model one of them and the answer named one.
+Rule 6 of the prompt says a top is not one row, and the model wrote `LIMIT 1`
+anyway.
+
+So the tool now does what the rule asks. A statement whose last clause is
+`LIMIT 1` after an ORDER BY runs with `LIMIT 5`, and the text the model reads
+ends with a line saying why and asking it to name every row that ties the
+first. Nothing else about the statement changes, the receipt still describes
+what the model wrote, and a top with nothing after it gets no extra line
+(`peek_past_a_top_one` in `pipeline/agent.py`).
+
+The other seven misses could not be read from the log: the report said which
+pattern each answer lacked and not what the answer said, and the run's report
+artifact is not something every reader can download. The terminal report now
+prints the first 600 characters of each failing answer under its misses, with
+anything shaped like a player token blanked, so the next run says why as well
+as where.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote
@@ -1065,11 +1089,20 @@ when:
 1. the answer matches the refusal alternation the adversarial half uses
    (`REFUSAL_PATTERN`, one constant now rather than fourteen copies of it),
    because a chip that is refused is a chip that should not be on the screen;
-2. the run reports `gate_summary: off` and read nothing at all, no row and no
-   card, because an answer with nothing behind it is prose;
+2. the run reports `gate_summary: off` and read nothing at all, no row, no
+   card and no cited fact, because an answer with nothing behind it is prose;
 3. any statement was refused `table_not_found`, even when the next one found
    the right table, because the question sent the model looking for
    something the warehouse does not hold.
+
+The second run (2026-11-04, run 43, 38/68) failed four game-page chips on
+rule 2 that had been answered correctly. The stand-in game is a win, the
+application offers "How did I lose this one?" on every game with a subject
+whatever its result, and the agent said "You didn't lose, you won on turn 10
+(fact 1)" without a query, because the game's facts were all it needed. A
+fact the answer cited is something it read, in the way a row is, so rule 2
+counts cited facts as well. A run whose facts were sent and not used still
+fails it.
 
 **Running it.**
 
