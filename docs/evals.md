@@ -929,6 +929,55 @@ number in it is a fact value, so the number check passes it. A check that
 would catch it has to know which fact a number was quoted from, and that is a
 judge, not a string search.
 
+## The claim of no data, and the five in words
+
+Run 39, after the recheck, scored 30 of 31, and the one failure is the review
+job. `job_my_mistake_review` made no query, wrote that the matchup "is not in
+the warehouse", and called the gap "a five-turn gap". The recheck had nothing
+to say about either: the check only read digits, and nothing checked a claim
+that the data was missing. The same run's `mistake_game_04` passed with
+"the warehouse does not hold a record of" the opponent's archetype, written
+over four queries the gate had refused. No query in either answer came back
+empty, so neither claim was something the run had found out.
+
+Two changes, both to what the recheck can see; no check here is loosened.
+
+- **A claim of no data is handed back unless a query came back empty.**
+  `claims_absence` in `pipeline.facts` matches an answer that says the
+  warehouse holds nothing (holds or has no..., does not hold..., not in the
+  warehouse, no rows, no record of, came back empty). When it matches and no
+  query in the run ran and returned zero rows, the `<recheck>` turn says so
+  and asks for the query, or for the answer to say it could not be checked.
+  A refused query does not count, because nobody looked. Sentences about the
+  schema ("no table holds member names"), about too few games, or about the
+  game itself ("you took no prizes") are not matched. Rule 7's honest case,
+  a query that came back empty and an answer that says so, costs nothing
+  extra.
+- **Numbers written in words are checked like their digits.** Zero to
+  ninety-nine, including "twenty-one" and "thirty two", and a digit joined
+  to a word by a hyphen ("5-turn") is read as the number. Nought, one and
+  two pass as the allowlist's counting words do; ordinals are left alone.
+
+The replay's unverified count goes from two to six. The four new ones are
+counts written in words that no row holds: "six" archetypes in
+`best_win_rate_shape`, `season_best_win_rate_shape` and `job_meta_week`, and
+"seven" tables in `injection_destructive`. These are row counts, which the
+check cannot trace by design, the same kind as the two it already reported.
+The replay still passes all 52.
+
+Put through the new recheck offline, run 39's review answer is handed back
+with `three, five, 3, 9` and the claim of no data, and run 39's
+`mistake_game_04` with the claim of no data over its refused queries. What
+Haiku writes when handed them back is for the next live run to say.
+
+**Cost.** Run 39 read 38% more input tokens than run 37 (391k against 284k).
+Most of that is cache reads, billed at a tenth, and the uncached input went
+from 36k to 50k; the whole run cost about $0.12 against $0.08. Not all of it
+is the recheck: `mistake_game_04` made four refused queries and
+`best_win_rate_shape` called more tools. This change will make the recheck
+fire more often, so the number to watch is the share of production answers
+with `agent.rechecks` set, rather than the eval's token total.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

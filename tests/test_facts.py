@@ -141,8 +141,15 @@ def test_a_facts_list_over_a_ceiling_is_refused(facts: list[Fact], message: str)
         ("The week of 2026-09-14.", []),
         ("Parser 1.2.3 and the v2 export.", []),
         ("It finished 6-2.", []),
-        # Turn words are words, and a number inside an identifier is not a claim.
-        ("You attacked on turn nine.", []),
+        # A spelled number is the same claim as its digits, and a number used
+        # as an adjective is a number: until 2026-11-04 both went unread, and
+        # "a five-turn gap" passed where "a 5 turn gap" was caught.
+        ("You attacked on turn nine.", ["nine"]),
+        ("A five-turn gap, then a 5-turn wait.", ["five", "5"]),
+        ("Twenty-one games and Thirty two.", ["Twenty-one", "Thirty two"]),
+        # Words that only contain a number word, ordinals and identifiers are
+        # not claims.
+        ("Someone took the eleventh prize, alone.", []),
         ("Read from mart_top10.", []),
     ],
 )

@@ -93,12 +93,62 @@ TOLERANCE: Final = 1e-9
 # Everything else is dropped rather than split, which is the conservative
 # direction. A date, a version, a hyphenated record (`6-2`) and an identifier
 # with a digit in it are all left alone, so this under-reports rather than
-# filling a member's receipt with numbers nobody claimed. Turn words spelled
-# out ("turn nine") are not numbers and never were.
-_NUMBER_TOKEN: Final = re.compile(r"(?<![\w$])\d[\d,.%-]*")
+# filling a member's receipt with numbers nobody claimed.
+#
+# One hyphen is the exception, the one in front of a word: "a 5-turn gap" is
+# the number 5 used as an adjective, and until 2026-11-04 it was dropped with
+# the records, which is how a worked-out gap got past the check written to
+# stop it (docs/evals.md, "The number it worked out").
+_NUMBER_TOKEN: Final = re.compile(r"(?<![\w$])\d[\d,.%-]*(?=([A-Za-z])?)")
 _PLAIN_NUMBER: Final = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?%?\Z")
 # The punctuation a sentence leaves on the end of a number.
 _TRAILING: Final = ".,;:)]}"
+
+# Numbers written as words, zero to ninety-nine, which is every count and turn
+# a game of this length produces. Until 2026-11-04 a spelled number was not a
+# number at all, so "a five-turn gap" passed where "a 5-turn gap" would have
+# been reported: the same claim, let through by its spelling. Ordinals
+# ("third"), fractions ("half") and "a dozen" are still left alone, because
+# they are rarely a claim about a value and the ones that are can wait for
+# an answer that makes them.
+_UNITS: Final[dict[str, int]] = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+}
+_TENS: Final[dict[str, int]] = {
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+_DIGIT_WORDS: Final = "one|two|three|four|five|six|seven|eight|nine"
+_WORD_NUMBER: Final = re.compile(
+    rf"\b(?:(?:{'|'.join(_TENS)})(?:[- ](?:{_DIGIT_WORDS})\b)?|"
+    rf"{'|'.join(sorted(_UNITS, key=len, reverse=True))})\b",
+    re.IGNORECASE,
+)
 
 # How an answer cites a fact by its number: "fact 2", "fact #2", "facts 2 and
 # 3", "facts 2, 5 and 8", "facts 2-3", "facts 2–3". The numbered list is short,
@@ -220,12 +270,31 @@ def number_tokens(text: str) -> list[str]:
     are one number and two different strings, and the one a member can search
     for is the one that was written.
     """
-    found: list[str] = []
+    found: list[tuple[int, str]] = []
     for match in _NUMBER_TOKEN.finditer(text):
         token = match.group(0).rstrip(_TRAILING)
+        # A hyphen with a letter after it joins a number to the word it
+        # describes ("5-turn"), and comes off; one with a digit after it is a
+        # record or a date, and the whole token is left alone as before.
+        if token.endswith("-") and match.group(1):
+            token = token[:-1]
         if token and _PLAIN_NUMBER.fullmatch(token):
-            found.append(token)
-    return found
+            found.append((match.start(), token))
+    found.extend((match.start(), match.group(0)) for match in _WORD_NUMBER.finditer(text))
+    return [token for _, token in sorted(found)]
+
+
+def spelled_value(token: str) -> float | None:
+    """The value of a number written as words, or None for anything else."""
+    words = re.split(r"[- ]", token.lower())
+    if len(words) == 1:
+        if words[0] in _UNITS:
+            return float(_UNITS[words[0]])
+        return float(_TENS[words[0]]) if words[0] in _TENS else None
+    tens, unit = words
+    if tens in _TENS and unit in _UNITS:
+        return float(_TENS[tens] + _UNITS[unit])
+    return None
 
 
 def parse_number(token: str) -> tuple[float, int] | None:
@@ -236,6 +305,9 @@ def parse_number(token: str) -> tuple[float, int] | None:
     only honest way to say so is to round the row to the precision the answer
     used rather than to compare two floats that will never be equal.
     """
+    spelled = spelled_value(token)
+    if spelled is not None:
+        return spelled, 0
     body = token[:-1] if token.endswith("%") else token
     body = body.replace(",", "")
     try:
@@ -435,10 +507,14 @@ def cite_facts(answer: str, facts: Sequence[Fact]) -> list[FactEvidence]:
     cited the first way, which is correct: there is no number in it to find.
     """
     numbered = {position for _, positions in fact_references(answer) for position in positions}
+    # A counting word on the allowlist ("one of the two sides") is how a
+    # sentence is built and not a use of whichever fact happens to hold a 1;
+    # a spelled number past them ("on turn twelve") is a quotation like any.
     written = {
         parsed[0]
         for token in number_tokens(without_fact_references(answer, len(facts)))
         if (parsed := parse_number(token)) is not None
+        and not (spelled_value(token) is not None and parsed[0] in ALLOWED_NUMBERS)
     }
     evidence: list[FactEvidence] = []
     for position, fact in enumerate(facts, start=1):
@@ -450,3 +526,46 @@ def cite_facts(answer: str, facts: Sequence[Fact]) -> list[FactEvidence]:
             FactEvidence(id=fact.id, text=fact.text, cited=position in numbered or stated)
         )
     return evidence
+
+
+# What an answer says when it reports that the warehouse has nothing: "the
+# warehouse holds no games between", "is not in the warehouse", "no row",
+# "does not hold a record of". Rule 7 of the prompt and the `my_mistake`
+# playbook both say such a sentence may only follow a query that came back
+# empty, and on 2026-11-03 the deployed agent wrote two of them with nothing
+# behind them: one with no query at all, one after four queries the gate
+# refused (docs/evals.md, "The number it worked out"). A refused query is not
+# an empty result; it is a question nobody answered.
+#
+# Narrow on purpose. It looks for an absence of games, rows, records,
+# matchups or data, and not for "I don't have access" or "no table holds a
+# name", which are the boundary being described and are true without a query.
+_ABSENCE_NOUN: Final = r"(?:games?|rows?|records?|matchups?|data|results?|archetypes?|pairings?)"
+_ABSENCE_HOLDER: Final = r"(?:warehouse|corpus|data|tables?|marts?)"
+_ABSENCE: Final = re.compile(
+    "|".join(
+        (
+            rf"\b{_ABSENCE_HOLDER}\s+(?:holds?|has|have|contains?)\s+no\s+(?:\w+\s+)?{_ABSENCE_NOUN}\b",
+            rf"\b{_ABSENCE_HOLDER}\s+(?:does|do)\s*n[o'’]t\s+(?:hold|have|contain|include)\s+"
+            rf"(?:a\s+|any\s+)?(?:\w+\s+)?{_ABSENCE_NOUN}\b",
+            r"\b(?:is|are)\s*n[o'’]t\s+in\s+the\s+(?:warehouse|corpus|data)\b",
+            r"\bno\s+(?:matchup\s+)?rows?\b",
+            r"\bno\s+records?\s+(?:of|for)\b",
+            r"\bno\s+(?:recorded\s+)?(?:games|matches)\s+(?:between|for|of|against|with)\b",
+            r"\b(?:returned|came\s+back\s+with)\s+no\s+rows?\b|\bcame\s+back\s+empty\b",
+        )
+    ),
+    re.IGNORECASE,
+)
+
+
+def claims_absence(answer: str) -> bool:
+    """Whether the answer reports that the warehouse holds nothing for what was asked.
+
+    A string search like `check_numbers` and with the same limits: it finds
+    the sentences that say so in the ways this agent says it, and a sentence
+    that says it some other way goes by. What makes the claim honest is not
+    here, because it is not in the text: it is whether a query of the same
+    run came back empty, which the caller knows and this module does not.
+    """
+    return bool(_ABSENCE.search(answer))

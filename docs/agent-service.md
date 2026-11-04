@@ -852,7 +852,8 @@ one more model call, and only on an answer the check caught; an answer whose
 numbers are all traced costs what it always did. The service logs the count
 and puts it on the span as `agent.unverified_numbers`, with
 `agent.rechecks` and `agent.unverified_before_recheck` beside it for the
-before and after, and `agent_unverified_numbers_total` counts the kept
+before and after, `agent.unbacked_absence_before_recheck` and
+`agent.unbacked_absence` for the claim of no data below, and `agent_unverified_numbers_total` counts the kept
 answer's in Prometheus. A number an answer wrote is the answer, so none of
 them is ever logged.
 
@@ -866,11 +867,28 @@ nothing at all. A percentage is checked both as itself and as the rate a
 hundredth of it would be, because the marts store `0.6` and an answer writes
 `60%`. A known value is also compared rounded to the precision the answer
 used, so `66.7%` against a row holding `0.6666666` is a quotation and not an
-invention. Turn words spelled out, "turn nine", are words.
+invention. A digit run joined to a word by a hyphen is still the number, so
+"a 5-turn gap" is checked as `5`. Numbers written out in words, zero to
+ninety-nine ("five", "twenty-one"), are checked like their digits, because
+"a five-turn gap" is the same invented 5; nought, one and two in words are
+the allowlist's counting words and pass, and ordinals ("the eleventh") are
+left alone.
+
+**A claim of no data needs an empty result behind it.** An answer that says
+the warehouse holds nothing ("not in the warehouse", "holds no games
+between", "returned no rows") is a finding about the data, and the only
+thing that backs it is a query that ran and came back empty. A refused query
+does not: the validator, the gate or DuckDB stopped it, so nobody looked.
+When `claims_absence` matches the answer and no query in the run has
+`refused_reason` unset and `row_count` zero, the same `<recheck>` turn says
+so and asks for the query that would show it, or for the answer to say it
+could not be checked; it shares the one recheck with the numbers. A sentence
+about the schema ("no table holds member names") and a fact about the game
+("you took no prizes") are not this claim and are not matched.
 
 **Three things it cannot see.** It cannot see arithmetic: a model that adds
 two rows of 2 and 1 and says "3 games" has done nothing wrong and is
-reported here, which is why the golden replay's baseline is two rather than
+reported here, which is why the golden replay's baseline is six rather than
 zero ([evals.md](evals.md)). It cannot see a number that is real and
 irrelevant: quoting the right figure about the wrong thing passes. And it
 cannot see a sentence that is wrong around numbers it quotes correctly. It

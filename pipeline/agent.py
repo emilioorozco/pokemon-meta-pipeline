@@ -158,6 +158,7 @@ from pipeline.facts import (
     NumberCheck,
     check_numbers,
     cite_facts,
+    claims_absence,
     clean_facts,
 )
 from pipeline.observability import configure_logging, emit_summary
@@ -240,12 +241,14 @@ STATEMENT_TIMEOUT_S: Final = 5.0
 # generous for a question that needs two queries and a guard against a model
 # that has decided to keep querying.
 MAX_ITERATIONS: Final = 8
-# How many times an answer with an untraceable number is handed back to be
-# written again. One, because the point is to give the model the check's
+# How many times an answer with an untraceable number, or with a claim that
+# the warehouse has nothing and no empty result behind it, is handed back to
+# be written again. One, because the point is to give the model the check's
 # result once, and a model that writes the number a second time after being
 # told it is in nothing it read is not going to be argued out of it by a third
 # call the member waits for (docs/evals.md, "The number it worked out").
 MAX_RECHECKS: Final = 1
+
 # Cells in the markdown table are cut to this, so one long `aliases` value
 # cannot be most of the tool result.
 MAX_CELL_CHARS: Final = 120
@@ -1369,6 +1372,22 @@ def chat_model(model: str | None = None) -> BaseChatModel:
     return ChatAnthropic(model=name, timeout=60, stop=None, temperature=CHAT_TEMPERATURE)
 
 
+def came_back_empty(queries: Sequence[QueryEvidence]) -> bool:
+    """Whether any query of the run ran and returned no rows.
+
+    The one thing that makes "the warehouse holds no games" honest. A refusal,
+    by the validator or the gate, and a statement DuckDB would not run all
+    leave `refused_reason` filled, and none of them is an empty result: each
+    is a question that was never answered, which is a different sentence.
+    """
+    return any(query.refused_reason is None and query.row_count == 0 for query in queries)
+
+
+def findings(check: NumberCheck, unbacked_absence: bool) -> int:
+    """How much a recheck found wrong with one answer, as one count to compare."""
+    return len(check.unverified) + int(unbacked_absence)
+
+
 class Agent:
     """A built agent: the graph, the tools it holds, and the name of its model.
 
@@ -1602,26 +1621,40 @@ class Agent:
                         history=earlier,
                     )
 
-                # A scan of a string that has already been produced, so on an
-                # answer whose every number is traced nothing here asks the
-                # provider anything or adds a call to a member's wait.
+                def unbacked(answer_text: str) -> bool:
+                    # Read at the moment of asking too, so a rewrite that ran
+                    # the query and got nothing back has its claim backed.
+                    return claims_absence(answer_text) and not came_back_empty(log.queries)
+
+                # Two scans of a string that has already been produced, so on
+                # an answer whose every number is traced and which claims no
+                # absence it has not seen, nothing here asks the provider
+                # anything or adds a call to a member's wait.
                 text = final_text(messages)
                 check = checked(text)
+                absence = unbacked(text)
                 flagged_first = len(check.unverified)
+                absence_first = absence
                 rechecks = 0
-                while check.unverified and rechecks < MAX_RECHECKS:
+                while (check.unverified or absence) and rechecks < MAX_RECHECKS:
                     rechecks += 1
-                    handed_back = HumanMessage(content=recheck_turn(check.unverified))
+                    handed_back = HumanMessage(
+                        content=recheck_turn(check.unverified, unbacked_absence=absence)
+                    )
                     state = self.graph.invoke({"messages": [*messages, handed_back]})
                     messages = list(state["messages"])
                     rewritten = final_text(messages)
                     rewritten_check = checked(rewritten)
-                    # Kept only when it is better. A rewrite that came back
-                    # empty, or with as many untraced numbers as before, is a
-                    # second answer no more trustworthy than the first, and
-                    # the first is the one the model wrote without being led.
-                    if rewritten and len(rewritten_check.unverified) < len(check.unverified):
-                        text, check = rewritten, rewritten_check
+                    rewritten_absence = unbacked(rewritten)
+                    # Kept only when it is better, counting an unbacked
+                    # absence as one more thing wrong. A rewrite that came
+                    # back empty, or with as much wrong as before, is a second
+                    # answer no more trustworthy than the first, and the first
+                    # is the one the model wrote without being led.
+                    if rewritten and findings(rewritten_check, rewritten_absence) < findings(
+                        check, absence
+                    ):
+                        text, check, absence = rewritten, rewritten_check, rewritten_absence
                 usage = token_usage(messages)
                 span.set_attribute("agent.tool_calls", len(collected))
                 # Every reported count, which since the cache breakpoint went
@@ -1636,6 +1669,8 @@ class Agent:
                 evidence = log.finish(cite_facts(text, facts))
                 span.set_attribute("agent.rechecks", rechecks)
                 span.set_attribute("agent.unverified_before_recheck", flagged_first)
+                span.set_attribute("agent.unbacked_absence_before_recheck", absence_first)
+                span.set_attribute("agent.unbacked_absence", absence)
                 span.set_attribute("agent.unverified_numbers", len(check.unverified))
                 span.set_attribute("agent.from_history", len(check.from_history))
                 if self.metrics is not None:
@@ -1680,6 +1715,10 @@ class Agent:
                 # counts, never the numbers.
                 "rechecks": rechecks,
                 "unverified_before_recheck": flagged_first,
+                # Whether it said the warehouse had nothing with no empty
+                # result behind it, before the recheck and in what was kept.
+                "unbacked_absence_before_recheck": absence_first,
+                "unbacked_absence": absence,
                 # Two counts and a length, and not a word of what was said
                 # in any of those turns.
                 "history_turns": len(prior),

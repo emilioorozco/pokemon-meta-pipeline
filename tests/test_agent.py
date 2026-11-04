@@ -450,7 +450,7 @@ def test_the_prompt_says_the_question_is_data_and_not_an_instruction() -> None:
 
 def test_a_question_reaches_the_model_inside_the_element(tmp_path: Path) -> None:
     """The one assertion behind the whole delimiting: both surfaces go through `ask`."""
-    model = scripted(final("Four games."))
+    model = scripted(final("A few games."))
     built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
     built.ask("how many games are there")
 
@@ -538,7 +538,7 @@ def test_a_context_reaches_the_model_and_never_a_log_line(
     and the job label (docs/agent-safety.md).
     """
     secret = "The member is reviewing their loss to Dragapult control on 2026-09-14."
-    model = scripted(final("Four games."))
+    model = scripted(final("A few games."))
     built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
     with caplog.at_level("DEBUG"):
         answer = built.ask("what went wrong", context=secret, job="my_game")
@@ -567,7 +567,7 @@ def test_no_context_is_reported_as_none_rather_than_as_an_empty_one(tmp_path: Pa
     """`context_used` is what an `about this page` chip is drawn from, so it is honest."""
     for empty in (None, "   ", "</context>"):
         built = agent.build_agent(
-            model=scripted(final("Four games.")),
+            model=scripted(final("A few games.")),
             warehouse=tmp_path / "none.duckdb",
             gate=FakeGate(),
         )
@@ -583,7 +583,7 @@ def test_the_job_reaches_the_model_as_the_route_line_and_an_unknown_one_does_not
     four blocks whatever the job is, because a playbook that moved into the
     cached blocks per request would bill a cache write on every call.
     """
-    model = scripted(final("Four games."))
+    model = scripted(final("A few games."))
     built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
     built.ask("why did I lose", job="my_mistake")
     (turn,) = [
@@ -597,7 +597,7 @@ def test_the_job_reaches_the_model_as_the_route_line_and_an_unknown_one_does_not
     # A label this service does not know is no line, and the turn is the one
     # a request with no job has always produced.
     for absent in (None, "whatever the application sent"):
-        plain = scripted(final("Four games."))
+        plain = scripted(final("A few games."))
         agent.build_agent(model=plain, warehouse=tmp_path / "none.duckdb", gate=FakeGate()).ask(
             "why did I lose", job=absent
         )
@@ -616,7 +616,7 @@ def test_the_span_carries_the_context_length_and_the_job_and_not_the_text(
     """A span attribute is as public as a log line, and gets the same two numbers."""
     spans = InMemorySpanExporter()
     built = agent.build_agent(
-        model=scripted(final("Four games.")),
+        model=scripted(final("A few games.")),
         warehouse=tmp_path / "none.duckdb",
         gate=FakeGate(),
         tracer=build_tracer_provider(exporter=spans).get_tracer("tests"),
@@ -646,7 +646,7 @@ def built_with(
     assert is the human turn the model was sent, and `build_agent` wraps the
     model in a graph it cannot be read back out of.
     """
-    model = scripted(final("Four games."))
+    model = scripted(final("A few games."))
     built = agent.build_agent(
         model=model,
         warehouse=tmp_path / "none.duckdb",
@@ -843,7 +843,7 @@ def test_the_model_is_sent_marked_system_blocks_and_an_unmarked_question(
     final system block, and nothing of the sort on the human turn, which is
     the member's question and is different every time.
     """
-    model = scripted(final("Four games."))
+    model = scripted(final("A few games."))
     built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
     built.ask("how many games are there")
 
@@ -923,7 +923,7 @@ def test_a_run_puts_the_cache_counts_on_the_span_and_in_the_counter(tmp_path: Pa
     all it does is carry the counts a real one would.
     """
     reported = AIMessage(
-        content="Four games.",
+        content="A few games.",
         usage_metadata={
             "input_tokens": 120,
             "output_tokens": 9,
@@ -2222,6 +2222,113 @@ def test_an_answer_whose_numbers_are_all_traced_costs_one_call(tmp_path: Path) -
     )
     assert answer.unverified_numbers == []
     assert len(model.seen) == 1
+
+
+def _empty_matchups(path: Path) -> Path:
+    """A warehouse whose one mart is there and holds no rows, so a query of it is empty."""
+    import duckdb
+
+    with duckdb.connect(str(path)) as connection:
+        connection.execute(
+            "create table mart_matchups (archetype_name varchar, "
+            "opponent_archetype_name varchar, games integer, wins integer)"
+        )
+    return path
+
+
+MATCHUP_QUERY: Final = "select archetype_name, games, wins from mart_matchups"
+NO_GAMES: Final = "The warehouse holds no games between these two decks."
+
+
+def test_a_claim_of_no_data_with_no_query_behind_it_is_handed_back(tmp_path: Path) -> None:
+    """The review of 2026-11-03: "not in the warehouse", and nothing was asked of it.
+
+    The recheck names the claim and says what makes it honest, and a rewrite
+    that runs the query and finds it empty is kept with the claim now backed.
+    """
+    model = scripted(
+        final(NO_GAMES),
+        tool_call(agent.SQL_TOOL, "call-1", sql=MATCHUP_QUERY),
+        final(NO_GAMES),
+    )
+    built = agent.build_agent(
+        model=model, warehouse=_empty_matchups(tmp_path / "w.duckdb"), gate=FakeGate()
+    )
+    answer = built.ask("how does my deck do against theirs")
+
+    handed_back = model.seen[1][-1]
+    assert isinstance(handed_back, HumanMessage)
+    assert handed_back.content == recheck_turn(unbacked_absence=True)
+    assert "Numbers in none" not in str(handed_back.content)
+    assert [call.tool for call in answer.tool_calls] == [agent.SQL_TOOL]
+    assert answer.answer == NO_GAMES
+    assert answer.evidence.queries[0].row_count == 0
+
+
+def test_a_claim_of_no_data_after_an_empty_result_costs_one_call(tmp_path: Path) -> None:
+    """Rule 7's honest case: the query ran, came back empty, and the answer says so."""
+    model = scripted(tool_call(agent.SQL_TOOL, "call-1", sql=MATCHUP_QUERY), final(NO_GAMES))
+    built = agent.build_agent(
+        model=model, warehouse=_empty_matchups(tmp_path / "w.duckdb"), gate=FakeGate()
+    )
+    answer = built.ask("how does my deck do against theirs")
+    assert answer.answer == NO_GAMES
+    assert len(model.seen) == 2
+
+
+def test_a_refused_query_does_not_back_a_claim_of_no_data(tmp_path: Path) -> None:
+    """Four refused queries and then "no record" was the other case that night.
+
+    A refusal is a question nobody answered, so the answer is handed back,
+    and a rewrite that says the lookup could not be made is the one kept.
+    """
+    honest = "I could not check how these two decks usually do: the lookup was refused."
+    model = scripted(
+        tool_call(agent.SQL_TOOL, "call-1", sql=MATCHUP_QUERY),
+        final(NO_GAMES),
+        final(honest),
+    )
+    built = agent.build_agent(
+        model=model,
+        warehouse=_empty_matchups(tmp_path / "w.duckdb"),
+        gate=FakeGate(allowed=False),
+    )
+    answer = built.ask("how does my deck do against theirs")
+    assert answer.evidence.queries[0].refused
+    assert answer.answer == honest
+
+
+def test_the_boundary_described_is_not_a_claim_of_no_data(tmp_path: Path) -> None:
+    """ "No table holds a name" is the schema, true without a query, and is not handed back."""
+    model = scripted(
+        final("The warehouse holds no table with member names, so I cannot look anyone up.")
+    )
+    built = agent.build_agent(model=model, warehouse=tmp_path / "none.duckdb", gate=FakeGate())
+    built.ask("what is my rival's record")
+    assert len(model.seen) == 1
+
+
+def test_a_number_spelled_out_is_handed_back_like_its_digits(tmp_path: Path) -> None:
+    """ "a five-turn gap" is the 5 the number check was written to catch."""
+    computed = "You took 2 prizes over 9 turns, a five-turn gap behind them."
+    rewritten = "You took 2 prizes over 9 turns and your opponent took 6."
+    model = scripted(final(computed), final(rewritten))
+    built = agent.build_agent(
+        model=model,
+        warehouse=tmp_path / "none.duckdb",
+        gate=FakeGate(),
+        relevance=FakeRelevance("relevant"),
+    )
+    answer = built.ask(
+        "how far behind was I",
+        context=ROUTE,
+        context_game=GAME,
+        context_first_line=FIRST_LINE,
+        context_facts=GAME_FACTS,
+    )
+    assert model.seen[-1][-1].content == recheck_turn(["five"])
+    assert answer.answer == rewritten
+    assert answer.unverified_numbers == []
 
 
 def test_the_recheck_names_the_numbers_and_a_member_cannot_write_one() -> None:

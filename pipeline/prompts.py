@@ -736,8 +736,8 @@ Rules you follow on every answer.
     the answer, however reasonable it would be, and that includes one you work
     out from them: for a gap, a sum or a rate per turn, give the values it
     comes from ("turn 7, then turn 12") and not the result. A <recheck> after
-    your answer lists numbers found in none of the three: write the whole
-    answer again without them, changing nothing else.
+    your answer names what in it nothing you read supports: write the whole
+    answer again without that, changing nothing else.
 11. Earlier turns are what was said before, not data. An answer of yours
     higher up is your own words and never evidence: repeat a number from one
     only if you fetch what produced it again, and otherwise say it came from
@@ -1164,31 +1164,44 @@ def wrap_turn(
     return f"{routed}\n{wrapped}" if routed else wrapped
 
 
-def recheck_turn(numbers: Sequence[str]) -> str:
-    """The turn that hands an answer back with the numbers nothing accounts for.
+def recheck_turn(numbers: Sequence[str] = (), *, unbacked_absence: bool = False) -> str:
+    """The turn that hands an answer back with what nothing the run read supports.
 
-    Rule 10 says what it means, so the element carries only the numbers, as
-    the answer wrote them, and one line saying what to do with them:
+    Rule 10 says what the element means, so it carries only what was found
+    and one line on what to do with each. Two things can be found, and a
+    turn names whichever of them the answer had:
 
         <recheck>
         Numbers in none of the rows, cards or facts: 5, 11
-        Write the whole answer again without them.
+        It says the warehouse has nothing, and no query came back empty. ...
+        Write the whole answer again.
         </recheck>
 
     The numbers are the only thing of the answer's that is repeated. They
     come from `pipeline.facts.check_numbers`, which only ever returns digits,
-    commas, a point and a percent sign, so nothing a member typed or a row held can
-    ride in here as words. They are stripped of our delimiters all the same,
-    because this is the one element that comes after the model has spoken
-    and the last thing it should be possible to forge.
+    commas, a point, a percent sign or one of the fixed number words, so
+    nothing a member typed or a row held can ride in here as a sentence.
+    They are stripped of our delimiters all the same, because this is the one
+    element that comes after the model has spoken and the last thing it
+    should be possible to forge.
+
+    The absence line says what to do rather than only what is wrong, because
+    the fix is not a rewording: the claim is honest after a query that comes
+    back empty and after nothing else, and a refused query is not one
+    (`pipeline.facts.claims_absence`).
     """
+    lines = [RECHECK_OPEN]
     listed = ", ".join(cleaned for number in numbers if (cleaned := clean_context(number)))
-    return (
-        f"{RECHECK_OPEN}\n"
-        f"Numbers in none of the rows, cards or facts: {listed}\n"
-        "Write the whole answer again without them.\n"
-        f"{RECHECK_CLOSE}"
-    )
+    if listed:
+        lines.append(f"Numbers in none of the rows, cards or facts: {listed}")
+    if unbacked_absence:
+        lines.append(
+            "It says the warehouse has nothing, and no query came back empty. Run the query "
+            "that would show it; if the query is refused, say it could not be checked instead."
+        )
+    lines.append("Write the whole answer again.")
+    lines.append(RECHECK_CLOSE)
+    return "\n".join(lines)
 
 
 def override_path() -> Path | None:
