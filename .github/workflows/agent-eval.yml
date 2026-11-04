@@ -242,20 +242,31 @@ jobs:
             --no-mlflow --json | tee artifacts/remote_eval_report.json
 
       # Every question the application puts in front of a member as a chip,
-      # asked once against the same deployment. A notice and never a failure
+      # asked once against the same deployment, with the route sentence, the
+      # token clause and the game the application itself would send. The
+      # token is a real member's, from the `OFFERED_PLAYER_TOKEN` secret, so a
+      # chip about "my record" is asked as a member asks it; with the secret
+      # unset the runner states a token of the right shape that is nobody's,
+      # and those chips fail on the no-row answer (docs/evals.md). A secret
+      # rather than a variable because a player token is an identifier, and a
+      # secret is masked wherever the log would print it. A notice and never a failure
       # for now: nobody has measured this set, the first run is the baseline,
       # and a step that went red on day one would be a step somebody turns
       # off before anybody has read it. `continue-on-error` rather than
       # `|| true` so the step is visibly amber in the run rather than
       # silently green. Turn it into a gate once the baseline is known and
       # the failing chips are either answerable or off the page.
+      # `always()` because the scoring step above is red whenever one golden
+      # question misses, and a chip that cannot be answered is news on that
+      # day too: before this, a red week was a week the chips went unasked.
       - name: Ask the questions the application offers
         id: offered
-        if: steps.configured.outputs.ready == 'true'
+        if: always() && steps.configured.outputs.ready == 'true'
         continue-on-error: true
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           PIPELINE_AGENT_URL: ${{ vars.PIPELINE_AGENT_URL }}
+          OFFERED_PLAYER_TOKEN: ${{ secrets.OFFERED_PLAYER_TOKEN }}
           PRA_LOG_FORMAT: json
         run: |
           set -eu -o pipefail
@@ -263,6 +274,7 @@ jobs:
           uv run python -m pipeline.eval \
             --offered \
             --remote "$PIPELINE_AGENT_URL" \
+            --player-token "${OFFERED_PLAYER_TOKEN:-}" \
             --json | tee artifacts/offered_eval_report.json
 
       - name: Say how the offered questions went

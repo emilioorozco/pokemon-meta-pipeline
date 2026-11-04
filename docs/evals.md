@@ -987,8 +987,8 @@ been measured, and PLA-208 started with a member clicking a chip the
 application itself had drawn and getting a refusal.
 
 `evals/offered.json` is every such string: the "Try asking" suggestions a
-page opens the drawer with, and the follow-up chips under an answer. Seventy
-of them today, 52 suggestions and 18 follow-ups.
+page opens the drawer with, and the follow-up chips under an answer. Sixty
+eight of them today, 52 suggestions and 16 follow-ups.
 
 **Where the file comes from.** It is the web application's own export,
 `apps/web/src/lib/askOffered.json`, copied in unchanged. Refreshing it is one
@@ -1016,18 +1016,46 @@ cannot ask is a load error naming the entry.
 
 `source` is `suggestion` or `followUp`. A suggestion carries the `route` of
 the page it is offered on; a follow-up carries the `job` the answer above it
-was routed as. `needs` is what has to be arranged before the string means
-anything, and the runner supplies each:
+was routed as, which is the label of that answer and not of the chip.
 
-| need | what the runner does |
+**Asked the way the application asks it.** The point of the run is the
+application against the service that answers it, so every case is sent with
+what the application itself would send and nothing else:
+
+| field | what the runner sends, and where the application decides it |
 | --- | --- |
-| `token` | appends the token clause to the route sentence: "The member's player token is …", or "The player on this page has the player token …" on `player`, `player_games` and `player_game` |
-| `game` | sends a fixture game summary, its first line and four facts, the same game `game_on_screen_loss` uses |
-| `mine`, `opponent`, `archetype`, `card` | fills the matching `{slot}` in the text with a fixture archetype or card name |
+| `context` | the route sentence, word for word from `ROUTE_SENTENCE` in `apps/api/src/ask/context.ts`, with no filter and no selection, because the drawer passes none (`askContextFor(pathname, undefined, selection)`) |
+| token clause | the player on the page on `player`, `player_games` and `player_game`; the member on `overview`, `games` and `insights`; the member on any page for a chip whose `needs` holds `token`, which stands in for the application routing it as `my_record` or `my_game` (`playerTokenSubject`) |
+| `context_game`, `context_first_line`, `context_facts` | on every case asked on `game` or `player_game`, whatever the chip, because `attachGameContext` reads the game for every question on those pages |
+| `job` | never: the application's request body has no such field (`createAgentCaller` in `apps/api/src/ask/agent.ts`) |
+| `history` | never, which is the one way a follow-up here is plainer than a member's; its slots are filled, so it still names what it is about |
 
-Every case is asked with the route sentence it would have been clicked
-under, from `ROUTE_SENTENCES` in `pipeline/eval.py`, and a follow-up is asked
-with its job label so the right playbook answers it.
+A follow-up has no page of its own, so it is asked on the page the answer
+above it was most likely asked on (`FOLLOW_UP_ROUTES`): a game page for
+`my_game` and `my_mistake`, the games list for `my_record`, insights for
+`meta`, the deck list for `card_rules` and the overview for
+`out_of_scope`, and a game page whatever the job for a chip that needs the
+game, since that is the only page with a game to send.
+
+The game on screen is fixture game 9, read from the golden file's own
+`mistake_game_09` so it is one game and not two inventions: Dragapult
+control against Alakazam / Toucannon, both decks named and both archetypes
+the league's warehouse holds. `{mine}`, `{opponent}`, `{archetype}` and
+`{card}` are filled from `OFFERED_SLOTS`, fixture names that the league's
+warehouse holds too.
+
+What the first run (2026-11-04, 33/70) got wrong, so it is not done again:
+the route sentences were written here rather than copied ("the deck list"
+where the application says "their own decks"); the game went only to chips
+that named it, so "How does my deck usually do against this opponent?" was
+asked on a game page with no game; the stand-in game was between "Dragapult
+ex" and "Gardevoir ex", names from the application's unit tests that the
+warehouse keys nothing by, so every matchup chip on a game page was answered
+"no games for that pairing"; follow-ups were sent their parent's `job`, so
+"What does Budew do?" was answered from the `my_mistake` playbook; and the
+export was ten minutes older than the application's, so two `my_record`
+chips the application no longer offers were asked and the two it does offer
+were not.
 
 **Three rules, and none of them about the prose.** The text was written by
 the application and nobody has checked a number in it, so a run that demanded
@@ -1054,9 +1082,12 @@ op run --env-file=.env.op -- uv run python -m pipeline.eval \
 against the deployment that answers it, and an agent built on a laptop is
 neither. With no `--player-token` the clause states sixteen zeroes, which is
 a token of the right shape belonging to nobody; the chips that read a
-member's row then get the playbook's no-row answer, which is honest and is
-not a refusal. Nothing is logged to MLflow: a chip that cannot be answered is
-a line in a backlog, not a series.
+member's row then get the playbook's no-row answer, which says the warehouse
+cannot answer for that token and so fails the refusal rule. Those failures
+are about the runner, not the offer, which is why the workflow passes a real
+member's token from the `OFFERED_PLAYER_TOKEN` secret when one is set.
+Nothing is logged to MLflow: a chip that cannot be answered is a line in a
+backlog, not a series.
 
 The output is the failing strings and nothing else, because that is the only
 thing anybody does with this run:
@@ -1071,7 +1102,8 @@ thing anybody does with this run:
 **In continuous integration, as a notice.** It is the second step of the
 `prod` job in `.github/workflows/agent-eval.yml`, with
 `continue-on-error: true`, and the count goes into a `::notice` and the job
-summary. Deliberately not a gate yet: nobody has measured this set, the first
+summary. It runs under `always()`, so a week the golden scoring goes red is
+still a week the chips are asked. Deliberately not a gate yet: nobody has measured this set, the first
 runs are the baseline, and a check that goes red on the day it lands is a
 check somebody turns off before anybody reads it. It becomes a gate once the
 baseline is known and every failing chip is either answerable or off the

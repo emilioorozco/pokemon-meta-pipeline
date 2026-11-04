@@ -1693,7 +1693,7 @@ class OfferedRecorder:
 def test_every_string_the_application_offers_loads_and_can_be_asked() -> None:
     """The committed export, checked as the runner will have to use it."""
     cases = evals.load_offered()
-    assert len(cases) == 70
+    assert len(cases) == 68
     sources = {case.source for case in cases}
     assert sources == set(evals.OFFERED_SOURCES)
     for case in cases:
@@ -1705,12 +1705,20 @@ def test_every_string_the_application_offers_loads_and_can_be_asked() -> None:
 
 
 def test_an_offered_question_carries_the_page_it_was_clicked_on() -> None:
-    """The route sentence, the token clause and the game, each only when asked for."""
-    plain = evals.Offered(source="suggestion", route="insights", text="How is the meta?")
-    assert plain.context(FAKE_TOKEN) == evals.ROUTE_SENTENCES["insights"]
+    """The route sentence, and the token clause where the application adds one."""
+    plain = evals.Offered(source="suggestion", route="decks", text="How is the meta?")
+    assert plain.context(FAKE_TOKEN) == "The member is looking at their own decks."
+
+    # The member's own overview, games list and the insights page carry the
+    # member's token whatever the chip, as `playerTokenSubject` has it.
+    for route in ("overview", "games", "insights"):
+        page = evals.Offered(source="suggestion", route=route, text="How is the meta?")
+        assert page.context(FAKE_TOKEN).endswith(f"The member's player token is {FAKE_TOKEN}."), (
+            route
+        )
 
     mine = evals.Offered(
-        source="suggestion", route="games", text="How am I doing?", needs=("token",)
+        source="suggestion", route="deck", text="How am I doing?", needs=("token",)
     )
     assert mine.context(FAKE_TOKEN).endswith(f"The member's player token is {FAKE_TOKEN}.")
 
@@ -1720,6 +1728,46 @@ def test_an_offered_question_carries_the_page_it_was_clicked_on() -> None:
     assert theirs.context(FAKE_TOKEN).endswith(
         f"The player on this page has the player token {FAKE_TOKEN}."
     )
+    # Another player's page carries their token even on a chip that never asked.
+    profile = evals.Offered(source="suggestion", route="player", text="Which matchup?")
+    assert profile.context(FAKE_TOKEN).endswith(
+        f"The player on this page has the player token {FAKE_TOKEN}."
+    )
+
+
+def test_the_route_sentences_are_the_applications_own() -> None:
+    """Word for word as `renderContextAddendum` renders them, not paraphrased here."""
+    assert evals.ROUTE_SENTENCES["decks"] == "The member is looking at their own decks."
+    assert evals.ROUTE_SENTENCES["overview"] == "The member is looking at their own overview."
+    assert evals.ROUTE_SENTENCES["player"] == ("The member is looking at another player's profile.")
+    assert evals.ROUTE_SENTENCES["seasons"] == "The member is looking at the seasons list."
+    for sentence in evals.ROUTE_SENTENCES.values():
+        assert sentence.startswith("The member is looking at ") and sentence.endswith(".")
+
+
+def test_a_follow_up_is_asked_on_a_page_the_application_has() -> None:
+    """Every job has a page, and a chip that needs the game is asked on a game page."""
+    assert set(evals.FOLLOW_UP_ROUTES) == set(JOBS)
+    assert set(evals.FOLLOW_UP_ROUTES.values()) <= set(evals.ROUTE_SENTENCES)
+    record = evals.Offered(source="followUp", job="my_record", text="Which deck do I lose to most?")
+    assert record.page == "games" and not record.shows_game
+    card = evals.Offered(
+        source="followUp", job="out_of_scope", text="How did I lose?", needs=("game",)
+    )
+    assert card.page == "game" and card.shows_game
+
+
+def test_the_offered_game_is_a_fixture_game_with_both_decks_named() -> None:
+    """Read from the golden file's own question, so the two are one game."""
+    game = evals.offered_game()
+    assert "Dragapult control" in game.first_line and "Alakazam / Toucannon" in game.first_line
+    assert game.text and game.facts
+    assert "Gardevoir ex" not in game.text
+
+
+def test_an_offered_game_the_golden_file_does_not_hold_is_a_load_error() -> None:
+    with pytest.raises(evals.GoldenError, match="no question"):
+        evals.offered_game(question_id="nope")
 
 
 def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
@@ -1761,12 +1809,19 @@ def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> N
         ),
     )
     agent = OfferedRecorder(offered_answer("I will not answer that."))
-    report = evals.run_offered(cases, agent, token=FAKE_TOKEN)  # type: ignore[arg-type]
+    game = evals.offered_game()
+    report = evals.run_offered(
+        cases,
+        agent,  # type: ignore[arg-type]
+        token=FAKE_TOKEN,
+        game=game,
+    )
     assert report.total == 2 and report.passed == 0
     assert report.model == "remote-model"
-    # The game and the job travel only with the case that asked for them.
+    # The game travels only to a game page, and no case sends a job, because
+    # the application sends none.
     assert agent.asked[0][2] == "" and agent.asked[0][3] == ""
-    assert agent.asked[1][2] == evals.OFFERED_GAME and agent.asked[1][3] == "my_game"
+    assert agent.asked[1][2] == game.text and agent.asked[1][3] == ""
     printed = evals.render_offered(report)
     assert "0/2 offered questions answered" in printed
     assert "Which turns did I not attack?" in printed
@@ -1776,7 +1831,12 @@ def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> N
 
 def test_a_green_offered_run_says_so_and_names_nothing() -> None:
     cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
-    report = evals.run_offered(cases, OfferedRecorder(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    report = evals.run_offered(
+        cases,
+        OfferedRecorder(),  # type: ignore[arg-type]
+        token=FAKE_TOKEN,
+        game=evals.offered_game(),
+    )
     assert report.passed == report.total == 1
     assert "every question the application offers has an answer" in evals.render_offered(report)
 
@@ -1789,7 +1849,12 @@ def test_a_service_that_raises_costs_one_offered_question_and_not_the_run() -> N
             raise RuntimeError("nope")
 
     cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
-    report = evals.run_offered(cases, Broken(), token=FAKE_TOKEN)  # type: ignore[arg-type]
+    report = evals.run_offered(
+        cases,
+        Broken(),  # type: ignore[arg-type]
+        token=FAKE_TOKEN,
+        game=evals.offered_game(),
+    )
     assert report.passed == 0
     assert report.results[0].error is not None
     assert "RuntimeError" in evals.render_offered(report)
@@ -1835,13 +1900,14 @@ def test_the_offered_command_line_asks_the_deployment_and_prints_the_failures(
     path.write_text(
         json.dumps(
             [
-                {"source": "suggestion", "route": "overview", "text": "How is the meta?"},
+                {"source": "suggestion", "route": "decks", "text": "How is the meta?"},
                 {
                     "source": "followUp",
                     "job": "my_record",
                     "text": "How has my record moved?",
                     "needs": ["token"],
                 },
+                {"source": "suggestion", "route": "game", "text": "What happened?"},
             ]
         ),
         encoding="utf-8",
@@ -1870,10 +1936,14 @@ def test_the_offered_command_line_asks_the_deployment_and_prints_the_failures(
     )
     printed = capsys.readouterr().out
     assert code == 1, printed
-    assert "0/2 offered questions answered" in printed
+    assert "0/3 offered questions answered" in printed
     assert "How is the meta?" in printed
     # The second chip asked for the token, so its context carries the clause
     # and the first one's does not.
     assert FAKE_TOKEN not in str(sent[0]["context"])
     assert FAKE_TOKEN in str(sent[1]["context"])
-    assert sent[1]["job"] == "my_record"
+    # Nothing carries a job, and only the chip on a game page carries a game.
+    assert all("job" not in body for body in sent)
+    assert "context_game" not in sent[0] and "context_game" not in sent[1]
+    assert "Alakazam / Toucannon" in str(sent[2]["context_first_line"])
+    assert sent[2]["context_facts"]

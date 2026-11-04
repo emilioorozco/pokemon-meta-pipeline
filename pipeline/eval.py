@@ -162,6 +162,12 @@ from pipeline.facts import MAX_FACT_ID_CHARS, MAX_FACT_TEXT_CHARS, MAX_FACTS, Fa
 from pipeline.observability import configure_logging, emit_summary, git_commit, stage_run
 from pipeline.prompts import (
     HISTORY_ROLES,
+    JOB_CARD_RULES,
+    JOB_META,
+    JOB_MY_GAME,
+    JOB_MY_MISTAKE,
+    JOB_MY_RECORD,
+    JOB_OUT_OF_SCOPE,
     JOBS,
     MAX_HISTORY_TURNS,
     PROMPT_FILE_VAR,
@@ -1803,78 +1809,116 @@ OFFERED_SLOTS: Final[dict[str, str]] = {
 }
 _SLOT: Final = re.compile(r"\{(\w+)\}")
 
-# The route sentence the application would have sent with a question asked on
-# each page, in the shape `renderContextAddendum` renders. One per route key
-# the export uses; a key with no sentence here is a load error, because a
-# question asked with no context is a question asked on a different page.
+# The route sentence the application sends with a question asked on each
+# page, copied from `ROUTE_SENTENCE` in its `apps/api/src/ask/context.ts` and
+# rendered the way `renderContextAddendum` renders it with no filter and no
+# selection, which is how the drawer sends every chip: `AskDrawer.tsx` calls
+# `askContextFor(pathname, undefined, selection)`, so no page names its deck,
+# archetype or season. Copied word for word, because the first offered run
+# asked every chip under sentences written here instead ("the deck list" where
+# the application says "their own decks") and so graded a page nobody sees.
+# One per route key the export uses; a key with no sentence here is a load
+# error, because a question asked with no context is a question asked on a
+# different page.
 ROUTE_SENTENCES: Final[dict[str, str]] = {
-    "overview": "The member is looking at the community overview.",
-    "seasons": "The member is looking at the seasons page.",
-    "insights": "The member is looking at the community insights page.",
+    "overview": "The member is looking at their own overview.",
+    "games": "The member is looking at their own games list.",
+    "game": "The member is looking at one of their own games.",
+    "decks": "The member is looking at their own decks.",
+    "deck": "The member is looking at one of their own decks.",
+    "player": "The member is looking at another player's profile.",
+    "player_games": "The member is looking at another player's games list.",
+    "player_game": "The member is looking at another player's game.",
+    "player_deck": "The member is looking at another player's deck.",
+    "tournaments": "The member is looking at the tournaments list.",
+    "tournament": "The member is looking at one tournament.",
     "leaderboard": (
         "The member is looking at the community rankings page (the rankings "
         "themselves are not in the warehouse; the nearest table is mart_player_summary)."
     ),
-    "games": "The member is looking at their own games list.",
-    "game": "The member is looking at one of their own games.",
-    "player": "The member is looking at another player's page.",
-    "player_games": "The member is looking at another player's games list.",
-    "player_game": "The member is looking at another player's game.",
-    "decks": "The member is looking at the deck list.",
-    "deck": "The member is looking at one deck.",
-    "player_deck": "The member is looking at another player's deck.",
-    "tournaments": "The member is looking at the tournaments page.",
-    "tournament": "The member is looking at one tournament.",
+    "insights": "The member is looking at the community insights page.",
+    "seasons": "The member is looking at the seasons list.",
 }
 
 # The two sentence shapes the application appends when it knows whose row the
 # page is about, copied from its own renderer so the two repositories are
-# asking the same question. Which of the two depends on the page and not on
-# the chip: on another player's page the token is theirs, and the playbook
-# answers about them as the subject rather than about the member.
+# asking the same question. Which of the two, and whether either, follows
+# `playerTokenSubject` in the same file: another player's pages always carry
+# that player's token; the member's own overview, games list and the insights
+# page always carry the member's; and a question the application routes as
+# `my_record` or `my_game` carries the member's wherever it was asked. The
+# runner has no copy of the application's router, so the last of the three is
+# read off the export's own `token` need, which is the application saying the
+# chip is about the member's row.
 MEMBER_TOKEN_CLAUSE: Final = "The member's player token is {token}."
 SUBJECT_TOKEN_CLAUSE: Final = "The player on this page has the player token {token}."
 OTHER_PLAYER_ROUTES: Final[tuple[str, ...]] = ("player", "player_games", "player_game")
-# What a run with no `--player-token` states instead. Sixteen hex characters
-# of the right shape and nobody's: an offered question is graded on whether
-# it can be answered at all, and most of them never read a member's row, so
-# a run with no real token is still worth something. A `my_record` chip under
-# it answers "the warehouse holds no games for them", which is the playbook's
-# no-row case and not a refusal, so it passes on the evidence rule and fails
-# on nothing. Pass a real one to measure those as a member would see them.
+MEMBER_TOKEN_ROUTES: Final[tuple[str, ...]] = ("overview", "games", "insights")
+# What a run with no `--player-token` states instead: sixteen hex characters
+# of the right shape and nobody's. Every chip that reads the member's row then
+# gets the playbook's no-row answer, which says the warehouse cannot answer for
+# that token and so matches the refusal pattern: those chips fail under it for
+# a reason that is about the runner and not the offer. The workflow passes a
+# real member's token from a secret when one is set (docs/evals.md).
 OFFERED_FALLBACK_TOKEN: Final = "0000000000000000"
-# What a follow-up is asked with, since a chip under an answer carries no
-# route of its own. The job is what the application routed the question as,
-# and the member is on their own page by the time any of them is offered.
-FOLLOW_UP_SENTENCE: Final = "The member is looking at their own page."
 
-# A fixture game to stand in for the one on the member's screen, the same
-# shape and the same redaction the application sends, taken from
-# `game_on_screen_loss` in the golden file so the two are one game rather
-# than two inventions.
-OFFERED_GAME: Final = (
-    "Your Dragapult ex game against Gardevoir ex. You went second and lost on "
-    "turn 9. Prize cards taken: you 2, your opponent 6. Your first attack was "
-    "on turn 3; the Gardevoir ex side attacked on turn 2 and knocked out a "
-    "benched basic on turn 4, and took its last two prizes in one turn at the end."
-)
-OFFERED_FIRST_LINE: Final = (
-    "Your Dragapult ex game against Gardevoir ex, you went second, lost in 9 turns."
-)
-OFFERED_FACTS: Final[tuple[Fact, ...]] = (
-    Fact(id="turn_count:both", text="The game ran 9 turns.", values=(9.0,)),
-    Fact(
-        id="prizes_taken:both",
-        text="You took 2 prizes and your opponent took 6.",
-        values=(2.0, 6.0),
-    ),
-    Fact(id="first_attack_turn:me", text="Your first attack was on turn 3.", values=(3.0,)),
-    Fact(
-        id="first_attack_turn:opponent",
-        text="Your opponent first attacked on turn 2.",
-        values=(2.0,),
-    ),
-)
+# The page a follow-up chip is asked on. A chip under an answer carries no
+# route of its own and the application sends the route of whatever page the
+# drawer is open on, so the runner picks the page the answer above it was
+# most likely asked on: a game page for the two jobs about one game, the
+# member's own games list for their record, the insights page for the
+# metagame, the deck list for a card, and the overview for the rest. A chip
+# that needs the game on screen is asked on the game page whatever its job,
+# because that is the only page the application has a game to send from.
+FOLLOW_UP_ROUTES: Final[dict[str, str]] = {
+    JOB_META: "insights",
+    JOB_MY_GAME: "game",
+    JOB_MY_MISTAKE: "game",
+    JOB_MY_RECORD: "games",
+    JOB_CARD_RULES: "decks",
+    JOB_OUT_OF_SCOPE: "overview",
+}
+# The pages the application reads a game for. `attachGameContext` sends the
+# summary and the facts with every question asked on one of them, whatever the
+# chip, so a chip there is asked with the game whether or not it names one.
+GAME_ROUTES: Final[tuple[str, ...]] = ("game", "player_game")
+
+# The game that stands in for the one on the member's screen: one of the ten
+# committed fixture games, read out of the golden file's own `mistake`
+# question for it so the two are one game rather than two inventions. Game 9
+# because both of its decks are named (Dragapult control against Alakazam /
+# Toucannon, which is what the application sends now that it derives the
+# member's own archetype) and because both are archetypes the league's own
+# warehouse holds, so a chip that asks how the matchup usually goes is asked
+# about a matchup that exists. The first offered run stood in a game between
+# "Dragapult ex" and "Gardevoir ex", names copied from the application's unit
+# tests that are no archetype the warehouse keys anything by, and every
+# matchup chip on a game page came back as "no games for that pairing".
+OFFERED_GAME_QUESTION: Final = "mistake_game_09"
+
+
+@dataclass(frozen=True)
+class OfferedGame:
+    """The game on the member's screen, as the application sends it."""
+
+    text: str
+    first_line: str
+    facts: tuple[Fact, ...]
+
+
+def offered_game(path: Path = GOLDEN_PATH, question_id: str = OFFERED_GAME_QUESTION) -> OfferedGame:
+    """The game summary, first line and facts of one golden `mistake` question."""
+    for question in load_golden(path).questions:
+        if question.id == question_id:
+            if not (question.context_game and question.context_first_line):
+                raise GoldenError(f"{path}: {question_id} carries no game to stand in")
+            return OfferedGame(
+                text=question.context_game,
+                first_line=question.context_first_line,
+                facts=question.context_facts,
+            )
+    raise GoldenError(f"{path}: no question {question_id!r} to take the offered game from")
+
 
 # Why a case failed, in the order they are checked. Three rules and no
 # scoring of the prose: what an offered question is graded on is whether it
@@ -1904,12 +1948,28 @@ class Offered:
         """The text with every slot filled from `OFFERED_SLOTS`."""
         return _SLOT.sub(lambda match: OFFERED_SLOTS[match.group(1)], self.text)
 
+    @property
+    def page(self) -> str:
+        """The route the question is asked on: its own, or the page a follow-up sits under."""
+        if self.route:
+            return self.route
+        return GAME_ROUTES[0] if NEED_GAME in self.needs else FOLLOW_UP_ROUTES[self.job]
+
+    @property
+    def shows_game(self) -> bool:
+        """Whether the application sends the game on screen with this question."""
+        return self.page in GAME_ROUTES
+
     def context(self, token: str) -> str:
         """The route sentence the application would have sent with this question."""
-        sentence = ROUTE_SENTENCES[self.route] if self.route else FOLLOW_UP_SENTENCE
-        if NEED_TOKEN not in self.needs:
+        page = self.page
+        sentence = ROUTE_SENTENCES[page]
+        if page in OTHER_PLAYER_ROUTES:
+            clause = SUBJECT_TOKEN_CLAUSE
+        elif page in MEMBER_TOKEN_ROUTES or NEED_TOKEN in self.needs:
+            clause = MEMBER_TOKEN_CLAUSE
+        else:
             return sentence
-        clause = SUBJECT_TOKEN_CLAUSE if self.route in OTHER_PLAYER_ROUTES else MEMBER_TOKEN_CLAUSE
         return f"{sentence} {clause.format(token=token)}"
 
 
@@ -2061,22 +2121,39 @@ class OfferedReport:
 
 
 def run_offered(
-    cases: Sequence[Offered], agent: Askable, *, token: str, remote: bool = True
+    cases: Sequence[Offered],
+    agent: Askable,
+    *,
+    token: str,
+    game: OfferedGame,
+    remote: bool = True,
 ) -> OfferedReport:
-    """Ask every offered string once, with the context the application would send."""
+    """Ask every offered string once, with the context the application would send.
+
+    What the application sends and nothing else: the route sentence, the token
+    clause where it would add one, and the game on screen on a game page. No
+    `job`, because the application sends none (`createAgentCaller` in its
+    `apps/api/src/ask/agent.ts` posts the question, the context, the game, the
+    facts and the history, and that is the body), and because the `job` an
+    export entry carries is the label of the answer above a follow-up chip,
+    not of the chip: a "What does Budew do?" under a `my_mistake` answer
+    routed as `my_mistake` is answered from the wrong playbook. No history
+    either, which is the one respect in which a follow-up here is asked more
+    plainly than a member asks it: the slots in its text are filled, so it
+    names what it is about without the turn above it.
+    """
     results: list[OfferedResult] = []
     model = ""
     for case in cases:
         question = case.question
-        game = NEED_GAME in case.needs
+        shown = case.shows_game
         try:
             answer = agent.ask(
                 question,
                 context=case.context(token),
-                context_game=OFFERED_GAME if game else "",
-                context_first_line=OFFERED_FIRST_LINE if game else "",
-                context_facts=OFFERED_FACTS if game else (),
-                job=case.job,
+                context_game=game.text if shown else "",
+                context_first_line=game.first_line if shown else "",
+                context_facts=game.facts if shown else (),
             )
         except Exception as failure:  # noqa: BLE001 - one bad chip must not end the run
             logger.exception("an offered question could not be asked", extra={"case": case.id})
@@ -2575,11 +2652,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         try:
             cases = load_offered(args.offered_file)
+            game = offered_game()
         except GoldenError as failure:
             sys.stderr.write(f"{parser.prog}: {failure}\n")
             return 2
         offered = run_offered(
-            cases, RemoteAgent(args.remote), token=args.player_token or OFFERED_FALLBACK_TOKEN
+            cases,
+            RemoteAgent(args.remote),
+            token=args.player_token or OFFERED_FALLBACK_TOKEN,
+            game=game,
         )
         if args.json:
             sys.stdout.write(json.dumps(offered.as_dict(), indent=2) + "\n")

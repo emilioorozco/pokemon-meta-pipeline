@@ -350,26 +350,14 @@
   {
     "source": "followUp",
     "job": "my_record",
-    "text": "Which matchup has the most games this month?",
-    "needs": []
+    "text": "Which deck do I lose to most?",
+    "needs": ["mine", "token"]
   },
   {
     "source": "followUp",
     "job": "my_record",
-    "text": "How does {archetype} do against the field this month?",
-    "needs": ["archetype"]
-  },
-  {
-    "source": "followUp",
-    "job": "my_record",
-    "text": "Which deck is played most this week?",
-    "needs": []
-  },
-  {
-    "source": "followUp",
-    "job": "my_record",
-    "text": "What is the usual first attack turn for {archetype}?",
-    "needs": ["archetype"]
+    "text": "Does going first matter for me?",
+    "needs": ["mine", "token"]
   },
   {
     "source": "followUp",
