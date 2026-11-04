@@ -145,10 +145,16 @@ def test_the_offered_set_is_asked_of_the_same_deployment(workflow: dict[str, Any
     """The second step of the deployed job, and the one that may not fail it yet."""
     step = step_named(workflow, REMOTE_JOB, "Ask the questions the application offers")
     assert step["continue-on-error"] is True
+    # Asked on a red week as well as a green one.
+    assert step["if"].startswith("always()")
     run = step["run"]
     assert "--offered" in run
     assert '--remote "$PIPELINE_AGENT_URL"' in run
     assert "tee artifacts/offered_eval_report.json" in run
+    # A real member's token, from a secret and never from a variable or the
+    # file, and optional: an unset secret falls back to the runner's own.
+    assert step["env"]["OFFERED_PLAYER_TOKEN"] == "${{ secrets.OFFERED_PLAYER_TOKEN }}"
+    assert '--player-token "${OFFERED_PLAYER_TOKEN:-}"' in run
     # Nobody has measured this set, so the first runs are a baseline and the
     # news is a notice. A step that went red on day one is a step somebody
     # turns off before the baseline is read.

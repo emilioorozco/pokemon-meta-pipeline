@@ -512,6 +512,14 @@ class IndexedCard:
             )
         for rule in card.rules:
             lines.append(_clip(rule))
+        # Printed on every Pokemon and read off the corpus since the index
+        # began, but never shown: "What is Budew's retreat cost?" is a chip the
+        # application offers under a card answer, and the tool handed back the
+        # card without the one number the chip asks for, so the honest answer
+        # was that the lookup did not say. Zero is a cost too (a free
+        # retreat), so it is the missing value that is left out, not the zero.
+        if card.retreat is not None:
+            lines.append(f"Retreat cost: {card.retreat}")
         return "\n".join(lines)
 
 

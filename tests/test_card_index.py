@@ -19,6 +19,7 @@ once, answering from the marts and the card text in a single scripted run.
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -241,6 +242,19 @@ def test_the_tool_records_the_cards_the_answer_can_cite(
     assert all(card.set_code and card.number for card in cards)
     assert all("**" not in card.text for card in cards)
     assert any("Phantom Dive" in card.text for card in cards)
+
+
+def test_a_card_shows_its_retreat_cost_and_a_free_retreat_too() -> None:
+    """The number "What is Budew's retreat cost?" asks for is in the text the tool returns."""
+    budew = next(card for card in card_index.read_cards(CORPUS) if card.name == "Budew")
+    shown = card_index.IndexedCard(card=budew, printings=[budew.printing()])
+    assert f"Retreat cost: {budew.retreat}" in shown.render()
+    assert f"Retreat cost: {budew.retreat}" in shown.body()
+
+    free = replace(budew, retreat=0)
+    assert "Retreat cost: 0" in card_index.IndexedCard(free, [free.printing()]).body()
+    unknown = replace(budew, retreat=None)
+    assert "Retreat cost" not in card_index.IndexedCard(unknown, [unknown.printing()]).body()
 
 
 def test_an_empty_corpus_is_refused_rather_than_indexed(tmp_path: Path) -> None:
