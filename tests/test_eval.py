@@ -1666,9 +1666,14 @@ def offered_answer(
     gate: str = "off",
     refused_code: str | None = None,
     cards: int = 0,
+    facts: tuple[bool, ...] = (),
 ) -> object:
-    """One `Answer` as the deployed service would send it back, built by hand."""
+    """One `Answer` as the deployed service would send it back, built by hand.
+
+    `facts` is one `cited` flag for each analysis fact the application sent.
+    """
     from pipeline.agent import Answer, CardEvidence, Evidence, QueryEvidence
+    from pipeline.facts import FactEvidence
 
     return Answer(
         answer=text,
@@ -1684,6 +1689,10 @@ def offered_answer(
                 )
             ],
             cards=[CardEvidence(name="Budew", set_code="SV", number="1", text="x")] * cards,
+            facts=[
+                FactEvidence(id=f"f{index}", text="You won on turn 10.", cited=cited)
+                for index, cited in enumerate(facts, start=1)
+            ],
         ),
     )
 
@@ -1806,6 +1815,10 @@ def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
         ),
         (offered_answer(rows=0), (evals.OFFERED_NO_EVIDENCE,)),
         (offered_answer(rows=0, cards=1), ()),
+        # The game on screen came with its facts, and the answer used one.
+        (offered_answer("You won on turn 10 (fact 1).", rows=0, facts=(True, False)), ()),
+        # Facts that were sent and not used are not something the answer read.
+        (offered_answer(rows=0, facts=(False, False)), (evals.OFFERED_NO_EVIDENCE,)),
         (
             offered_answer(refused_code="table_not_found"),
             (evals.OFFERED_GUESSED_TABLE,),

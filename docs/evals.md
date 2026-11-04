@@ -1089,11 +1089,20 @@ when:
 1. the answer matches the refusal alternation the adversarial half uses
    (`REFUSAL_PATTERN`, one constant now rather than fourteen copies of it),
    because a chip that is refused is a chip that should not be on the screen;
-2. the run reports `gate_summary: off` and read nothing at all, no row and no
-   card, because an answer with nothing behind it is prose;
+2. the run reports `gate_summary: off` and read nothing at all, no row, no
+   card and no cited fact, because an answer with nothing behind it is prose;
 3. any statement was refused `table_not_found`, even when the next one found
    the right table, because the question sent the model looking for
    something the warehouse does not hold.
+
+The second run (2026-11-04, run 43, 38/68) failed four game-page chips on
+rule 2 that had been answered correctly. The stand-in game is a win, the
+application offers "How did I lose this one?" on every game with a subject
+whatever its result, and the agent said "You didn't lose, you won on turn 10
+(fact 1)" without a query, because the game's facts were all it needed. A
+fact the answer cited is something it read, in the way a row is, so rule 2
+counts cited facts as well. A run whose facts were sent and not used still
+fails it.
 
 **Running it.**
 
