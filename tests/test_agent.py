@@ -488,7 +488,12 @@ def test_a_list_of_archetypes_with_the_week_count_says_what_that_count_is(
         warehouse=warehouse,
     )
     assert "| A | 1 | 0 | 8 |" in listed.text
-    assert listed.text.endswith(agent.WEEK_GAMES_BESIDE_ARCHETYPES_NOTE)
+    # Run 47 dropped the week's total and miscounted the list, so the note
+    # names both, and both are counts of the rows above it.
+    assert "These rows list 2 archetypes." in listed.text
+    assert "one week of 8 games" in listed.text
+    assert "Say the week holds 8 games" in listed.text
+    assert listed.text.endswith(agent._OWN_SAMPLE)
     # The week's count on its own, or one archetype's row, is read as itself.
     for sql in (
         "select max(week_games) as week_games from mart_archetype_weekly",
@@ -496,7 +501,7 @@ def test_a_list_of_archetypes_with_the_week_count_says_what_that_count_is(
         "where archetype_name = 'A'",
     ):
         read = agent.execute_marts_query(sql, warehouse=warehouse)
-        assert agent.WEEK_GAMES_BESIDE_ARCHETYPES_NOTE not in read.text, sql
+        assert "week_games is" not in read.text, sql
     # A sum gets the sum's note and not this one as well.
     summed = agent.execute_marts_query(
         "select archetype_name, sum(week_games) as g from mart_archetype_weekly "
@@ -504,7 +509,15 @@ def test_a_list_of_archetypes_with_the_week_count_says_what_that_count_is(
         warehouse=warehouse,
     )
     assert agent.WEEK_GAMES_SUM_NOTE in summed.text
-    assert agent.WEEK_GAMES_BESIDE_ARCHETYPES_NOTE not in summed.text
+    assert "These rows list" not in summed.text
+
+
+def test_rows_of_several_weeks_get_no_single_total() -> None:
+    note = agent.week_games_beside_archetypes_note(
+        ["week_start", "archetype_name", "week_games"],
+        [["2026-09-14", "A", 8], ["2026-09-14", "B", 8], ["2026-09-21", "A", 2]],
+    )
+    assert note == f"These rows list 2 archetypes. {agent.WEEK_GAMES_BESIDE_ARCHETYPES_NOTE}"
 
 
 def test_a_result_is_rendered_as_a_table_a_model_can_read() -> None:

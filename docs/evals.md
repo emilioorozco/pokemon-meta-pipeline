@@ -1041,6 +1041,14 @@ and not an archetype's sample (`WEEK_GAMES_BESIDE_ARCHETYPES_NOTE`). A single
 archetype's row and a result with no archetype in it are left alone, and a
 statement that sums the column gets only the sum's note.
 
+Run 47 (after that note) gave each archetype its 1 game and the thin-sample
+caveat, then dropped the week's 8 from an answer to "how many games is that
+over", and called six names "five". So the note now carries both counts from
+the rows it comes with: how many archetypes are listed, and, when every row
+holds the same `week_games`, that the rows are one week of that many games
+and that the week's total is the number to give for the week. Rows of several
+weeks get the general sentence, since there is no one total to name.
+
 ## The win rate quoted to sixteen places
 
 Run 45 (2026-11-05, after the week fix) failed `season_best_win_rate_shape`
