@@ -177,6 +177,18 @@ def test_a_rounded_quotation_of_a_row_is_verified() -> None:
     assert module.check_numbers("68%", rows=rows).unverified == ("68%",)
 
 
+def test_a_percentage_to_two_places_of_a_stored_rate_is_verified() -> None:
+    """89.47% is 89.47 / 100, which is 0.8946999999999999 and not quite 0.8947.
+
+    The division leaves a float's worth of noise on the claim side, so the
+    rounded comparison has to allow for it the way the plain one does.
+    """
+    rows = [{"win_rate": 0.8947368264198303}]
+    assert module.check_numbers("89.47%", rows=rows).unverified == ()
+    assert module.check_numbers("89.5%", rows=rows).unverified == ()
+    assert module.check_numbers("89.48%", rows=rows).unverified == ("89.48%",)
+
+
 # ---------------------------------------------------------- the verdict --
 
 
