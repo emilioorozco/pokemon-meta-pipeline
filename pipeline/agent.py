@@ -289,6 +289,15 @@ def sums_week_games(sql: str) -> bool:
 # numbers out of the rows it came with: how many archetypes are listed, and
 # what the week holds when the rows are one week. Both are counts of what the
 # result already shows, so the note adds no number the rows do not carry.
+#
+# Run 48 (after that) gave the six names and the week's 8, and then dropped
+# each archetype's 1 game and the caveat: each rewording of the instruction
+# got two of the answer's three parts and lost the third. So a one-week
+# result now also shows the answer's shape, as one line written from its own
+# first archetype row: the record, that archetype's own games, the week's
+# total, and the caveat when `min_games_met` is false. Every number in it is
+# a cell of the rows, and a part the rows do not hold is named as something
+# to read rather than made up.
 _ARCHETYPE_COLUMNS: Final = frozenset({"archetype_name", "archetype_key", "archetype_week_key"})
 _OWN_SAMPLE: Final = (
     "Give each archetype its own games as its sample (query games if it is not in "
@@ -333,12 +342,46 @@ def week_games_beside_archetypes_note(columns: Sequence[str], rows: Sequence[Seq
     totals = {row[week_at] for row in rows}
     listed = f"These rows list {archetypes} archetypes."
     if len(totals) == 1 and isinstance(total := next(iter(totals)), int):
+        example = _week_answer_line(names, rows[0], archetype_at, total)
         return (
             f"{listed} They are one week of {total} games: week_games is that week's "
             f"total, written on every row, and not any one archetype's sample. Say the "
-            f"week holds {total} games. {_OWN_SAMPLE}"
+            f"week holds {total} games. {_OWN_SAMPLE} An answer gives all three in "
+            f"one line for each archetype, like this for the first row: {example}"
         )
     return f"{listed} {WEEK_GAMES_BESIDE_ARCHETYPES_NOTE}"
+
+
+def _games_text(count: int) -> str:
+    return f"{count} game" if count == 1 else f"{count} games"
+
+
+def _week_answer_line(
+    names: Sequence[str], row: Sequence[Any], archetype_at: int, total: int
+) -> str:
+    """One archetype's line of a week's answer, written from its own row.
+
+    The record when the row has `wins` and `losses`, the archetype's own
+    `games` when the row has it (and a reminder to read it when not), the
+    week's total, and the thin-sample caveat when `min_games_met` is false.
+    No number in it is anything but a cell of `row` or the week's total.
+    """
+    cells = dict(zip(names, row, strict=False))
+    line = str(row[archetype_at])
+    wins, losses = cells.get("wins"), cells.get("losses")
+    if isinstance(wins, int) and isinstance(losses, int):
+        line += f" went {wins}-{losses}"
+    games = cells.get("games")
+    own = _games_text(games) if isinstance(games, int) else "N games"
+    line += f" over {own} of its own, in a week of {_games_text(total)}"
+    if cells.get("min_games_met") is False:
+        line += ", which is too few games to rank it"
+    line += "."
+    if not isinstance(games, int):
+        line += " (Query games for N.)"
+    if "min_games_met" not in cells:
+        line += " (Add that it is too few games to rank it when min_games_met is false.)"
+    return line
 
 
 # DuckDB cancels a statement that runs longer than this. A mart query over a
