@@ -493,7 +493,15 @@ def test_a_list_of_archetypes_with_the_week_count_says_what_that_count_is(
     assert "These rows list 2 archetypes." in listed.text
     assert "one week of 8 games" in listed.text
     assert "Say the week holds 8 games" in listed.text
-    assert listed.text.endswith(agent._OWN_SAMPLE)
+    assert agent._OWN_SAMPLE in listed.text
+    # Run 48 then dropped each archetype's own count and the caveat, so the
+    # note shows the answer's shape from the first row. These rows carry no
+    # games or min_games_met, so the line names both as things to read.
+    assert listed.text.endswith(
+        "like this for the first row: A went 1-0 over N games of its own, in a week "
+        "of 8 games. (Query games for N.) (Add that it is too few games to rank it "
+        "when min_games_met is false.)"
+    )
     # The week's count on its own, or one archetype's row, is read as itself.
     for sql in (
         "select max(week_games) as week_games from mart_archetype_weekly",
@@ -510,6 +518,43 @@ def test_a_list_of_archetypes_with_the_week_count_says_what_that_count_is(
     )
     assert agent.WEEK_GAMES_SUM_NOTE in summed.text
     assert "These rows list" not in summed.text
+
+
+@pytest.mark.parametrize(
+    ("columns", "first_row", "line"),
+    [
+        (
+            ["archetype_name", "games", "wins", "losses", "week_games", "min_games_met"],
+            ["A", 1, 1, 0, 8, False],
+            "A went 1-0 over 1 game of its own, in a week of 8 games, which is too "
+            "few games to rank it.",
+        ),
+        # Enough games of its own, so no caveat, and the plural is right.
+        (
+            ["archetype_name", "games", "wins", "losses", "week_games", "min_games_met"],
+            ["A", 6, 4, 2, 30, True],
+            "A went 4-2 over 6 games of its own, in a week of 30 games.",
+        ),
+        # No record in the rows, so the line claims none.
+        (
+            ["archetype_key", "games", "week_games", "min_games_met"],
+            ["a", 1, 8, False],
+            "a over 1 game of its own, in a week of 8 games, which is too few games to rank it.",
+        ),
+    ],
+)
+def test_a_one_week_list_shows_the_answer_line_from_its_first_row(
+    columns: list[str], first_row: list[Any], line: str
+) -> None:
+    second = list(first_row)
+    second[0] = "B"
+    note = agent.week_games_beside_archetypes_note(columns, [first_row, second])
+    assert note.endswith(f"like this for the first row: {line}")
+    # Every number in the example is a cell of the first row.
+    example = note.rsplit("like this for the first row: ", 1)[1]
+    assert (
+        check_numbers(example, rows=[dict(zip(columns, first_row, strict=True))]).unverified == ()
+    )
 
 
 def test_rows_of_several_weeks_get_no_single_total() -> None:

@@ -1049,6 +1049,15 @@ holds the same `week_games`, that the rows are one week of that many games
 and that the week's total is the number to give for the week. Rows of several
 weeks get the general sentence, since there is no one total to name.
 
+Run 48 (after that) gave the six names and the week's 8, and then dropped
+each archetype's 1 game and the caveat. Each rewording of the instruction had
+got two of the answer's three parts and lost the third, so a one-week result
+now also shows the shape of the answer: one line written from its own first
+row, with the record, that archetype's own games, the week's total, and the
+thin-sample caveat when `min_games_met` is false. Every number in that line
+is a cell of the row, and a part the rows do not hold (an archetype's own
+`games`, or `min_games_met`) is named as something to read, not filled in.
+
 ## The win rate quoted to sixteen places
 
 Run 45 (2026-11-05, after the week fix) failed `season_best_win_rate_shape`
