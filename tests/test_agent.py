@@ -389,6 +389,71 @@ def test_a_widened_top_one_returns_the_tie_and_says_why(tmp_path: Path) -> None:
     assert agent.TIE_PEEK_NOTE not in single.text
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # The "this month" statement rule 12 asks for, which was refused as
+        # `table_not_found` because the word after FROM was `week_start`.
+        "select archetype_name, sum(wins) from mart_archetype_weekly "
+        "where extract(month from week_start) = extract(month from current_date) "
+        "and extract(year from week_start) = extract(year from current_date) group by 1",
+        "select substring(archetype_name from 1 for 3) from mart_archetype_weekly",
+        "select trim(leading 'x' from archetype_name) from dim_archetype",
+        "select overlay(archetype_name placing 'x' from 2) from dim_archetype",
+    ],
+)
+def test_a_from_inside_extract_or_trim_is_not_a_table(sql: str) -> None:
+    assert agent.check_sql(sql) is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # The subquery's own FROM is still a table, wherever the subquery sits.
+        "select extract(month from (select max(created_at) from dim_player)) from mart_matchups",
+        "select trim(both from (select handle from dim_player limit 1))",
+        # Any other function is not on the list, so its parentheses do not hide a FROM.
+        "select count(*) from (select * from fct_game_side) s",
+    ],
+)
+def test_a_subquery_inside_a_function_is_still_held_to_the_allowlist(sql: str) -> None:
+    refusal = agent.check_sql(sql)
+    assert refusal is not None
+    assert refusal.code == agent.REFUSED_TABLE_NOT_ALLOWED
+
+
+def test_summing_week_games_is_flagged_and_reading_it_is_not() -> None:
+    assert agent.sums_week_games("select count(*), sum(week_games) from mart_archetype_weekly")
+    assert agent.sums_week_games("select sum( w.week_games ) from mart_archetype_weekly w")
+    assert not agent.sums_week_games("select max(week_games) from mart_archetype_weekly")
+    assert not agent.sums_week_games("select sum(games) from mart_archetype_weekly")
+    assert not agent.sums_week_games("select sum(distinct week_games) from mart_archetype_weekly")
+    assert not agent.sums_week_games("select 'sum(week_games)' as label")
+
+
+def test_a_summed_week_games_comes_back_with_what_the_sum_is(tmp_path: Path) -> None:
+    """Four rows of one two-game week: the sum is 8 and the note says why it is not 2."""
+    warehouse = tmp_path / "week.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        "create table mart_archetype_weekly as select * from (values "
+        "('A', 1, 2), ('B', 1, 2), ('C', 1, 2), ('D', 1, 2)) t(archetype_name, games, week_games)"
+    )
+    connection.close()
+    summed = agent.execute_marts_query(
+        "select count(*) as archetypes, sum(week_games) as games from mart_archetype_weekly",
+        warehouse=warehouse,
+    )
+    assert "| 4 | 8 |" in summed.text
+    assert summed.text.endswith(agent.WEEK_GAMES_SUM_NOTE)
+    read = agent.execute_marts_query(
+        "select count(*) as archetypes, max(week_games) as games from mart_archetype_weekly",
+        warehouse=warehouse,
+    )
+    assert "| 4 | 2 |" in read.text
+    assert agent.WEEK_GAMES_SUM_NOTE not in read.text
+
+
 def test_a_result_is_rendered_as_a_table_a_model_can_read() -> None:
     rendered = agent.markdown_table(["name", "games"], [["Alpha", 12], [None, 3]])
     lines = rendered.splitlines()

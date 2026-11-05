@@ -479,7 +479,7 @@ MARTS_MODELS: Final[tuple[MartsModel, ...]] = (
             ),
             (
                 "week_games",
-                "Games played that week, counted once each from the uploader seats.",
+                "The week's games, the same on all its rows. Counted once each from the uploader seats, and repeated on every archetype row of that week, so read it from one row; a SUM over the rows counts the week once per archetype.",
             ),
             (
                 "share_of_week",

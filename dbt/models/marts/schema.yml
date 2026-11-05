@@ -397,7 +397,7 @@ models:
       - name: win_rate
         description: Wins divided by wins plus losses, NULL when nothing was decided.
       - name: week_games
-        description: Games played that week, counted once each from the uploader seats.
+        description: The week's games, the same on all its rows. Counted once each from the uploader seats, and repeated on every archetype row of that week, so read it from one row; a SUM over the rows counts the week once per archetype.
       - name: share_of_week
         description: Seats this archetype held that week divided by the week's games. Reads as how often it was one of the two decks; sums to about two across a week because every game seats two decks.
       - name: min_games_met
