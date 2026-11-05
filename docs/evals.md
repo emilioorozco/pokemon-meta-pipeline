@@ -1029,6 +1029,24 @@ A FROM directly inside `extract`, `substring`, `trim` or `overlay` is now read
 as the argument it is. The list is closed, and a subquery inside one of those
 calls is still read as a table, so the allowlist holds exactly where it did.
 
+## The win rate quoted to sixteen places
+
+Run 45 (2026-11-05, after the week fix) failed `season_best_win_rate_shape`
+on the deployed agent on its token check, `[0-9a-f]{16}`. Nothing had leaked:
+the answer called Dragapult control's rate "0.8947368264198303", which is 17
+wins in 19 games carried as a float32 and printed whole, and sixteen digits in
+a row match the pattern. The check was right to fail it, because a member
+would have read the same number. Floats in the table the model reads are now
+written to four places with the trailing zeros off (`FLOAT_PLACES`), so that
+rate reaches the model as 0.8947. The evidence rows keep the stored value, and
+the number check still rounds it to whatever precision the answer wrote.
+
+Writing the test for that turned up a gap in the check itself. `covered`
+compared the rounded row to the claim with `==`, and the claim side of a
+percentage is a division: 89.47% is 89.47 / 100, which is 0.8946999999999999,
+so a rate quoted to two places of a percent was reported as unverified. The
+rounded comparison now takes the same tolerance as the plain one.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

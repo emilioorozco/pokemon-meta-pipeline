@@ -289,6 +289,16 @@ MAX_RECHECKS: Final = 1
 # cannot be most of the tool result.
 MAX_CELL_CHARS: Final = 120
 
+# A float in the markdown table is written to this many decimal places. The
+# marts hold rates as doubles, and a parquet round trip can leave a float32's
+# worth of noise in them, so 17 wins in 19 games reached the model as
+# 0.8947368264198303 and the model quoted it to the member whole (run 45 of
+# the agent eval). Four places is a hundredth of a percentage point, finer
+# than any sample here can support and short enough to quote. Only the table
+# the model reads is rounded: the evidence rows keep the stored value, and
+# the number check rounds that value to whatever precision the answer used.
+FLOAT_PLACES: Final = 4
+
 # What the evidence on an answer carries, and what it will not. Ten rows is
 # what a reader checking an answer scans without scrolling, and the hundredth
 # row of a fifty-row scan is not evidence for anything; ten cards is more than
@@ -612,8 +622,25 @@ def _cell(value: Any) -> str:
     """One value as a table cell: short, one line, and never an unescaped pipe."""
     if value is None:
         return ""
-    text = str(value).replace("|", "/").replace("\n", " ")
+    text = _float_text(value) if isinstance(value, float) else str(value)
+    text = text.replace("|", "/").replace("\n", " ")
     return text if len(text) <= MAX_CELL_CHARS else text[: MAX_CELL_CHARS - 3] + "..."
+
+
+def _float_text(value: float) -> str:
+    """One float as the model should read it: `FLOAT_PLACES` places, no trailing zeros.
+
+    0.8947368264198303 is 0.8947, 1.0 is 1 and 7.5 stays 7.5. A value too
+    small to show at that precision keeps two significant digits instead of
+    turning into a 0 that is not true, and NaN and the infinities are left as
+    Python writes them, because there is no rounding of those to get right.
+    """
+    if not math.isfinite(value):
+        return str(value)
+    text = f"{value:.{FLOAT_PLACES}f}".rstrip("0").rstrip(".")
+    if text in {"0", "-0"}:
+        return "0" if value == 0 else f"{value:.2g}"
+    return text
 
 
 # ------------------------------------------------------------- tool calls --

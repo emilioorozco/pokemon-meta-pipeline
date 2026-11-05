@@ -384,11 +384,15 @@ def covered(token: str, known: Iterable[float]) -> bool:
     a receipt readable: equal to within a float's worth of noise, or equal
     once the known value is rounded to the precision the answer wrote. An
     answer quoting 66.7% of a row holding 0.6666666 is quoting the row.
+
+    The rounded comparison takes the same tolerance as the plain one, because
+    the claim side of a percentage is a division: 89.47% is 89.47 / 100, which
+    is 0.8946999999999999 and never `==` the 0.8947 the row rounds to.
     """
     wanted = candidates(token)
     for value in known:
         for claim, places in wanted:
-            if abs(value - claim) <= TOLERANCE or round(value, places) == claim:
+            if abs(value - claim) <= TOLERANCE or abs(round(value, places) - claim) <= TOLERANCE:
                 return True
     return False
 

@@ -34,7 +34,7 @@ import pipeline.warehouse_tables
 from pipeline import agent
 from pipeline import prompts as agent_prompts
 from pipeline.config import REPO_ROOT
-from pipeline.facts import Fact
+from pipeline.facts import Fact, check_numbers
 from pipeline.marts_schema import MARTS_MODELS
 from pipeline.prompts import (
     ALLOWED_TABLES,
@@ -461,6 +461,49 @@ def test_a_result_is_rendered_as_a_table_a_model_can_read() -> None:
     assert lines[2] == "| Alpha | 12 |"
     # A null is an empty cell, not the string "None".
     assert lines[3] == "|  | 3 |"
+
+
+@pytest.mark.parametrize(
+    ("value", "cell"),
+    [
+        (0.8947368264198303, "0.8947"),
+        (1.0, "1"),
+        (7.5, "7.5"),
+        (0.0, "0"),
+        (12345.678901, "12345.6789"),
+        (0.00001234, "1.2e-05"),
+        (float("nan"), "nan"),
+        (Decimal("0.50"), "0.50"),
+        (19, "19"),
+    ],
+)
+def test_a_float_cell_is_rounded_for_the_model_and_nothing_else_is(value: Any, cell: str) -> None:
+    assert agent.markdown_table(["value"], [[value]]).splitlines()[2] == f"| {cell} |"
+
+
+def test_a_win_rate_reaches_the_model_rounded_and_the_evidence_keeps_it_whole(
+    tmp_path: Path,
+) -> None:
+    """17 of 19 stored as a float32, the way a parquet round trip leaves it."""
+    warehouse = tmp_path / "rates.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        "create table mart_archetype_weekly as select * from (values "
+        "('A', 17, 2, cast(17 / 19 as float))) t(archetype_name, wins, losses, win_rate)"
+    )
+    connection.close()
+    read = agent.execute_marts_query(
+        "select archetype_name, wins, losses, win_rate from mart_archetype_weekly",
+        warehouse=warehouse,
+    )
+    assert "| A | 17 | 2 | 0.8947 |" in read.text
+    assert "0.894736" not in read.text
+    stored = read.rows[0]["win_rate"]
+    assert stored != 0.8947
+    # The answer quotes what the model was shown, and the check still finds it.
+    for written in ("0.8947", "89.47%", "89.5%", "0.89"):
+        check = check_numbers(f"A won {written} of its games, 17 and 2.", rows=read.rows)
+        assert check.unverified == (), written
 
 
 # The statement each adversarial question in `evals/golden.yaml` is fishing
