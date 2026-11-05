@@ -246,6 +246,17 @@ _IDENTIFIER: Final = re.compile(r'"(?:[^"]|"")*"')
 # Whatever follows FROM or JOIN: a bare name, a schema-qualified name, or an
 # opening parenthesis for a subquery, which is not a table and is skipped.
 _TABLE_REF: Final = re.compile(r"\b(?:from|join)\s+([a-z_][a-z0-9_.$]*)", re.IGNORECASE)
+# The SQL functions whose arguments are written with FROM inside the call:
+# `extract(month from week_start)`, `substring(name from 1 for 3)`,
+# `trim(leading 'x' from name)`, `overlay(name placing 'x' from 2)`. The FROM
+# there names a value and never a relation, and reading the word after it as a
+# table refused a correct "this month" query as `table_not_found` because
+# `week_start` is not a table (the offered run of 2026-11-04). A closed list
+# rather than "any FROM inside a call", because the list is what keeps this a
+# question of syntax: a FROM inside any other parentheses, a subquery above
+# all, is still read as the table it is.
+_FROM_ARGUMENT_FUNCTIONS: Final = frozenset({"extract", "substring", "trim", "overlay"})
+_FUNCTION_NAME_BEFORE: Final = re.compile(r"([a-z_][a-z0-9_]*)\s*$", re.IGNORECASE)
 # Names a CTE introduces, which are legal table references even though they are
 # not on the allowlist: `with recent as (...) select * from recent`.
 _CTE_NAME: Final = re.compile(r"(?:\bwith\b|,)\s+([a-z_][a-z0-9_]*)\s+as\s*\(", re.IGNORECASE)
@@ -329,10 +340,33 @@ def referenced_tables(sql: str) -> list[str]:
     ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(text)}
     names: list[str] = []
     for match in _TABLE_REF.finditer(text):
+        if _is_function_argument(text, match.start()):
+            continue
         table = match.group(1).lower().split(".")[-1]
         if table not in ctes and table not in names:
             names.append(table)
     return names
+
+
+def _is_function_argument(text: str, position: int) -> bool:
+    """Whether the FROM at `position` sits directly inside `extract(`, `trim(` and the like.
+
+    Walks back to the parenthesis that encloses `position` and reads the word
+    in front of it. Directly, because `extract(month from (select ... from t))`
+    still reads `t`: that FROM's own parenthesis opens a subquery, and the
+    walk stops at the nearest one.
+    """
+    depth = 0
+    for index in range(position - 1, -1, -1):
+        char = text[index]
+        if char == ")":
+            depth += 1
+        elif char == "(":
+            if depth == 0:
+                word = _FUNCTION_NAME_BEFORE.search(text[:index])
+                return word is not None and word.group(1).lower() in _FROM_ARGUMENT_FUNCTIONS
+            depth -= 1
+    return False
 
 
 # -------------------------------------------------- the words themselves --

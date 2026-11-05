@@ -1002,6 +1002,33 @@ prints the first 600 characters of each failing answer under its misses, with
 anything shaped like a player token blanked, so the next run says why as well
 as where.
 
+
+## The week counted once per archetype, and the FROM that was not a table
+
+Run 44 (2026-11-04, after the tie fix) printed the failing answers for the
+first time, and two of them were the same mistake. `week_coverage` answered
+"4 archetypes and 8 games" for a week that holds 2: `week_games` is the week's
+own count, written on every archetype row of the week, and four rows of 2 sum
+to 8. `job_meta_week` gave the week's 8 as the sample behind six archetypes
+that had played one game each. The schema line said "Games played that week,
+counted once each..." and never that the number repeats, so the column line
+now opens with "The week's games, the same on all its rows", and a statement
+that runs `SUM(week_games)` comes back with its rows and a note saying what
+that sum is (`WEEK_GAMES_SUM_NOTE`), the way a top-one query comes back with
+its tie. The `meta` playbook's sample size now says an archetype's own
+`games`, never the week's.
+
+The offered run of the same day failed four "this month" chips on
+`table_not_found`. Rule 12 asks for months counted from `current_date`, and
+the natural statement is `extract(month from week_start) =
+extract(month from current_date)`. `referenced_tables` read the word after
+every FROM as a table, so that statement was refused with "there is no table
+called `week_start`". The four answers each said they had to correct a query,
+which fits that refusal, though the report does not carry the statements.
+A FROM directly inside `extract`, `substring`, `trim` or `overlay` is now read
+as the argument it is. The list is closed, and a subquery inside one of those
+calls is still read as a table, so the allowlist holds exactly where it did.
+
 ## The `offered` set: every question the application puts on a screen
 
 The golden set asks whether the agent answers the questions somebody wrote

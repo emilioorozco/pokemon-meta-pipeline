@@ -246,6 +246,30 @@ TIE_PEEK_NOTE: Final = (
     "too. Name every row that ties the first one on the value you ordered by, "
     "and the first row alone only when the next one is lower (rule 6)."
 )
+# `mart_archetype_weekly.week_games` is the week's own game count, written on
+# every archetype row of that week, so a SUM over the rows multiplies it by the
+# number of archetypes. On 2026-11-04 the golden run answered "how many games
+# does the week starting 2026-09-21 hold" with 8, four rows of 2, after the
+# schema line had already said to read `week_games` for games. The statement
+# still runs and its rows are still shown; this says what the sum is, as the
+# tie note does, because a refusal would hide the rows the model needs to see
+# the repeat for itself. DISTINCT is left alone: it is a different statement.
+_WEEK_GAMES_SUM: Final = re.compile(
+    r"\bsum\s*\(\s*(?:[a-z_][a-z0-9_]*\.)?week_games\s*\)", re.IGNORECASE
+)
+WEEK_GAMES_SUM_NOTE: Final = (
+    "You summed week_games, which is the week's own game count repeated on every "
+    "archetype row of that week, so that sum counts each week once per archetype. "
+    "Read week_games from one row per week instead, and use games for one "
+    "archetype's own sample."
+)
+
+
+def sums_week_games(sql: str) -> bool:
+    """Whether the statement adds up `week_games` across rows (`WEEK_GAMES_SUM_NOTE`)."""
+    return _WEEK_GAMES_SUM.search(strip_literals(sql)) is not None
+
+
 # DuckDB cancels a statement that runs longer than this. A mart query over a
 # corpus this size is milliseconds, so anything near five seconds is a mistake.
 STATEMENT_TIMEOUT_S: Final = 5.0
@@ -1117,7 +1141,12 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
     if not rows:
         return QueryResult("0 rows. The query ran and matched nothing.")
     table = markdown_table(columns, rows)
-    note = f"\n\n{TIE_PEEK_NOTE}" if widened and len(rows) > 1 else ""
+    notes = []
+    if widened and len(rows) > 1:
+        notes.append(TIE_PEEK_NOTE)
+    if sums_week_games(sql):
+        notes.append(WEEK_GAMES_SUM_NOTE)
+    note = "".join(f"\n\n{text}" for text in notes)
     return QueryResult(
         f"{table}\n\n{len(rows)} row(s).{note}",
         row_count=len(rows),
