@@ -1029,6 +1029,18 @@ A FROM directly inside `extract`, `substring`, `trim` or `overlay` is now read
 as the argument it is. The list is closed, and a subquery inside one of those
 calls is still read as a table, so the allowlist holds exactly where it did.
 
+Runs 45 and 46 (2026-11-05) showed the other half of the same mistake.
+`week_coverage` passed, but `job_meta_week` named the six archetypes that won
+the week starting 2026-09-14 and said each "went 1-0 over 8 games". Nothing
+was summed this time: the statement read `wins`, `losses` and `week_games` per
+archetype, and the answer gave the week's 8 as each one's sample when each had
+played one game. The playbook already says an archetype's own `games`, never
+the week's, so a result that lists more than one archetype with `week_games`
+on each row now comes back with a note saying that column is the week's count
+and not an archetype's sample (`WEEK_GAMES_BESIDE_ARCHETYPES_NOTE`). A single
+archetype's row and a result with no archetype in it are left alone, and a
+statement that sums the column gets only the sum's note.
+
 ## The win rate quoted to sixteen places
 
 Run 45 (2026-11-05, after the week fix) failed `season_best_win_rate_shape`

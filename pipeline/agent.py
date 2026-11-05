@@ -270,6 +270,39 @@ def sums_week_games(sql: str) -> bool:
     return _WEEK_GAMES_SUM.search(strip_literals(sql)) is not None
 
 
+# The other half of the same mistake. Run 45 and run 46 of the agent eval
+# (2026-11-05) answered `job_meta_week` with six archetypes that "each went
+# 1-0 over 8 games": the statement read `wins`, `losses` and `week_games` per
+# archetype, and the answer gave the week's 8 as each archetype's sample when
+# each had played one. Nothing was summed, so `WEEK_GAMES_SUM_NOTE` had
+# nothing to say, and the playbook line that says an archetype's own `games`,
+# never the week's, was in the prompt both times. So a result that puts
+# `week_games` beside an archetype on more than one row comes back with a note
+# saying what that column is, the way a sum of it does. One row is left alone,
+# because a single archetype's row is not read as a list, and neither is a
+# result with no archetype in it, which is how `week_coverage` reads the
+# week's count on its own.
+_ARCHETYPE_COLUMNS: Final = frozenset({"archetype_name", "archetype_key", "archetype_week_key"})
+WEEK_GAMES_BESIDE_ARCHETYPES_NOTE: Final = (
+    "week_games is the whole week's game count, the same on every archetype row "
+    "of that week, so it is not any one archetype's sample. Give each archetype "
+    "its own games as its sample (query games if it is not in these rows), and "
+    "say so when min_games_met is false."
+)
+
+
+def week_games_beside_archetypes(columns: Sequence[str], row_count: int) -> bool:
+    """Whether a result lists archetypes with the week's count on each row.
+
+    `WEEK_GAMES_BESIDE_ARCHETYPES_NOTE` is for this shape: more than one row,
+    a `week_games` column, and a column naming the archetype. Column names are
+    compared without case and without a table prefix, which DuckDB leaves off
+    a result column anyway.
+    """
+    names = {str(column).lower().rsplit(".", 1)[-1] for column in columns}
+    return row_count > 1 and "week_games" in names and bool(names & _ARCHETYPE_COLUMNS)
+
+
 # DuckDB cancels a statement that runs longer than this. A mart query over a
 # corpus this size is milliseconds, so anything near five seconds is a mistake.
 STATEMENT_TIMEOUT_S: Final = 5.0
@@ -1173,6 +1206,8 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
         notes.append(TIE_PEEK_NOTE)
     if sums_week_games(sql):
         notes.append(WEEK_GAMES_SUM_NOTE)
+    elif week_games_beside_archetypes(columns, len(rows)):
+        notes.append(WEEK_GAMES_BESIDE_ARCHETYPES_NOTE)
     note = "".join(f"\n\n{text}" for text in notes)
     return QueryResult(
         f"{table}\n\n{len(rows)} row(s).{note}",
