@@ -282,25 +282,63 @@ def sums_week_games(sql: str) -> bool:
 # because a single archetype's row is not read as a list, and neither is a
 # result with no archetype in it, which is how `week_coverage` reads the
 # week's count on its own.
+#
+# Run 47 (after that note) gave each archetype its 1 game and the thin-sample
+# caveat, and then dropped the week's 8 from an answer to "how many games is
+# that over", and called six names "five". So the note now states both
+# numbers out of the rows it came with: how many archetypes are listed, and
+# what the week holds when the rows are one week. Both are counts of what the
+# result already shows, so the note adds no number the rows do not carry.
 _ARCHETYPE_COLUMNS: Final = frozenset({"archetype_name", "archetype_key", "archetype_week_key"})
+_OWN_SAMPLE: Final = (
+    "Give each archetype its own games as its sample (query games if it is not in "
+    "these rows), and say so when min_games_met is false."
+)
 WEEK_GAMES_BESIDE_ARCHETYPES_NOTE: Final = (
     "week_games is the whole week's game count, the same on every archetype row "
-    "of that week, so it is not any one archetype's sample. Give each archetype "
-    "its own games as its sample (query games if it is not in these rows), and "
-    "say so when min_games_met is false."
+    "of that week, so it is not any one archetype's sample. When the question "
+    f"asks how many games the week holds, that is the number to give. {_OWN_SAMPLE}"
 )
+
+
+def _column_names(columns: Sequence[str]) -> list[str]:
+    """Result column names without case or a table prefix."""
+    return [str(column).lower().rsplit(".", 1)[-1] for column in columns]
 
 
 def week_games_beside_archetypes(columns: Sequence[str], row_count: int) -> bool:
     """Whether a result lists archetypes with the week's count on each row.
 
-    `WEEK_GAMES_BESIDE_ARCHETYPES_NOTE` is for this shape: more than one row,
+    `week_games_beside_archetypes_note` is for this shape: more than one row,
     a `week_games` column, and a column naming the archetype. Column names are
     compared without case and without a table prefix, which DuckDB leaves off
     a result column anyway.
     """
-    names = {str(column).lower().rsplit(".", 1)[-1] for column in columns}
+    names = set(_column_names(columns))
     return row_count > 1 and "week_games" in names and bool(names & _ARCHETYPE_COLUMNS)
+
+
+def week_games_beside_archetypes_note(columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
+    """The note for that shape, with the two counts the rows themselves carry.
+
+    How many distinct archetypes are listed, read from the first archetype
+    column, and, when every row holds the same `week_games`, that the rows are
+    one week of that many games. Rows of several weeks get the general
+    sentence instead, because there is no one total to name.
+    """
+    names = _column_names(columns)
+    archetype_at = next(index for index, name in enumerate(names) if name in _ARCHETYPE_COLUMNS)
+    week_at = names.index("week_games")
+    archetypes = len({row[archetype_at] for row in rows})
+    totals = {row[week_at] for row in rows}
+    listed = f"These rows list {archetypes} archetypes."
+    if len(totals) == 1 and isinstance(total := next(iter(totals)), int):
+        return (
+            f"{listed} They are one week of {total} games: week_games is that week's "
+            f"total, written on every row, and not any one archetype's sample. Say the "
+            f"week holds {total} games. {_OWN_SAMPLE}"
+        )
+    return f"{listed} {WEEK_GAMES_BESIDE_ARCHETYPES_NOTE}"
 
 
 # DuckDB cancels a statement that runs longer than this. A mart query over a
@@ -1207,7 +1245,7 @@ def execute_marts_query(sql: str, *, warehouse: AnyLocation) -> QueryResult:
     if sums_week_games(sql):
         notes.append(WEEK_GAMES_SUM_NOTE)
     elif week_games_beside_archetypes(columns, len(rows)):
-        notes.append(WEEK_GAMES_BESIDE_ARCHETYPES_NOTE)
+        notes.append(week_games_beside_archetypes_note(columns, rows))
     note = "".join(f"\n\n{text}" for text in notes)
     return QueryResult(
         f"{table}\n\n{len(rows)} row(s).{note}",
