@@ -1892,6 +1892,43 @@ def test_a_service_that_raises_costs_one_offered_question_and_not_the_run() -> N
     assert "RuntimeError" in evals.render_offered(report)
 
 
+def _member_warehouse(path: Path, rows: Sequence[tuple[str, int]]) -> Path:
+    """A warehouse holding only the one mart `--member-token` reads."""
+    import duckdb
+
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute("create table mart_player_summary (player_key varchar, games integer)")
+        if rows:
+            connection.executemany("insert into mart_player_summary values (?, ?)", rows)
+    finally:
+        connection.close()
+    return path
+
+
+def test_the_member_token_is_the_busiest_member_and_the_only_thing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The workflow captures stdout whole, so it must hold the token and nothing else."""
+    warehouse = _member_warehouse(
+        tmp_path / "meta.duckdb",
+        [("bbbbbbbbbbbbbbbb", 3), ("cccccccccccccccc", 9), ("aaaaaaaaaaaaaaaa", 9)],
+    )
+    assert evals.main(["--member-token", "--warehouse", str(warehouse)]) == 0
+    # Ties broken by key, as the golden set breaks them.
+    assert capsys.readouterr().out == "aaaaaaaaaaaaaaaa\n"
+
+
+def test_a_warehouse_with_no_member_gives_no_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    warehouse = _member_warehouse(tmp_path / "meta.duckdb", [])
+    assert evals.main(["--member-token", "--warehouse", str(warehouse)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "holds no member row" in captured.err
+
+
 def test_the_offered_mode_needs_a_deployment_to_measure(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

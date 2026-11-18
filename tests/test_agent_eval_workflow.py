@@ -26,6 +26,8 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "agent-eval.yml"
 
 LOCAL_JOB = "golden"
 REMOTE_JOB = "prod"
+MEMBER_STEP = "Read a member's token from the warehouse"
+MEMBER_VARIABLES = {"PIPELINE_READER_ROLE_ARN", "PIPELINE_DATA_DIR"}
 
 
 @pytest.fixture(scope="module")
@@ -85,17 +87,28 @@ def test_only_the_deployed_job_may_ask_for_an_oidc_token(workflow: dict[str, Any
 def test_the_gate_step_names_exactly_the_variables_the_file_reads(
     workflow: dict[str, Any], source: str
 ) -> None:
-    """Three lists of names, one set: the file's, the gate's environment, the gate's loop."""
+    """Three lists of names, one set: the gate's environment, the gate's loop, the rest.
+
+    The two the member-token step reads are the exception, and on purpose:
+    without them the chips are still asked, with the placeholder token, so
+    they are checked by that step rather than by the gate that skips the job.
+    """
     used = set(re.findall(r"vars\.([A-Z0-9_]+)", source))
     gate = step_named(workflow, REMOTE_JOB, "Check the agent variables are set")
     declared = set(gate["env"])
     loop = re.search(r"for name in (.*?); do", gate["run"], re.DOTALL)
     assert loop is not None, "the gate step no longer loops over the variable names"
     checked = set(loop.group(1).replace("\\", " ").split())
+    member = step_named(workflow, REMOTE_JOB, MEMBER_STEP)
+    optional = {name for name in member["env"] if name in MEMBER_VARIABLES}
 
-    assert used == declared == checked
-    # And the set itself, so adding one is a deliberate edit here as well.
-    assert used == {"AWS_REGION", "PIPELINE_CI_ROLE_ARN", "PIPELINE_AGENT_URL"}
+    assert declared == checked
+    assert used == declared | optional
+    # And the sets themselves, so adding one is a deliberate edit here as well.
+    assert declared == {"AWS_REGION", "PIPELINE_CI_ROLE_ARN", "PIPELINE_AGENT_URL"}
+    assert optional == MEMBER_VARIABLES
+    for name in MEMBER_VARIABLES:
+        assert f'"${{{name}:-}}"' in member["run"]
 
 
 def test_an_unset_variable_is_a_notice_and_a_green_job(workflow: dict[str, Any]) -> None:
@@ -154,10 +167,43 @@ def test_the_offered_set_is_asked_of_the_same_deployment(workflow: dict[str, Any
     # A real member's token, from a secret and never from a variable or the
     # file, and optional: an unset secret falls back to the runner's own.
     assert step["env"]["OFFERED_PLAYER_TOKEN"] == "${{ secrets.OFFERED_PLAYER_TOKEN }}"
-    assert '--player-token "${OFFERED_PLAYER_TOKEN:-}"' in run
+    assert '--player-token "${OFFERED_PLAYER_TOKEN:-${MEMBER_PLAYER_TOKEN:-}}"' in run
     # Nobody has measured this set, so the first runs are a baseline and the
     # news is a notice. A step that went red on day one is a step somebody
     # turns off before the baseline is read.
     report = step_named(workflow, REMOTE_JOB, "Say how the offered questions went")
     assert report["if"].startswith("always()")
     assert "::notice title=Offered questions::" in report["run"]
+
+
+def test_the_member_token_is_read_with_the_reader_role_and_masked(
+    workflow: dict[str, Any],
+) -> None:
+    """The chips' member, from the warehouse, without moving the CI session."""
+    names = [step.get("name") for step in steps(workflow, REMOTE_JOB)]
+    assert names.index(MEMBER_STEP) < names.index("Ask the questions the application offers")
+    step = step_named(workflow, REMOTE_JOB, MEMBER_STEP)
+    assert step["if"].startswith("always()")
+    # A token that could not be read is the placeholder run, not a red one.
+    assert step["continue-on-error"] is True
+    run = step["run"]
+    # The secret, when set, still decides.
+    assert step["env"]["OFFERED_PLAYER_TOKEN"] == "${{ secrets.OFFERED_PLAYER_TOKEN }}"
+    assert run.index("OFFERED_PLAYER_TOKEN") < run.index("sts assume-role")
+    # The reader role in this shell only: no second credentials action, which
+    # would replace the CI session the two scoring steps sign the URL with,
+    # and no session tags, which the reader role's trust policy does not grant.
+    credential_steps = [
+        step
+        for step in steps(workflow, REMOTE_JOB)
+        if str(step.get("uses", "")).startswith("aws-actions/configure-aws-credentials")
+    ]
+    assert len(credential_steps) == 1
+    assert "aws sts assume-role" in run
+    assert "--tags" not in run
+    # Masked before it is exported, and the credentials masked too.
+    assert run.index('echo "::add-mask::$token"') < run.index("MEMBER_PLAYER_TOKEN=")
+    assert "::add-mask::$AWS_SECRET_ACCESS_KEY" in run
+    assert "::add-mask::$AWS_SESSION_TOKEN" in run
+    assert "--member-token" in run
+    assert '--warehouse "${PIPELINE_DATA_DIR%/}/warehouse/meta.duckdb"' in run

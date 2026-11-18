@@ -241,13 +241,65 @@ jobs:
             --golden evals/golden.yaml \
             --no-mlflow --json | tee artifacts/remote_eval_report.json
 
+      # The member whose record the chips are asked about, read from the
+      # warehouse the deployed service answers from, so no copy of a token has
+      # to be kept as a secret. The member with the most games, the same row
+      # the golden job takes from the fixture warehouse. The secret, when set,
+      # still wins, so a run can be pinned to one member.
+      #
+      # Credentials: the CI role may call the function URL but not read the
+      # lake; the reader role the nightly job chains into may read the lake and
+      # not call the function. So the reader role is assumed here, in this
+      # step's shell only, by a plain `sts assume-role` with no session tags
+      # (the one action its trust policy grants the CI role), and the CI
+      # session the two scoring steps sign with is left as it was. The token is
+      # captured, masked, and only then exported, so the log never holds it.
+      # `continue-on-error`, because a token that could not be read leaves the
+      # chips asked with the placeholder, which is what happened before.
+      - name: Read a member's token from the warehouse
+        id: member
+        if: always() && steps.configured.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PIPELINE_READER_ROLE_ARN: ${{ vars.PIPELINE_READER_ROLE_ARN }}
+          PIPELINE_DATA_DIR: ${{ vars.PIPELINE_DATA_DIR }}
+          OFFERED_PLAYER_TOKEN: ${{ secrets.OFFERED_PLAYER_TOKEN }}
+          PRA_LOG_FORMAT: json
+        run: |
+          set -eu -o pipefail
+          if [ -n "${OFFERED_PLAYER_TOKEN:-}" ]; then
+            echo "::notice title=Offered questions::using the OFFERED_PLAYER_TOKEN secret"
+            exit 0
+          fi
+          if [ -z "${PIPELINE_READER_ROLE_ARN:-}" ] || [ -z "${PIPELINE_DATA_DIR:-}" ]; then
+            echo "::notice title=Offered questions::PIPELINE_READER_ROLE_ARN or PIPELINE_DATA_DIR is unset, so the chips are asked with the placeholder token"
+            exit 0
+          fi
+          creds=$(aws sts assume-role \
+            --role-arn "$PIPELINE_READER_ROLE_ARN" \
+            --role-session-name "agent-eval-${{ github.run_id }}" \
+            --query Credentials --output json)
+          AWS_ACCESS_KEY_ID=$(jq -r .AccessKeyId <<<"$creds")
+          AWS_SECRET_ACCESS_KEY=$(jq -r .SecretAccessKey <<<"$creds")
+          AWS_SESSION_TOKEN=$(jq -r .SessionToken <<<"$creds")
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          echo "::add-mask::$AWS_SESSION_TOKEN"
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          token=$(uv run python -m pipeline.eval --member-token \
+            --warehouse "${PIPELINE_DATA_DIR%/}/warehouse/meta.duckdb")
+          echo "::add-mask::$token"
+          echo "MEMBER_PLAYER_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "::notice title=Offered questions::asking as the member with the most games in the warehouse"
+
       # Every question the application puts in front of a member as a chip,
       # asked once against the same deployment, with the route sentence, the
       # token clause and the game the application itself would send. The
-      # token is a real member's, from the `OFFERED_PLAYER_TOKEN` secret, so a
-      # chip about "my record" is asked as a member asks it; with the secret
-      # unset the runner states a token of the right shape that is nobody's,
-      # and those chips fail on the no-row answer (docs/evals.md). A secret
+      # token is a real member's, from the `OFFERED_PLAYER_TOKEN` secret or
+      # else from the step above, so a chip about "my record" is asked as a
+      # member asks it; with neither, the runner states a token of the right
+      # shape that is nobody's, and those chips fail on the no-row answer
+      # (docs/evals.md). A secret
       # rather than a variable because a player token is an identifier, and a
       # secret is masked wherever the log would print it. A notice and never a failure
       # for now: nobody has measured this set, the first run is the baseline,
@@ -274,7 +326,7 @@ jobs:
           uv run python -m pipeline.eval \
             --offered \
             --remote "$PIPELINE_AGENT_URL" \
-            --player-token "${OFFERED_PLAYER_TOKEN:-}" \
+            --player-token "${OFFERED_PLAYER_TOKEN:-${MEMBER_PLAYER_TOKEN:-}}" \
             --json | tee artifacts/offered_eval_report.json
 
       - name: Say how the offered questions went
