@@ -2175,7 +2175,11 @@ def run_offered(
             )
             continue
         model = agent.model_name
-        results.append(score_offered(case, question, answer))
+        scored = score_offered(case, question, answer)
+        # Scored on the answer as given, kept with the token blanked: the
+        # report is uploaded from a public repository's run, and an answer
+        # that repeats the token would tie a member's record to it there.
+        results.append(replace(scored, answer=scored.answer.replace(token, TOKEN_PLACEHOLDER)))
     return OfferedReport(results=tuple(results), model=model, path=OFFERED_PATH, remote=remote)
 
 

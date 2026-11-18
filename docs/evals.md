@@ -1204,8 +1204,9 @@ the reader role may read the lake and not call the function, and the CI role
 the other way round. The `OFFERED_PLAYER_TOKEN` secret, when set, still wins,
 for a run pinned to one member; with neither, or when the read fails, the
 chips are asked with the placeholder as before. The report the job keeps holds
-the agent's answers about that member's record, so it is as private as the
-repository's artifacts are.
+the agent's answers about that member's record, and the artifacts of a public
+repository can be downloaded by anyone signed in to GitHub, so an answer that
+repeats the token is kept with the token blanked (it is scored as given).
 Nothing is logged to MLflow: a chip that cannot be answered is a line in a
 backlog, not a series.
 

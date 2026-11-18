@@ -1861,6 +1861,22 @@ def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> N
     assert json.loads(json.dumps(report.as_dict()))["total"] == 2
 
 
+def test_an_offered_answer_that_repeats_the_token_is_kept_with_it_blanked() -> None:
+    """The report is uploaded from a public run, so the member's token stays out of it."""
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(
+        cases,
+        OfferedRecorder(offered_answer(f"Player {FAKE_TOKEN} is 1 and 0 over 1 game.")),  # type: ignore[arg-type]
+        token=FAKE_TOKEN,
+        game=evals.offered_game(),
+    )
+    (result,) = report.results
+    # Scored on the answer as given; only what is kept is blanked.
+    assert result.passed
+    assert FAKE_TOKEN not in json.dumps(report.as_dict())
+    assert evals.TOKEN_PLACEHOLDER in result.answer
+
+
 def test_a_green_offered_run_says_so_and_names_nothing() -> None:
     cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
     report = evals.run_offered(
