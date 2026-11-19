@@ -1192,7 +1192,21 @@ a token of the right shape belonging to nobody; the chips that read a
 member's row then get the playbook's no-row answer, which says the warehouse
 cannot answer for that token and so fails the refusal rule. Those failures
 are about the runner, not the offer, which is why the workflow passes a real
-member's token from the `OFFERED_PLAYER_TOKEN` secret when one is set.
+member's token.
+
+It reads that token itself. A step before the chips assumes the pipeline
+reader role (`PIPELINE_READER_ROLE_ARN`, the role the nightly job chains into)
+in its own shell, runs `python -m pipeline.eval --member-token --warehouse
+<lake>/warehouse/meta.duckdb`, which prints the token of the member with the
+most games and nothing else, masks it, and exports it to the chip step. The CI
+session the scoring steps sign the function URL with is left alone, because
+the reader role may read the lake and not call the function, and the CI role
+the other way round. The `OFFERED_PLAYER_TOKEN` secret, when set, still wins,
+for a run pinned to one member; with neither, or when the read fails, the
+chips are asked with the placeholder as before. The report the job keeps holds
+the agent's answers about that member's record, and the artifacts of a public
+repository can be downloaded by anyone signed in to GitHub, so an answer that
+repeats the token is kept with the token blanked (it is scored as given).
 Nothing is logged to MLflow: a chip that cannot be answered is a line in a
 backlog, not a series.
 

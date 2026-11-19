@@ -1293,7 +1293,7 @@ def load_transcript(path: Path = TRANSCRIPT_PATH) -> Transcript:
 
 
 @lru_cache(maxsize=4)
-def warehouse_player_token(warehouse: Path) -> str:
+def warehouse_player_token(warehouse: AnyLocation) -> str:
     """The token of the member row a question marked with the placeholder means.
 
     One row of one column out of the warehouse that is about to answer: the
@@ -1859,7 +1859,8 @@ MEMBER_TOKEN_ROUTES: Final[tuple[str, ...]] = ("overview", "games", "insights")
 # gets the playbook's no-row answer, which says the warehouse cannot answer for
 # that token and so matches the refusal pattern: those chips fail under it for
 # a reason that is about the runner and not the offer. The workflow passes a
-# real member's token from a secret when one is set (docs/evals.md).
+# real member's token, read from the warehouse (`--member-token`) or from a
+# secret when one is set (docs/evals.md).
 OFFERED_FALLBACK_TOKEN: Final = "0000000000000000"
 
 # The page a follow-up chip is asked on. A chip under an answer carries no
@@ -2174,7 +2175,11 @@ def run_offered(
             )
             continue
         model = agent.model_name
-        results.append(score_offered(case, question, answer))
+        scored = score_offered(case, question, answer)
+        # Scored on the answer as given, kept with the token blanked: the
+        # report is uploaded from a public repository's run, and an answer
+        # that repeats the token would tie a member's record to it there.
+        results.append(replace(scored, answer=scored.answer.replace(token, TOKEN_PLACEHOLDER)))
     return OfferedReport(results=tuple(results), model=model, path=OFFERED_PATH, remote=remote)
 
 
@@ -2659,6 +2664,12 @@ def build_parser() -> argparse.ArgumentParser:
         "member's token on a real deployment; anything of the right shape will do "
         "for a question that does not read a row",
     )
+    parser.add_argument(
+        "--member-token",
+        action="store_true",
+        help="write the token of the member with the most games in --warehouse to "
+        "stdout and stop, for a workflow to hand to --player-token without a secret",
+    )
     return parser
 
 
@@ -2669,6 +2680,20 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(STAGE)
 
     remote = args.remote is not None
+    if args.member_token:
+        # The one value the offered run needs from the warehouse the deployed
+        # service answers from, read in a step of its own. Its own step
+        # because the role that may read the lake is not the role that may
+        # call the function URL, and one process holds one set of
+        # credentials. Written bare to stdout, never logged: the caller
+        # captures it and masks it before anything can echo it.
+        try:
+            token = warehouse_player_token(args.warehouse)
+        except GoldenError as failure:
+            sys.stderr.write(f"{parser.prog}: {failure}\n")
+            return 2
+        sys.stdout.write(token + "\n")
+        return 0
     if args.offered:
         # A deliberately narrow door. The offered set measures what the
         # application is putting on a screen against the service that

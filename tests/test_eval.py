@@ -1861,6 +1861,22 @@ def test_the_offered_run_asks_every_string_and_names_the_ones_that_failed() -> N
     assert json.loads(json.dumps(report.as_dict()))["total"] == 2
 
 
+def test_an_offered_answer_that_repeats_the_token_is_kept_with_it_blanked() -> None:
+    """The report is uploaded from a public run, so the member's token stays out of it."""
+    cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
+    report = evals.run_offered(
+        cases,
+        OfferedRecorder(offered_answer(f"Player {FAKE_TOKEN} is 1 and 0 over 1 game.")),  # type: ignore[arg-type]
+        token=FAKE_TOKEN,
+        game=evals.offered_game(),
+    )
+    (result,) = report.results
+    # Scored on the answer as given; only what is kept is blanked.
+    assert result.passed
+    assert FAKE_TOKEN not in json.dumps(report.as_dict())
+    assert evals.TOKEN_PLACEHOLDER in result.answer
+
+
 def test_a_green_offered_run_says_so_and_names_nothing() -> None:
     cases = (evals.Offered(source="suggestion", route="overview", text="How is the meta?"),)
     report = evals.run_offered(
@@ -1890,6 +1906,43 @@ def test_a_service_that_raises_costs_one_offered_question_and_not_the_run() -> N
     assert report.passed == 0
     assert report.results[0].error is not None
     assert "RuntimeError" in evals.render_offered(report)
+
+
+def _member_warehouse(path: Path, rows: Sequence[tuple[str, int]]) -> Path:
+    """A warehouse holding only the one mart `--member-token` reads."""
+    import duckdb
+
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute("create table mart_player_summary (player_key varchar, games integer)")
+        if rows:
+            connection.executemany("insert into mart_player_summary values (?, ?)", rows)
+    finally:
+        connection.close()
+    return path
+
+
+def test_the_member_token_is_the_busiest_member_and_the_only_thing_on_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The workflow captures stdout whole, so it must hold the token and nothing else."""
+    warehouse = _member_warehouse(
+        tmp_path / "meta.duckdb",
+        [("bbbbbbbbbbbbbbbb", 3), ("cccccccccccccccc", 9), ("aaaaaaaaaaaaaaaa", 9)],
+    )
+    assert evals.main(["--member-token", "--warehouse", str(warehouse)]) == 0
+    # Ties broken by key, as the golden set breaks them.
+    assert capsys.readouterr().out == "aaaaaaaaaaaaaaaa\n"
+
+
+def test_a_warehouse_with_no_member_gives_no_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    warehouse = _member_warehouse(tmp_path / "meta.duckdb", [])
+    assert evals.main(["--member-token", "--warehouse", str(warehouse)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "holds no member row" in captured.err
 
 
 def test_the_offered_mode_needs_a_deployment_to_measure(
