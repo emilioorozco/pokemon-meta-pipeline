@@ -481,6 +481,14 @@ def test_the_relevance_request_is_one_choice_question_over_one_sentence() -> Non
     assert question["type"] == "choice"
     assert question["instructions"] == sql_gate.RELEVANCE_INSTRUCTIONS
     assert set(question["criteria"]) == {"relevant", "irrelevant"}
+    # A question that compares this game, the member's play in it or either of
+    # its decks with the rest is about the game: "how does my pace compare to
+    # other Dragapult control players?" was dropped as the wider metagame, and
+    # the answer then asked the member for the game it had been sent.
+    relevant = " ".join(question["criteria"]["relevant"].split())
+    assert "compares with other games or the community" in relevant
+    assert "this opponent's lists" in relevant
+    assert "names nothing in this game" in question["criteria"]["irrelevant"]
     assert FIRST_LINE in payload["state"]
     assert GAME_QUESTION in payload["state"]
     # The summary never leaves the application's half of the call.

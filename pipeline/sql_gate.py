@@ -190,13 +190,16 @@ RELEVANCE_INSTRUCTIONS: Final = (
 RELEVANCE_CRITERIA: Final[dict[str, str]] = {
     CHOICE_RELEVANT: (
         "The question is about this game: how it went, why it went that way, a turn or a "
-        "decision in it, or either of the two decks that played it. A summary of the game "
+        "decision in it, either of the two decks that played it, or how this game, the "
+        "member's play in it, or either deck compares with other games or the community "
+        '("my pace", "this opponent\'s lists", "this matchup"). A summary of the game '
         "would help answer it."
     ),
     CHOICE_IRRELEVANT: (
-        "The question is about something else: the wider metagame, a deck neither side "
-        "played, what a card does, the member's record over many games, or the "
-        "application itself. A summary of this one game would only be noise."
+        "The question is about something else and names nothing in this game: the wider "
+        "metagame, a deck neither side played, what a card does, the member's record over "
+        "many games, or the application itself. A summary of this one game would only be "
+        "noise."
     ),
 }
 

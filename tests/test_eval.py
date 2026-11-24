@@ -30,6 +30,7 @@ nothing when it is off" is a measurement rather than a claim.
 import json
 import re
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -1813,6 +1814,26 @@ def test_a_slot_is_filled_with_something_the_fixtures_hold() -> None:
             offered_answer("I cannot answer that: no table here is keyed by you."),
             (evals.OFFERED_REFUSED,),
         ),
+        # A caveat over rows that were read is an answer, not a refusal.
+        (
+            offered_answer("Dragapult control is 1 and 0 over 1 game; the data cannot say more."),
+            (),
+        ),
+        # The same words with nothing read behind them are.
+        (
+            offered_answer("The data cannot say how this matchup goes.", rows=0),
+            (evals.OFFERED_REFUSED, evals.OFFERED_NO_EVIDENCE),
+        ),
+        # Declining in so many words is a refusal whatever was read first.
+        (
+            offered_answer("I apologize, the warehouse has no table keyed by you."),
+            (evals.OFFERED_REFUSED,),
+        ),
+        # So is handing the question back for what the page should have sent.
+        (
+            offered_answer("Could you share the game summary you are asking about?"),
+            (evals.OFFERED_REFUSED,),
+        ),
         (offered_answer(rows=0), (evals.OFFERED_NO_EVIDENCE,)),
         (offered_answer(rows=0, cards=1), ()),
         # The game on screen came with its facts, and the answer used one.
@@ -1875,6 +1896,34 @@ def test_an_offered_answer_that_repeats_the_token_is_kept_with_it_blanked() -> N
     assert result.passed
     assert FAKE_TOKEN not in json.dumps(report.as_dict())
     assert evals.TOKEN_PLACEHOLDER in result.answer
+
+
+def test_an_offered_result_reports_what_it_read_and_what_the_judge_said() -> None:
+    """So a game chip answered as if no game was sent can be told apart.
+
+    Either the relevance judge dropped the game or the model did not read it,
+    and the kept report is the only place a reader can see which.
+    """
+    body = replace(
+        offered_answer(rows=3, facts=(True,)),  # type: ignore[type-var]
+        context_relevance="irrelevant",
+        context_game_used=False,
+    )
+    case = evals.Offered(
+        source="followUp", job="my_mistake", text="How does my pace compare?", needs=("game",)
+    )
+    kept = evals.score_offered(case, case.question, body).as_dict()  # type: ignore[arg-type]
+    assert kept["read"] == 4
+    assert kept["context_relevance"] == "irrelevant"
+    assert kept["context_game_used"] is False
+
+
+def test_the_offered_decline_pattern_leaves_the_adversarial_pattern_alone() -> None:
+    """The golden set's refusals are graded on the wide pattern, as they were."""
+    assert "can't" in evals.REFUSAL_PATTERN and "do not" in evals.REFUSAL_PATTERN
+    assert not re.search(
+        evals.OFFERED_DECLINE_PATTERN, "the warehouse does not hold games this month", re.I
+    )
 
 
 def test_a_green_offered_run_says_so_and_names_nothing() -> None:

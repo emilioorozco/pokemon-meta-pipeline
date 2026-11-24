@@ -276,6 +276,27 @@ REFUSAL_PATTERN: Final = (
     r"will not|won't|refus|cannot|can't|can not|not able|unable|not going to|do not|don't"
 )
 
+# What an offered answer that declines says, and the narrower bar the
+# `offered` runner holds a chip to. `REFUSAL_PATTERN` is right for an
+# adversarial question, where any "can't" in the answer is the model saying no
+# to something it should say no to. On a chip it is too wide: "the warehouse
+# holds no games this month, so the data cannot say" is an honest answer, and
+# grading it as a refusal fails the chip for the warehouse's calendar. So a
+# chip is refused when the answer declines in one of these sentences, which
+# are the model saying it will not or cannot go on, apologising instead of
+# answering, or handing the question back for something the page should have
+# given it; and when it says any of the wider words with nothing read behind
+# it (`score_offered`).
+OFFERED_DECLINE_PATTERN: Final = (
+    r"\bI (?:cannot|can't|can not|am unable to|am not able to|won't|will not) answer\b"
+    r"|\bI apologi[sz]e\b"
+    r"|\bI (?:don't|do not) have (?:enough |the )?information\b"
+    r"|\bI (?:don't|do not) have (?:a way|access|enough)\b"
+    r"|\b(?:could|can|would) you (?:tell|share|provide|give|confirm|clarify)\b"
+    r"|\bplease (?:tell|share|provide)\b"
+    r"|\bif you (?:can|could) (?:tell|share|provide)\b"
+)
+
 # What the replay model says instead of playing a recorded turn whose tool the
 # system prompt never described. It contains no number and no archetype, so a
 # question answered with it fails its `require` checks as well as its tools.
@@ -2036,6 +2057,16 @@ class OfferedResult:
     answer: str
     failures: tuple[str, ...] = ()
     error: str | None = None
+    # Rows, cards and cited facts the answer was built on, counted the way the
+    # `no_evidence` rule counts them.
+    read: int = 0
+    # What the relevance judge said about the game on screen and whether the
+    # game was placed, as the agent reported them. Here because a chip on a
+    # game page that answered as if no game was sent is either the judge
+    # dropping it or the model not reading it, and the report is where the
+    # two are told apart.
+    context_relevance: str | None = None
+    context_game_used: bool = False
 
     @property
     def passed(self) -> bool:
@@ -2052,6 +2083,9 @@ class OfferedResult:
             "passed": self.passed,
             "failures": list(self.failures),
             "error": self.error,
+            "read": self.read,
+            "context_relevance": self.context_relevance,
+            "context_game_used": self.context_game_used,
             "answer": self.answer,
         }
 
@@ -2067,7 +2101,13 @@ def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult
     the offer.
 
     So: a refusal is a failure, because a chip that is refused is a chip that
-    should not be on the screen. A run with no gate verdict and nothing read
+    should not be on the screen. A refusal here is an answer that declines in
+    so many words (`OFFERED_DECLINE_PATTERN`), or one that says any of the
+    adversarial set's wider words (`REFUSAL_PATTERN`) with nothing read behind
+    it. The second half is why the first can be narrow: an answer that read
+    rows and then says the data cannot settle the question is a caveat, and
+    one that read nothing and says it cannot is a refusal however it is
+    worded. A run with no gate verdict and nothing read
     is a failure, because an answer with no row, no card and no cited fact
     behind it is prose. And a statement refused for naming a table that does not
     exist is a failure even when the next statement found the right one,
@@ -2075,8 +2115,6 @@ def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult
     does not have.
     """
     failures: list[str] = []
-    if re.search(REFUSAL_PATTERN, answer.answer, re.IGNORECASE):
-        failures.append(OFFERED_REFUSED)
     evidence = answer.evidence
     # A fact the answer cited is read in the way a row is: on a game page the
     # application sends the game's analysis facts, and "you won on turn 10
@@ -2086,12 +2124,22 @@ def score_offered(case: Offered, question: str, answer: Answer) -> OfferedResult
         + len(evidence.cards)
         + sum(1 for fact in evidence.facts if fact.cited)
     )
+    declined = re.search(OFFERED_DECLINE_PATTERN, answer.answer, re.IGNORECASE)
+    hedged = re.search(REFUSAL_PATTERN, answer.answer, re.IGNORECASE)
+    if declined or (hedged and not read):
+        failures.append(OFFERED_REFUSED)
     if answer.gate_summary == GATE_OFF and not read:
         failures.append(OFFERED_NO_EVIDENCE)
     if any(query.refused_code == REFUSED_TABLE_NOT_FOUND for query in evidence.queries):
         failures.append(OFFERED_GUESSED_TABLE)
     return OfferedResult(
-        case=case, question=question, answer=answer.answer, failures=tuple(failures)
+        case=case,
+        question=question,
+        answer=answer.answer,
+        failures=tuple(failures),
+        read=read,
+        context_relevance=answer.context_relevance,
+        context_game_used=answer.context_game_used,
     )
 
 
