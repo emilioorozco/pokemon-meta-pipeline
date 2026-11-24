@@ -1253,6 +1253,22 @@ def test_the_prompt_carries_the_three_rules_that_keep_it_honest() -> None:
     assert "sample size" in prompt
 
 
+def test_the_prompt_reads_a_deck_named_by_its_place_on_screen_as_its_archetype() -> None:
+    """A chip on a game page: "which cards are most seen in this opponent's lists?".
+
+    Every chip eval run from 52 to 54 answered it with "the warehouse holds no
+    deck list data by opponent archetype", with the opponent's archetype named
+    in the summary in front of it and `mart_cards_seen` keyed by archetype.
+    The rule that says what the game summary is for now says which rows that
+    phrase means.
+    """
+    (rules,) = [block["text"] for block in text_blocks() if "Rules you follow" in block["text"]]
+    assert "this opponent's lists" in rules
+    rule_nine = rules.split("\n9. ", 1)[1].split("\n10. ", 1)[0]
+    assert "mart_cards_seen" in rule_nine
+    assert "the archetype the summary names" in " ".join(rule_nine.split())
+
+
 def test_the_prompt_says_the_table_list_is_the_whole_list() -> None:
     """The cheapest half of PLA-198: the listing was read as a sample.
 

@@ -1160,9 +1160,11 @@ the application and nobody has checked a number in it, so a run that demanded
 a fact would fail on the fixtures rather than on the offer. A case fails
 when:
 
-1. the answer matches the refusal alternation the adversarial half uses
-   (`REFUSAL_PATTERN`, one constant now rather than fourteen copies of it),
-   because a chip that is refused is a chip that should not be on the screen;
+1. the answer declines, because a chip that is refused is a chip that should
+   not be on the screen. Declining is either a sentence that says so
+   (`OFFERED_DECLINE_PATTERN`: "I can't answer", "I apologize", "I don't have
+   the information", "could you share..."), or any word of the adversarial
+   half's alternation (`REFUSAL_PATTERN`) with nothing read behind it;
 2. the run reports `gate_summary: off` and read nothing at all, no row, no
    card and no cited fact, because an answer with nothing behind it is prose;
 3. any statement was refused `table_not_found`, even when the next one found
@@ -1177,6 +1179,44 @@ whatever its result, and the agent said "You didn't lose, you won on turn 10
 fact the answer cited is something it read, in the way a row is, so rule 2
 counts cited facts as well. A run whose facts were sent and not used still
 fails it.
+
+Rule 1 used to be the adversarial alternation alone, and that grades a word
+rather than a refusal: "do not", "can't" and "cannot" are in it because an
+injected DROP can be declined a dozen ways, and they are also how an honest
+answer says what the data will not settle. Over runs 52 to 54 it failed "What
+could I have done differently?" for "the warehouse holds only 1 game of
+Dragapult control against Alakazam / Toucannon, which is this one, so I cannot
+tell you how the matchup usually goes", and "How does my deck usually do
+against this opponent?" for "the data cannot say how the matchup usually
+goes", both after reading the one game there is, while it passed "I
+apologize—the warehouse does not have a way to filter..." and "Could you
+clarify which Dragapult deck you're asking about", because neither uses one of
+its words. Replayed over those three reports (with "nothing read" taken from
+rule 2's failure, since they did not record the count), the narrower rule
+moves the totals by one or three either way (50 to 49, 48 to 51, 50 to 53),
+and each case that moved moved towards what the answer actually did. The
+adversarial questions are graded on `REFUSAL_PATTERN` as before; only the
+chips use the narrower bar.
+
+Each case in the kept report also carries `read` (the rows, cards and cited
+facts behind it), `context_relevance` (what the relevance judge said about the
+game on screen) and `context_game_used`. A game-page chip answered "the
+context does not include the game summary" was either the judge dropping it or
+the model not reading it, and those two fields say which. The reports before
+them could not, but the likely one so far is the judge: "How does my pace
+compare to other Dragapult control players?" reads as the wider metagame
+against criteria that listed the wider metagame as irrelevant, and in runs 53
+and 54 the answer asked the member for the game it had been sent. So the
+judge's criteria now count a comparison of this game, the member's play in it
+or either deck with the rest as about the game (`RELEVANCE_CRITERIA`).
+
+The other agent miss on a game page was "Which cards are most seen in this
+opponent's lists?", answered three runs out of three with "the warehouse holds
+no deck list data by opponent archetype", the opponent's archetype named in
+the summary in front of it and `mart_cards_seen` keyed by archetype. Rule 9 of
+the prompt, which says what the game summary is for, now says that a deck
+named by its place on the screen is the archetype the summary names, and that
+"this opponent's lists" are its `mart_cards_seen` rows.
 
 **Running it.**
 
